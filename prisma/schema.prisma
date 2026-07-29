@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  nurse
+  physician
+  admin
+}
+
+enum Gender {
+  male
+  female
+}
+
+enum JourneyStatus {
+  visual_triage
+  awaiting_ctas
+  ctas_in_progress
+  completed
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         UserRole @default(nurse)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  journeys     PatientJourney[] @relation("JourneyCreator")
+  triageRecords TriageRecord[]  @relation("TriageCreator")
+  auditEvents  AuditEvent[]
+
+  @@map("users")
+}
+
+model PatientJourney {
+  id        String   @id @default(uuid())
+  patientId String   @unique @map("patient_id")
+  createdById String @map("created_by_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  mrn              String?
+  idNumber         String?  @map("id_number")
+  patientNameAr    String?  @map("patient_name_ar")
+  patientNameEn    String?  @map("patient_name_en")
+  dob              String?
+  age              Int?
+  gender           Gender?
+  nationality      String?
+  phone            String?
+  insurance        String?
+  arrivalTime      DateTime @default(now()) @map("arrival_time")
+  modeOfArrival    String?  @map("mode_of_arrival")
+
+  vtCompleted          Boolean   @default(false) @map("vt_completed")
+  vtCompletedAt        DateTime? @map("vt_completed_at")
+  vtDurationSec        Int?      @map("vt_duration_sec")
+  vtSectionABreathing  String?   @map("vt_section_a_breathing")
+  vtSectionAConsciousness String? @map("vt_section_a_consciousness")
+  vtSectionABleeding   String?   @map("vt_section_a_bleeding")
+  vtSectionASkin       String?   @map("vt_section_a_skin")
+  vtSectionAMobility   String?   @map("vt_section_a_mobility")
+  vtRespiratoryScore   Int?      @map("vt_respiratory_score")
+  vtRespiratorySymptoms String?  @map("vt_respiratory_symptoms")
+  vtMonkeypoxRisk      String?   @map("vt_monkeypox_risk")
+  vtDestination        String?   @map("vt_destination")
+  vtDestinationAr      String?   @map("vt_destination_ar")
+  vtDestinationEn      String?   @map("vt_destination_en")
+  vtMaskGiven          Boolean   @default(false) @map("vt_mask_given")
+  vtHandHygieneDone    Boolean   @default(false) @map("vt_hand_hygiene_done")
+  vtAlertTeamNotified  Boolean   @default(false) @map("vt_alert_team_notified")
+
+  regCompleted    Boolean   @default(false) @map("reg_completed")
+  regCompletedAt  DateTime? @map("reg_completed_at")
+  regBy           String?   @map("reg_by")
+  regDurationSec  Int?      @map("reg_duration_sec")
+
+  ctasStartedAt       DateTime? @map("ctas_started_at")
+  ctasCompletedAt     DateTime? @map("ctas_completed_at")
+  ctasLevel           Int?      @map("ctas_level")
+  chiefComplaint      String?   @map("chief_complaint")
+  currentStatus       JourneyStatus @default(visual_triage) @map("current_status")
+  currentLocation     String?   @map("current_location")
+  receiptImageUrl     String?   @map("receipt_image_url")
+  ctasReviewedAt      DateTime? @map("ctas_reviewed_at")
+  clinicianFinalCtas  Int?      @map("clinician_final_ctas")
+  rulesRecommendedCtas Int?     @map("rules_recommended_ctas")
+  aiRecommendedCtas   Int?      @map("ai_recommended_ctas")
+  alertTriggeredAt    DateTime? @map("alert_triggered_at")
+  alertAcknowledgedAt DateTime? @map("alert_acknowledged_at")
+  alertAcknowledgedBy String?   @map("alert_acknowledged_by")
+  incompleteDataFlags Json?     @map("incomplete_data_flags")
+
+  createdBy     User           @relation("JourneyCreator", fields: [createdById], references: [id])
+  triageRecords TriageRecord[]
+
+  @@index([currentStatus, arrivalTime])
+  @@index([createdById])
+  @@map("patient_journeys")
+}
+
+model TriageRecord {
+  id        String   @id @default(uuid())
+  journeyId String   @map("journey_id")
+  createdById String @map("created_by_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  arrivalTime       DateTime? @map("arrival_time")
+  patientNameAr     String?   @map("patient_name_ar")
+  patientNameEn     String?   @map("patient_name_en")
+  mrn               String?
+  age               Int?
+  gender            Gender?
+  nationality       String?
+  phone             String?
+  insurance         String?
+  chiefComplaint    String?   @map("chief_complaint")
+  hr                Int?
+  bpSystolic        Int?      @map("bp_systolic")
+  bpDiastolic       Int?      @map("bp_diastolic")
+  spo2              Int?
+  rr                Int?
+  temperature       Float?
+  gcs               Int?
+  painScore         Int?      @map("pain_score")
+  transcription     String?
+  receiptImageUrl   String?   @map("receipt_image_url")
+  ctasLevel         Int?      @map("ctas_level")
+  ctasNameAr        String?   @map("ctas_name_ar")
+  ctasNameEn        String?   @map("ctas_name_en")
+  maxWaitTime       String?   @map("max_wait_time")
+  clinicalSummaryAr String?   @map("clinical_summary_ar")
+  redFlags          Json?     @map("red_flags")
+  disposition       String?
+  nurseName         String?   @map("nurse_name")
+  aiCtas            Int?      @map("ai_ctas")
+  nurseCtas         Int?      @map("nurse_ctas")
+  agreement         Boolean?
+  overrideReason    String?   @map("override_reason")
+  flaggedForReview  Boolean   @default(false) @map("flagged_for_review")
+  triageDurationMin Int?      @map("triage_duration_min")
+  patientId         String?   @map("patient_id")
+  rulesRecommendedCtas Int?   @map("rules_recommended_ctas")
+  aiRecommendedCtas Int?      @map("ai_recommended_ctas")
+  clinicianFinalCtas Int?     @map("clinician_final_ctas")
+  clinicianReviewedAt DateTime? @map("clinician_reviewed_at")
+  reviewedBy        String?   @map("reviewed_by")
+  ctasStartedAt     DateTime? @map("ctas_started_at")
+  ctasCompletedAt   DateTime? @map("ctas_completed_at")
+  doorToTriageMin   Int?      @map("door_to_triage_min")
+  alertTriggered    Boolean   @default(false) @map("alert_triggered")
+  alertTriggeredAt  DateTime? @map("alert_triggered_at")
+  alertAcknowledgedAt DateTime? @map("alert_acknowledged_at")
+  alertResponseSec  Int?      @map("alert_response_sec")
+  alertSummary      String?   @map("alert_summary")
+  aiConfidence      Float?    @map("ai_confidence")
+  safetyNote        String?   @map("safety_note")
+  missingFields     Json?     @map("missing_fields")
+  assessmentTrail   Json?     @map("assessment_trail_json")
+
+  journey   PatientJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  createdBy User           @relation("TriageCreator", fields: [createdById], references: [id])
+
+  @@index([journeyId])
+  @@index([createdById])
+  @@map("triage_records")
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  action     String
+  actorId    String   @map("actor_id")
+  payload    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_events")
+}

@@ -1,0 +1,15 @@
+{
+  "vocabulary_version": "2026-07-25",
+  "locale": "ar-SA/en-US",
+  "terms": [
+    "CTAS", "triage", "patient name", "age", "male", "female", "complaint",
+    "HR", "heart rate", "BP", "blood pressure", "SpO2", "O2 sat", "oxygen saturation",
+    "RR", "respiratory rate", "temperature", "temp", "GCS", "Glasgow Coma Scale",
+    "pain score", "chest pain", "abdominal pain", "dyspnea", "shortness of breath",
+    "NKDA", "no known allergies", "aspirin", "metformin", "insulin", "clopidogrel",
+    "اسم المريض", "العمر", "ذكر", "أنثى", "الشكوى", "ألم", "النبض", "الضغط", "الأكسجين",
+    "التنفس", "الحرارة", "الوعي", "ألم صدر", "ضيق تنفس", "حمى", "لا حساسية", "منذ", "ساعتين"
+  ],
+  "drug_names": ["aspirin", "metformin", "insulin", "clopidogrel", "paracetamol", "morphine"],
+  "anatomy": ["chest", "abdomen", "head", "back", "صدر", "بطن", "رأس"]
+}

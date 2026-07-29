@@ -1,0 +1,23 @@
+{
+  "name": "triagepulse",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev --workspace=@triagepulse/api",
+    "dev:web": "npm run dev --workspace=@triagepulse/web",
+    "build": "npm run build --workspace=@triagepulse/clinical && npm run build --workspace=@triagepulse/api && npm run build --workspace=@triagepulse/web",
+    "test": "npm run test --workspace=@triagepulse/clinical",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run db:migrate --workspace=@triagepulse/api",
+    "db:seed": "npm run db:seed --workspace=@triagepulse/api",
+    "db:studio": "npm run db:studio --workspace=@triagepulse/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

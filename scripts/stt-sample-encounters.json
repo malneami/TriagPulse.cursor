@@ -1,0 +1,110 @@
+{
+  "encounters": [
+    {
+      "id": "enc-001-en",
+      "transcript": "Patient name is Ahmed Al Rashid, fifty years old, male, chief complaint chest pain for two hours, pain score eight out of ten, heart rate 110, blood pressure 140 over 90, SpO2 96 percent, no known allergies",
+      "reference_transcript": "Patient name is Ahmed Al Rashid, fifty years old, male, chief complaint chest pain for two hours, pain score eight out of ten, heart rate 110, blood pressure 140 over 90, SpO2 96 percent, no known allergies",
+      "expected_fields": {
+        "name": "Ahmed Al Rashid",
+        "age": 50,
+        "sex": "M",
+        "chief_complaint": "chest pain",
+        "onset_duration": "two hours",
+        "pain_score": 8,
+        "allergies": "NKDA"
+      }
+    },
+    {
+      "id": "enc-002-ar",
+      "transcript": "اسم المريض محمد العتيبي عمره خمسين سنة ذكر الشكوى ألم صدر منذ ساعتين درجة الألم ثمانية من عشرة النبض 105 الضغط 130 على 80 لا حساسية",
+      "reference_transcript": "اسم المريض محمد العتيبي عمره خمسين سنة ذكر الشكوى ألم صدر منذ ساعتين درجة الألم ثمانية من عشرة النبض 105 الضغط 130 على 80 لا حساسية",
+      "expected_fields": {
+        "age": 50,
+        "sex": "M",
+        "allergies": "NKDA"
+      }
+    },
+    {
+      "id": "enc-003-mixed",
+      "transcript": "Patient name Sara, female, age 32, chief complaint dyspnea since morning, SpO2 91, RR 28",
+      "expected_fields": {
+        "sex": "F",
+        "age": 32
+      }
+    },
+    {
+      "id": "enc-004-vitals",
+      "transcript": "male 67 years old fever and cough temp 39.2 GCS 15 HR 118 BP 90/60",
+      "expected_fields": {
+        "age": 67,
+        "sex": "M"
+      }
+    },
+    {
+      "id": "enc-005-meds",
+      "transcript": "Patient on aspirin and metformin, no known allergies, abdominal pain for 1 day",
+      "expected_fields": {
+        "allergies": "NKDA",
+        "chief_complaint": "abdominal pain"
+      }
+    },
+    {
+      "id": "enc-006-mixed-ctas",
+      "transcript": "Patient Ahmed, عمره 55, chest pain, النبض 110 heart rate, BP 140 على 90, SpO2 96, RR 18, temp 37, pain 7/10, GCS 15",
+      "reference_transcript": "Patient Ahmed, عمره 55, chest pain, النبض 110 heart rate, BP 140 على 90, SpO2 96, RR 18, temp 37, pain 7/10, GCS 15",
+      "expected_fields": {
+        "name": "Ahmed",
+        "age": 55,
+        "chief_complaint": "chest pain",
+        "pain_score": 7
+      },
+      "expected_patient": {
+        "patient_name_en": "Ahmed",
+        "age": "55",
+        "chief_complaint": "chest pain",
+        "hr": "110",
+        "bp_systolic": "140",
+        "bp_diastolic": "90",
+        "spo2": "96",
+        "rr": "18",
+        "temperature": "37",
+        "pain_score": 7,
+        "gcs": "15"
+      },
+      "expected_ctas_complete": true
+    },
+    {
+      "id": "enc-007-ar-bp",
+      "transcript": "الضغط 130 على 80 النبض 102 SpO2 94",
+      "expected_fields": {},
+      "expected_patient": {
+        "hr": "102",
+        "bp_systolic": "130",
+        "bp_diastolic": "80",
+        "spo2": "94"
+      }
+    },
+    {
+      "id": "enc-008-age-codeswitch",
+      "transcript": "Patient name is Fatima, age خمسين, female, chief complaint headache",
+      "expected_fields": {
+        "name": "Fatima",
+        "age": 50,
+        "sex": "F",
+        "chief_complaint": "headache"
+      }
+    },
+    {
+      "id": "enc-009-garbled",
+      "transcript": "كومبلين عبدو من البيت Ben score 5 النبض 110 BP 140 على 90",
+      "reference_transcript": "complaint عبدو من البيت pain score 5 النبض 110 BP 140 على 90",
+      "expected_patient": {
+        "pain_score": 5,
+        "hr": "110",
+        "bp_systolic": "140",
+        "bp_diastolic": "90"
+      },
+      "expected_mentions": ["chief_complaint", "pain_score", "hr", "bp_systolic"]
+    }
+  ]
+}

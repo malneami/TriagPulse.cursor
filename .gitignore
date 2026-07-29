@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+.DS_Store
+coverage/
+.turbo/
+reference/
+apps/web/index.html.bak
+apps/web/package.json.ref
