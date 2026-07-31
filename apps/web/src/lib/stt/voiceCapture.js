@@ -32,7 +32,9 @@ export function createMediaRecorder(stream, { onChunk, onStop } = {}) {
   const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64000 });
   recorder.addEventListener('dataavailable', (e) => {
     if (!e.data?.size) return;
-    // Timeslice mode: each segment is usable on its own
+    // WARNING: in timeslice mode only the FIRST blob carries the container header
+    // (EBML for WebM, ftyp/moov for MP4). Later blobs are NOT standalone-decodable, so
+    // onChunk must never be used to POST individual segments to a transcription API.
     if (onChunk) {
       onChunk(e.data, mimeType);
       return;
@@ -151,46 +153,8 @@ export async function createPcmStreamer(stream, { onPcmBase64, sampleRate = REAL
   };
 }
 
-/** Simple energy-based VAD gate for continuous mode. */
-export function createVadGate(stream, { threshold = 0.015, hangMs = 1200 } = {}) {
-  const ctx = new AudioContext();
-  const source = ctx.createMediaStreamSource(stream);
-  const analyser = ctx.createAnalyser();
-  analyser.fftSize = 512;
-  source.connect(analyser);
-  const data = new Float32Array(analyser.fftSize);
-  let speaking = false;
-  let lastVoiceAt = 0;
-  let raf = null;
-
-  const tick = (onChange) => {
-    analyser.getFloatTimeDomainData(data);
-    let sum = 0;
-    for (let i = 0; i < data.length; i += 1) sum += data[i] * data[i];
-    const rms = Math.sqrt(sum / data.length);
-    const now = Date.now();
-    if (rms >= threshold) {
-      speaking = true;
-      lastVoiceAt = now;
-    } else if (speaking && now - lastVoiceAt > hangMs) {
-      speaking = false;
-      onChange?.(false);
-    }
-    if (speaking) onChange?.(true);
-    raf = requestAnimationFrame(() => tick(onChange));
-  };
-
-  return {
-    start(onChange) {
-      tick(onChange);
-    },
-    stop() {
-      if (raf) cancelAnimationFrame(raf);
-      source.disconnect();
-      ctx.close().catch(() => {});
-    },
-    isSpeaking: () => speaking,
-  };
-}
+// Speech/silence gating now lives server-side in SttRealtimeService.appendPcm, which
+// already decodes the exact bytes it is about to commit. A browser-side gate would need
+// an extra socket event and a second race.
 
 export { TARGET_SAMPLE_RATE, REALTIME_SAMPLE_RATE };

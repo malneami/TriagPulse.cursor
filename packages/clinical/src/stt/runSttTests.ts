@@ -13,6 +13,7 @@ import {
   createRealtimeConfigState,
   reduceRealtimeEvent,
 } from './realtimeEvents.js';
+import { createEmptySttFields, extractFieldsFromTranscript, mapSttSessionToPatientUpdates } from './extractFields.js';
 
 /** Mixed AR/EN dictation the ED actually produces. Mirrors scripts/stt-sample-encounters.json. */
 export const CODE_SWITCH_SAMPLES = [
@@ -188,6 +189,56 @@ export function runSttTests(
       'STT-16',
       'session.updated echo captures the negotiated languages',
       JSON.stringify(state.configEchoed),
+    );
+  }
+
+  // ── Spoken numbers must extract in both scripts, and across a switch ───────
+  // Modern transcription models usually emit digits, but clinicians dictate the
+  // phrases this app suggests ("BP one forty over ninety" / "الضغط مئة وأربعين").
+  {
+    const cases: Array<[string, string, unknown]> = [
+      ['blood pressure one forty over ninety', 'bp_systolic', '140'],
+      ['blood pressure one forty over ninety', 'bp_diastolic', '90'],
+      ['الضغط مئة وأربعين على تسعين', 'bp_systolic', '140'],
+      ['heart rate one ten', 'hr', '110'],
+      ['النبض مئة وعشرة', 'hr', '110'],
+      // the switch cases: label in one language, number in the other
+      ['الضغط مئة وأربعين over ninety', 'bp_systolic', '140'],
+      ['heart rate مئة وعشرة', 'hr', '110'],
+      ['pain score سبعة', 'pain_score', 7],
+      ['درجة الألم سبعة من عشرة', 'pain_score', 7],
+      ['SpO2 ninety six', 'spo2', '96'],
+      ['الأكسجين ستة وتسعين', 'spo2', '96'],
+      ['respiratory rate eighteen', 'rr', '18'],
+      ['temperature thirty seven', 'temperature', '37'],
+      ['GCS fifteen', 'gcs', '15'],
+      // patient updates are the form shape — string-typed for every field
+      ['عمره خمسة وخمسين', 'age', '55'],
+    ];
+    for (const [transcript, key, expected] of cases) {
+      const fields = extractFieldsFromTranscript(transcript, createEmptySttFields());
+      const { updates } = mapSttSessionToPatientUpdates(fields);
+      assert(
+        JSON.stringify(updates[key]) === JSON.stringify(expected),
+        `STT-18 [${key}]`,
+        `spoken number extracts from "${transcript}"`,
+        `expected ${JSON.stringify(expected)} got ${JSON.stringify(updates[key])}`,
+      );
+    }
+  }
+
+  // ── A digit-free number word must not be invented out of ordinary prose ────
+  {
+    const fields = extractFieldsFromTranscript(
+      'patient waited for one hour in the waiting room',
+      createEmptySttFields(),
+    );
+    const { updates } = mapSttSessionToPatientUpdates(fields);
+    assert(
+      updates.hr == null && updates.bp_systolic == null && updates.pain_score == null,
+      'STT-19',
+      'prose containing number words does not populate vitals',
+      JSON.stringify({ hr: updates.hr, bp: updates.bp_systolic, pain: updates.pain_score }),
     );
   }
 

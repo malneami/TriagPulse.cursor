@@ -104,7 +104,45 @@
         "bp_systolic": "140",
         "bp_diastolic": "90"
       },
-      "expected_mentions": ["chief_complaint", "pain_score", "hr", "bp_systolic"]
+      "expected_mentions": [
+        "chief_complaint",
+        "pain_score",
+        "hr",
+        "bp_systolic"
+      ]
+    }
+  ],
+  "code_switch": [
+    {
+      "id": "cs-001-ar-carrier",
+      "transcript": "المريض عنده chest pain منذ ساعتين، pain score سبعة",
+      "expected_patient": {
+        "chief_complaint": "chest pain",
+        "pain_score": 7
+      }
+    },
+    {
+      "id": "cs-002-en-carrier",
+      "transcript": "Patient has ألم صدر since two hours, الضغط one forty over ninety",
+      "expected_patient": {
+        "bp_systolic": "140",
+        "bp_diastolic": "90"
+      }
+    },
+    {
+      "id": "cs-003-switch-mid-clause",
+      "transcript": "الضغط مئة وأربعين over ninety",
+      "expected_patient": {
+        "bp_systolic": "140",
+        "bp_diastolic": "90"
+      }
+    },
+    {
+      "id": "cs-004-switch-at-number",
+      "transcript": "heart rate مئة وعشرة",
+      "expected_patient": {
+        "hr": "110"
+      }
     }
   ]
 }

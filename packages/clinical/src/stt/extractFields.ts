@@ -20,8 +20,103 @@ const ARABIC_NUMBERS: Record<string, number> = {
   'ثمانين': 80, 'تسعين': 90, 'مئة': 100, 'مائة': 100,
 };
 
+const ENGLISH_NUMBERS: Record<string, number> = {
+  zero: 0, oh: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+  ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+  seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fourty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+  hundred: 100,
+};
+
+/** Word / Arabic-run / separator, so a rewrite can preserve everything in between. */
+const NUMBER_TOKEN_RE = /[A-Za-z]+|[؀-ۿ]+|[^A-Za-z؀-ۿ]+/g;
+
+function classifyNumberWord(word: string): { lang: 'en' | 'ar'; value: number } | null {
+  const lower = word.toLowerCase();
+  if (ENGLISH_NUMBERS[lower] != null) return { lang: 'en', value: ENGLISH_NUMBERS[lower] };
+  if (ARABIC_NUMBERS[word] != null) return { lang: 'ar', value: ARABIC_NUMBERS[word] };
+  // Arabic prefixes 'and' onto the following number: مئة وأربعين
+  if (word.startsWith('و') && ARABIC_NUMBERS[word.slice(1)] != null) {
+    return { lang: 'ar', value: ARABIC_NUMBERS[word.slice(1)] };
+  }
+  return null;
+}
+
+/** Arabic composes additively in any order: مئة وأربعين = 140, خمسة وخمسين = 55. */
+function combineArabic(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0);
+}
+
+function combineEnglish(values: number[]): number {
+  if (values.length === 1) return values[0];
+  const hundredIdx = values.indexOf(100);
+  if (hundredIdx >= 0) {
+    const multiplier = hundredIdx > 0 ? values[hundredIdx - 1] : 1;
+    const rest = values.slice(hundredIdx + 1).reduce((a, b) => a + b, 0);
+    return multiplier * 100 + rest;
+  }
+  // Colloquial vitals shorthand: "one forty" = 140, "one ten" = 110.
+  if (values[0] === 1 && values[1] >= 10) {
+    return 100 + values.slice(1).reduce((a, b) => a + b, 0);
+  }
+  return values.reduce((a, b) => a + b, 0);
+}
+
+/**
+ * Rewrite spoken number phrases as digits so every existing digit-based vitals
+ * pattern works for dictation in either language — including across a switch
+ * ("heart rate مئة وعشرة", "الضغط مئة وأربعين over ninety").
+ */
+export function normalizeSpokenNumbers(text: string): string {
+  const tokens = String(text).match(NUMBER_TOKEN_RE);
+  if (!tokens) return String(text);
+
+  const isWord = (t: string) => /[A-Za-z؀-ۿ]/.test(t);
+  const isRunGap = (t: string) => /^[\s-]+$/.test(t);
+
+  const out: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    const head = isWord(token) ? classifyNumberWord(token) : null;
+    if (!head) {
+      out.push(token);
+      i += 1;
+      continue;
+    }
+
+    // Greedily consume same-language number words separated only by spaces/hyphens.
+    const values = [head.value];
+    let j = i + 1;
+    let consumedTo = i;
+    while (j < tokens.length) {
+      let k = j;
+      while (k < tokens.length && !isWord(tokens[k])) {
+        if (!isRunGap(tokens[k])) break;
+        k += 1;
+      }
+      if (k >= tokens.length || !isWord(tokens[k])) break;
+      const word = tokens[k];
+      if (head.lang === 'en' && word.toLowerCase() === 'and') {
+        j = k + 1;
+        continue;
+      }
+      const next = classifyNumberWord(word);
+      if (!next || next.lang !== head.lang) break;
+      values.push(next.value);
+      consumedTo = k;
+      j = k + 1;
+    }
+
+    out.push(String(head.lang === 'ar' ? combineArabic(values) : combineEnglish(values)));
+    i = consumedTo + 1;
+  }
+
+  return out.join('');
+}
+
 function normalizeDigits(text: string): string {
-  return String(text).replace(/[٠-٩]/g, (d) => ARABIC_DIGITS[d] ?? d);
+  return normalizeSpokenNumbers(String(text).replace(/[٠-٩]/g, (d) => ARABIC_DIGITS[d] ?? d));
 }
 
 function parseSpokenNumberWord(word: string): number | null {

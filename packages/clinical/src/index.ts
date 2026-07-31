@@ -61,6 +61,12 @@ export {
   segmentTranscriptByLanguage,
 } from './stt/vocabulary';
 export { mapClinicalCodes } from './stt/coding';
+export {
+  createRealtimeConfigState,
+  reduceRealtimeEvent,
+  isTurnDetectionRejection,
+} from './stt/realtimeEvents';
+export type { RealtimeConfigState, RealtimeTranscriptionEcho } from './stt/realtimeEvents';
 export type {
   SttFieldKey,
   SttFieldSlot,
