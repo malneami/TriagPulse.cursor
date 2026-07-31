@@ -51,6 +51,11 @@ export class SttService {
   private sessions = new Map<string, SessionState>();
   private lastOpenAiError: string | null = null;
 
+  /** Whether server-side transcription is usable at all. */
+  isConfigured(): boolean {
+    return !!process.env.OPENAI_API_KEY?.trim();
+  }
+
   createSession(userId: string): { sessionId: string } {
     const id = randomUUID();
     this.sessions.set(id, {
@@ -297,7 +302,9 @@ export class SttService {
     mimeType = 'audio/webm',
     languageHint?: 'en' | 'ar' | 'mixed',
   ): Promise<{ text: string; confidence: number; language: string }> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    // .trim() to match getStatus()/the realtime proxy — a value with stray whitespace
+    // must not make one code path think it is configured and another think it is not.
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
     if (!apiKey) {
       throw new Error('STT service unavailable — configure OPENAI_API_KEY or use browser speech fallback');
     }

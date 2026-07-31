@@ -415,6 +415,17 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
       streamRef.current = await getMicrophoneStream();
     }
     const stream = streamRef.current;
+
+    // With no server key there is nothing to POST audio to. Recording and uploading
+    // anyway produced a stream of failed /stt/transcribe calls whose only visible
+    // effect was an error toast.
+    if (browserOnly) {
+      browserCaptionActiveRef.current = true;
+      restartRecognition(recognitionLang);
+      setSttMode('browser');
+      return;
+    }
+
     // No onChunk: with MediaRecorder timeslice only the FIRST blob carries the container
     // header (EBML for WebM, ftyp/moov for MP4). Blobs 2..N were headerless fragments,
     // so every one of them was rejected by /v1/audio/transcriptions. Taking the
@@ -437,15 +448,7 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
         try { recorderRef.current.stop(); } catch { /* ignore */ }
       }
     }, FALLBACK_ROLLING_MS);
-
-    // Monolingual live captions are only acceptable when there is no OpenAI key at all.
-    if (browserOnly) {
-      browserCaptionActiveRef.current = true;
-      restartRecognition(recognitionLang);
-      setSttMode('browser');
-    } else {
-      setSttMode('browser_batch');
-    }
+    setSttMode('browser_batch');
   }, [browserOnly, recognitionLang, restartRecognition, transcribeBlob, clearSilenceWatchdog]);
 
   startFallbackRef.current = startFallbackCapture;

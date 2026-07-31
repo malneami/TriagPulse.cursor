@@ -1,4 +1,7 @@
-import { Body, Controller, Get, Post, Request, UseGuards, BadRequestException } from '@nestjs/common';
+import {
+  Body, Controller, Get, Post, Request, UseGuards,
+  BadRequestException, ServiceUnavailableException,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 import { SttService } from './stt.service';
@@ -73,6 +76,13 @@ export class SttController {
     @Body() dto: TranscribeDto,
     @Request() req: { user: { id: string; full_name?: string; email?: string } },
   ) {
+    // A missing server key is not a bad request. Returning 400 made a deployment
+    // misconfiguration look like a client bug and hid it from the clinician.
+    if (!this.sttService.isConfigured()) {
+      throw new ServiceUnavailableException(
+        'Server-side STT is not configured (OPENAI_API_KEY missing) — using browser speech + manual entry',
+      );
+    }
     try {
       const result = await this.sttService.transcribeAudio(
         dto.audioBase64,
