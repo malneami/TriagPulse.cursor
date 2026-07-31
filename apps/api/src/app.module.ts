@@ -8,11 +8,17 @@ import { TrackingModule } from './tracking/tracking.module';
 import { SttModule } from './stt/stt.module';
 import { HealthController } from './health.controller';
 
+/**
+ * Resolved relative to process.cwd() (apps/api under `nest start`).
+ * Order is precedence: for a key present in several files, the FIRST wins.
+ */
+export const ENV_FILE_PATHS = ['../../.env', '.env'];
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['../../.env', '.env'],
+      envFilePath: ENV_FILE_PATHS,
     }),
     PrismaModule,
     AuthModule,
