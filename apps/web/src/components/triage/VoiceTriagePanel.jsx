@@ -41,7 +41,6 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
   const [manualFallback, setManualFallback] = useState(false);
   const [manualText, setManualText] = useState('');
   const [recognitionLang, setRecognitionLang] = useState('ar-SA');
-  const [realtimeCapable, setRealtimeCapable] = useState(false);
 
   const streamRef = useRef(null);
   const recorderRef = useRef(null);
@@ -83,6 +82,12 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     [finalLines, interimText],
   );
 
+  /**
+   * Whether the server can transcribe at all. Kept in a ref, not derived from sttMode:
+   * capture starts in the same tick as the status refresh, before React re-renders, so
+   * a state-derived flag would still hold the previous value.
+   */
+  const serverSttRef = useRef(false);
   /** Browser Web Speech is monolingual — only reachable when there is no OpenAI key. */
   const browserOnly = sttMode === 'browser' || sttMode === 'manual';
 
@@ -118,23 +123,40 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     }
   }, [onSessionUpdate]);
 
-  useEffect(() => {
-    fetchSttStatus()
-      .then((s) => {
-        const realtime = !!(s.reachable && s.realtime !== false);
-        setRealtimeCapable(realtime);
-        if (realtime) setSttMode('realtime');
-        else if (s.reachable) setSttMode('openai');
-        else if (s.configured) {
-          setSttMode('openai_error');
-          setSttError(s.lastError || 'OpenAI key invalid');
-        } else {
-          setSttMode(supportsBrowserStt() ? 'browser' : 'manual');
-          if (!supportsBrowserStt()) setManualFallback(true);
-        }
-      })
-      .catch(() => setSttMode(supportsBrowserStt() ? 'browser' : 'manual'));
+  /**
+   * Resolve server capability. Re-run before each recording, not just at mount:
+   * adding OPENAI_API_KEY and restarting the API would otherwise leave an already-open
+   * tab stuck in browser-only mode until a manual reload.
+   */
+  const refreshSttStatus = useCallback(async () => {
+    try {
+      const s = await fetchSttStatus();
+      const realtime = !!(s.reachable && s.realtime !== false);
+      serverSttRef.current = !!s.reachable;
+      if (realtime) {
+        setSttMode('realtime');
+        setSttError('');
+      } else if (s.reachable) {
+        setSttMode('openai');
+        setSttError('');
+      } else if (s.configured) {
+        setSttMode('openai_error');
+        setSttError(s.lastError || 'OpenAI key invalid');
+      } else {
+        setSttMode(supportsBrowserStt() ? 'browser' : 'manual');
+        if (!supportsBrowserStt()) setManualFallback(true);
+      }
+      return realtime;
+    } catch {
+      serverSttRef.current = false;
+      setSttMode(supportsBrowserStt() ? 'browser' : 'manual');
+      return false;
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshSttStatus();
+  }, [refreshSttStatus]);
 
   const clearSilenceWatchdog = useCallback(() => {
     if (silenceWatchdogRef.current) {
@@ -419,7 +441,7 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     // With no server key there is nothing to POST audio to. Recording and uploading
     // anyway produced a stream of failed /stt/transcribe calls whose only visible
     // effect was an error toast.
-    if (browserOnly) {
+    if (!serverSttRef.current) {
       browserCaptionActiveRef.current = true;
       restartRecognition(recognitionLang);
       setSttMode('browser');
@@ -449,7 +471,7 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
       }
     }, FALLBACK_ROLLING_MS);
     setSttMode('browser_batch');
-  }, [browserOnly, recognitionLang, restartRecognition, transcribeBlob, clearSilenceWatchdog]);
+  }, [recognitionLang, restartRecognition, transcribeBlob, clearSilenceWatchdog]);
 
   startFallbackRef.current = startFallbackCapture;
 
@@ -594,7 +616,10 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
       audioBufferRef.current = [];
       pendingSegmentRef.current = false;
 
-      if (realtimeCapable) {
+      // Re-check capability at press time so a server that just gained a key is
+      // picked up without reloading the page.
+      const realtimeNow = await refreshSttStatus();
+      if (realtimeNow) {
         await startRealtimeCapture();
       } else {
         recordingRef.current = true;
@@ -658,6 +683,21 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
           </button>
         </div>
       </div>
+
+      {browserOnly && (
+        <div className="mx-4 mt-3 bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-900">
+          <div className="flex items-center gap-2 font-black mb-1">
+            <AlertTriangle className="w-4 h-4" />
+            Mixed Arabic/English is unavailable — لا يمكن خلط العربية والإنجليزية
+          </div>
+          <p>
+            The server has no <code className="font-mono">OPENAI_API_KEY</code>, so capture is using the
+            browser recogniser. It transcribes <strong>one language at a time</strong> and will render
+            English speech as Arabic letters (and vice versa). Set the key on the API and press Start
+            again — no page reload needed.
+          </p>
+        </div>
+      )}
 
       {(sttError || manualFallback) && (
         <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
