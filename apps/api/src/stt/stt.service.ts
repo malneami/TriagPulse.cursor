@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
+  CLINICAL_STT_VOCABULARY,
+  detectTranscriptLanguage,
   buildSttSessionOutput,
   createEmptySttFields,
   extractFieldsFromTranscript,
@@ -45,6 +47,7 @@ function hasLowCtasConfidence(fields: Record<SttFieldKey, SttFieldSlot>): boolea
 
 @Injectable()
 export class SttService {
+  private readonly logger = new Logger(SttService.name);
   private sessions = new Map<string, SessionState>();
   private lastOpenAiError: string | null = null;
 
@@ -240,7 +243,7 @@ export class SttService {
     lastError?: string;
   }> {
     const apiKey = process.env.OPENAI_API_KEY?.trim();
-    const model = process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe';
+    const model = process.env.OPENAI_STT_MODEL || 'gpt-transcribe';
     const realtime_model = process.env.OPENAI_REALTIME_TRANSCRIBE_MODEL || 'gpt-live-transcribe';
     if (!apiKey) {
       return {
@@ -307,20 +310,34 @@ export class SttService {
 
     const prompt = resolveSttPrompt(languageHint || 'mixed');
     const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp4') ? 'mp4' : 'webm';
+    // whisper-1 is monolingual per request — it transliterates or translates the minority
+    // language in code-switched audio — so it is no longer in the default chain.
     const models = [
-      process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe',
-      process.env.OPENAI_STT_MODEL_FAST || 'gpt-4o-mini-transcribe',
-      process.env.OPENAI_WHISPER_MODEL || 'whisper-1',
-    ].filter((m, i, arr) => m && arr.indexOf(m) === i);
+      process.env.OPENAI_STT_MODEL || 'gpt-transcribe',
+      process.env.OPENAI_STT_MODEL_FAST || 'gpt-4o-transcribe',
+      process.env.OPENAI_WHISPER_MODEL,
+    ].filter((m, i, arr): m is string => !!m && arr.indexOf(m) === i);
 
     let lastError = 'Transcription failed';
     for (const model of models) {
+      const isWhisper = model.includes('whisper');
+      if (isWhisper) {
+        this.logger.warn(
+          `Falling back to ${model} — it cannot handle mixed Arabic/English and may transliterate.`,
+        );
+      }
+
       const blob = new Blob([buffer], { type: mimeType });
       const form = new FormData();
       form.append('file', blob, `chunk.${ext}`);
       form.append('model', model);
       form.append('response_format', 'json');
-      if (prompt) form.append('prompt', prompt.slice(0, 500));
+      if (prompt) form.append('prompt', prompt.slice(0, 900));
+      if (!isWhisper) {
+        // Plural `languages` is what gpt-transcribe uses for multi-language recordings.
+        for (const lang of ['ar', 'en']) form.append('languages[]', lang);
+        for (const kw of CLINICAL_STT_VOCABULARY) form.append('keywords[]', kw);
+      }
 
       const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
         method: 'POST',
@@ -332,13 +349,20 @@ export class SttService {
         const data = (await res.json()) as { text?: string };
         const text = conservativeTranscriptCleanup(data.text || '');
         this.lastOpenAiError = null;
-        return { text, confidence: text ? 0.88 : 0, language: languageHint || 'mixed' };
+        return {
+          text,
+          confidence: text ? 0.88 : 0,
+          // Report what was actually transcribed, not the hint we sent.
+          language: detectTranscriptLanguage(text).detected_language,
+        };
       }
 
       const err = await res.text();
       lastError = `STT provider error (${model}): ${res.status} ${err.slice(0, 200)}`;
       this.lastOpenAiError = lastError;
-      if (res.status !== 400) break;
+      this.logger.warn(lastError);
+      // 400/415/422 all mean "this model rejected the request" — try the next rung.
+      if (![400, 415, 422].includes(res.status)) break;
     }
 
     throw new Error(lastError);

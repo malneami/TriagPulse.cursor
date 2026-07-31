@@ -14,10 +14,14 @@ import {
   computeCtasCompleteness,
   analyzeTranscriptCompleteness,
   conservativeTranscriptCleanup,
+  segmentTranscriptByLanguage,
+  detectTranscriptLanguage,
 } from '../packages/clinical/dist/index.js';
 import {
   mergeTranscriptLines,
   getLiveTranscript,
+  detectTranscriptLanguage as detectTranscriptLanguageWeb,
+  conservativeTranscriptCleanup as conservativeTranscriptCleanupWeb,
 } from '../apps/web/src/lib/stt/ctasFieldMap.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -139,6 +143,82 @@ assertMerge(
 const deduped = mergeTranscriptLines(lines, 'chest pain', { source: 'browser' });
 assertMerge('exact duplicate skipped', deduped.length === 2);
 
+// A short legitimate utterance must survive even when its text appeared earlier.
+// The old dedupe scanned EVERY prior line for containment and silently deleted these.
+const shortRepeat = mergeTranscriptLines(
+  [{ text: 'pain score seven out of ten', source: 'openai' }, { text: 'GCS fifteen', source: 'openai' }],
+  'seven',
+  { source: 'openai' },
+);
+assertMerge(
+  'short utterance not swallowed by an earlier line',
+  shortRepeat.length === 3,
+  `got ${shortRepeat.length} lines`,
+);
+
+const arabicShortRepeat = mergeTranscriptLines(
+  [{ text: 'هل عندك حساسية؟ نعم', source: 'openai' }, { text: 'الضغط 140 على 90', source: 'openai' }],
+  'نعم',
+  { source: 'openai' },
+);
+assertMerge(
+  'short Arabic utterance not swallowed',
+  arabicShortRepeat.length === 3,
+  `got ${arabicShortRepeat.length} lines`,
+);
+
+// ── Code-switching: the two detectTranscriptLanguage copies must agree ───────
+let csPass = 0;
+let csFail = 0;
+function assertCs(label, condition, detail = '') {
+  if (condition) {
+    csPass += 1;
+    console.log(`PASS code-switch ${label}`);
+  } else {
+    csFail += 1;
+    console.error(`FAIL code-switch ${label}${detail ? `: ${detail}` : ''}`);
+  }
+}
+
+for (const sample of samples.code_switch || []) {
+  const clinical = detectTranscriptLanguage(sample.transcript).detected_language;
+  const web = detectTranscriptLanguageWeb(sample.transcript).detected_language;
+  assertCs(
+    `${sample.id} detected_language contract parity`,
+    clinical === 'mixed_arabic_english' && web === clinical,
+    `clinical=${clinical} web=${web}`,
+  );
+
+  // The two conservativeTranscriptCleanup copies are duplicated on purpose (Vite
+  // interop); they must not drift.
+  assertCs(
+    `${sample.id} cleanup copies agree`,
+    conservativeTranscriptCleanup(sample.transcript) === conservativeTranscriptCleanupWeb(sample.transcript),
+    `clinical="${conservativeTranscriptCleanup(sample.transcript)}" web="${conservativeTranscriptCleanupWeb(sample.transcript)}"`,
+  );
+
+  // Regression guard for the segmenter that used to shatter Arabic into letters.
+  const segs = segmentTranscriptByLanguage(sample.transcript);
+  const arabicSegs = segs.filter((s) => s.lang === 'ar');
+  assertCs(
+    `${sample.id} Arabic segments are words, not characters`,
+    arabicSegs.length > 0 && arabicSegs.every((s) => s.text.length > 1),
+    JSON.stringify(segs.map((s) => `${s.lang}:${s.text}`)),
+  );
+
+  const fields = extractFieldsFromTranscript(sample.transcript, createEmptySttFields());
+  const { updates } = mapSttSessionToPatientUpdates(fields);
+  for (const [key, expected] of Object.entries(sample.expected_patient || {})) {
+    assertCs(
+      `${sample.id} ${key}`,
+      JSON.stringify(updates[key]) === JSON.stringify(expected),
+      `expected ${JSON.stringify(expected)} got ${JSON.stringify(updates[key])}`,
+    );
+  }
+}
+
+console.log(`\nCode-switch tests: ${csPass} passed, ${csFail} failed`);
+
 console.log(`\nMerge tests: ${mergePass} passed, ${mergeFail} failed`);
 
 // Realtime gateway event contract (static source check)
@@ -165,4 +245,4 @@ assertRt('proxy pcm append', realtimeSrc.includes('input_audio_buffer.append'));
 assertRt('proxy commit', realtimeSrc.includes('input_audio_buffer.commit'));
 console.log(`\nRealtime contract: ${rtPass} passed, ${rtFail} failed`);
 
-process.exit(fail + mergeFail + rtFail > 0 ? 1 : 0);
+process.exit(fail + mergeFail + rtFail + csFail > 0 ? 1 : 0);

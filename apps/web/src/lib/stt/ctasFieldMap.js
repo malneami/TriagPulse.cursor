@@ -100,7 +100,8 @@ export function detectTranscriptLanguage(text) {
   const t = String(text || '');
   const hasArabic = /[\u0600-\u06FF]/.test(t);
   const hasLatin = /[A-Za-z]/.test(t);
-  if (hasArabic && hasLatin) return { detected_language: 'mixed' };
+  // Must match packages/clinical/src/stt/vocabulary.ts — callers switch on this value.
+  if (hasArabic && hasLatin) return { detected_language: 'mixed_arabic_english' };
   if (hasArabic) return { detected_language: 'arabic' };
   if (hasLatin) return { detected_language: 'english' };
   return { detected_language: 'unknown' };
@@ -111,7 +112,9 @@ export function conservativeTranscriptCleanup(text = '') {
   if (!t) return '';
   t = t
     .replace(/\b(passion|pation|patience)\b/gi, 'patient')
-    .replace(/\b(chase|case|cheese|chaste|jest|just)\s+pain\b/gi, 'chest pain')
+    // 'case'/'just' are ordinary English words — mapping them to a red-flag complaint
+    // fabricated chest pain out of correct input. Only keep genuine misrecognitions.
+    .replace(/\b(chase|cheese|chaste|jest)\s+pain\b/gi, 'chest pain')
     .replace(/\bchest\s+patient\b/gi, 'chest pain')
     .replace(/\bheart\s+(raid|read)\b/gi, 'heart rate')
     .replace(/\brespiratory\s+(raid|read)\b/gi, 'respiratory rate')
@@ -119,7 +122,6 @@ export function conservativeTranscriptCleanup(text = '') {
     .replace(/\bblood\s+(press|precious|pleasure)\b/gi, 'blood pressure')
     .replace(/\bsp\s?o\s?two\b/gi, 'SpO2')
     .replace(/\bo\s?two\b/gi, 'O2')
-    .replace(/\btemperature\b/gi, 'temp')
     .replace(/\bglascow\b/gi, 'Glasgow')
     .replace(/\bglasco\b/gi, 'Glasgow')
     .replace(/\b(ben|between)\s+score\b/gi, 'pain score')
@@ -203,25 +205,22 @@ export function mergeTranscriptLines(existingLines, newLine, { source = 'browser
   const cleaned = conservativeTranscriptCleanup(newLine);
   if (!cleaned) return existingLines;
   const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-  const isDupe = existingLines.some((l) => {
-    const a = norm(typeof l === 'string' ? l : l.text);
-    const b = norm(cleaned);
-    if (a === b) return true;
-    // Skip only when existing already contains the new line (subset).
-    if (a.includes(b)) return true;
-    return false;
-  });
-  if (isDupe) return existingLines;
+  const b = norm(cleaned);
+  const textOf = (l) => norm(typeof l === 'string' ? l : l.text);
+
+  // Exact repeat of any earlier line is a duplicate.
+  if (existingLines.some((l) => textOf(l) === b)) return existingLines;
+
+  // Substring containment is only meaningful against the LAST line, where a partial
+  // grows into its final form. Scanning every prior line silently deleted legitimate
+  // short utterances ("seven", "نعم") that happened to appear earlier in the dictation.
+  const last = existingLines.length ? textOf(existingLines[existingLines.length - 1]) : '';
+  if (last && last.includes(b)) return existingLines;
+
   const entry = { text: cleaned, source };
-  if (source === 'openai') {
-    const b = norm(cleaned);
-    const kept = existingLines.filter((l) => {
-      const a = norm(typeof l === 'string' ? l : l.text);
-      // Drop browser line only when OpenAI line is a superset (contains full browser text).
-      if (a.length > 0 && b.includes(a)) return false;
-      return true;
-    });
-    return [...kept, entry];
+  // The new line supersedes the previous one when it is that line grown longer.
+  if (last && b.includes(last)) {
+    return [...existingLines.slice(0, -1), entry];
   }
   return [...existingLines, entry];
 }

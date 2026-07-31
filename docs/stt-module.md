@@ -27,11 +27,17 @@ flowchart LR
   Panel -->|real-time auto-fill| Form
 ```
 
-**Primary path:** OpenAI Realtime transcription (`gpt-live-transcribe`) proxied server-side — ChatGPT-like live deltas with manual audio commits (`turn_detection: null`; this model does not support server VAD). The browser never holds `OPENAI_API_KEY`.
+**Primary path:** OpenAI Realtime transcription (`gpt-live-transcribe`) proxied server-side. The session is configured with `languages: ['ar','en']`, a bilingual bias prompt, and the full AR/EN clinical keyword list — that combination is what makes code-switching work. `turn_detection` is **negotiated at runtime**: the proxy asks for `server_vad` and falls back to manual commits if OpenAI rejects it. The browser never holds `OPENAI_API_KEY`.
 
-**Fallback:** Browser Web Speech + 3s rolling REST `/audio/transcriptions` when Realtime is unavailable.
+The proxy only treats a session as ready once OpenAI acknowledges `session.update`. If it never does, the session now fails loudly instead of transcribing on OpenAI defaults with no language hints — set `OPENAI_REALTIME_STRICT=false` to restore the old permissive behaviour.
 
-**PHI residency:** Mic audio streams through your API to OpenAI for transcription. Configure `OPENAI_API_KEY` only on PDPL-approved endpoints with a signed DPA. Without a key, the module falls back to browser speech + manual text — triage is never blocked.
+Manual commits are cut at a **speech pause** (server-side RMS gate over the PCM already being decoded), not on a fixed clock. A fixed 1.2s chop closed the input item mid-sentence, and since the model re-decides language per item, an Arabic→English switch inside one utterance was split and each half detected independently.
+
+**Fallback:** REST `/audio/transcriptions` with `gpt-transcribe` on 5s segments. Each segment is a complete media container produced by a full `stop()`/`start()` cycle — never a `timeslice` fragment, since only the first such fragment carries the container header.
+
+**Browser Web Speech is a last resort only.** It accepts a single `lang`, so it cannot code-switch; running it alongside OpenAI produced a doubled, garbled transcript. It is now reachable only when `GET /stt/status` reports no API key.
+
+**PHI residency:** Mic audio streams through your API to OpenAI for transcription. Configure `OPENAI_API_KEY` only on PDPL-approved endpoints with a signed DPA. Without a key, the module falls back to browser speech + manual text — triage is never blocked. Note that browser Web Speech sends audio to the *browser vendor*, not to OpenAI.
 
 ## Components
 
@@ -41,19 +47,29 @@ flowchart LR
 | API | `apps/api/src/stt/` | Sessions, Realtime proxy, REST batch STT, hybrid extract |
 | Web capture | `apps/web/src/lib/stt/` | PCM streamer, browser STT fallback, MediaRecorder batch |
 | UI | `apps/web/src/components/triage/VoiceTriagePanel.jsx` | Live transcript + field cards + completeness |
-| Vocabulary | `config/stt-vocabulary.json` | Biasing terms for ASR |
-| WER harness | `scripts/stt-wer-harness.mjs` | Labeled sample validation |
+| Vocabulary | `CLINICAL_STT_VOCABULARY` in `packages/clinical/src/stt/vocabulary.ts` | Biasing terms for ASR — the single source of truth for both the realtime and batch paths |
+| WER harness | `scripts/stt-wer-harness.mjs` | Labeled sample validation, incl. code-switch cases |
+| Realtime probe | `scripts/stt-realtime-probe.mjs` | Shows what OpenAI actually accepts/echoes for the session config |
 
 ## Setup
 
 ```bash
 cp .env.example .env
-# Optional — server-side STT (PDPL-approved endpoint only):
+# Optional — server-side STT (PDPL-approved endpoint only).
+# Every value below is the built-in default; set them only to override.
 # OPENAI_API_KEY=sk-...
-# OPENAI_STT_MODEL=gpt-4o-mini-transcribe
+# OPENAI_STT_MODEL=gpt-transcribe               # batch; supports languages[] + keywords[]
+# OPENAI_STT_MODEL_FAST=gpt-4o-transcribe       # second rung of the batch ladder
+# OPENAI_WHISPER_MODEL=                         # unset: whisper-1 is monolingual and
+#                                               # transliterates the minority language
 # OPENAI_REALTIME_TRANSCRIBE_MODEL=gpt-live-transcribe
-# OPENAI_REALTIME_DELAY=low
-# OPENAI_REALTIME_VAD=off
+# OPENAI_REALTIME_DELAY=high                    # higher delay = better language-switch accuracy
+# OPENAI_REALTIME_VAD=auto                      # auto | server_vad | off
+# OPENAI_REALTIME_COMMIT_MS=4000                # min segment length (manual commit path)
+# OPENAI_REALTIME_SILENCE_MS=600                # pause required before committing
+# OPENAI_REALTIME_MAX_SEGMENT_MS=12000          # hard cap for a monologue
+# OPENAI_REALTIME_FLUSH_MS=2500                 # wait for the final transcript before close
+# OPENAI_REALTIME_STRICT=true                   # fail if session.update is not acknowledged
 
 npm run build --workspace=@triagepulse/clinical
 npm run dev

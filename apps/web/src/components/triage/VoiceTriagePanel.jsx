@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mic, MicOff, Square, Loader2, AlertTriangle } from 'lucide-react';
 import {
   detectTranscriptLanguage,
@@ -24,9 +24,10 @@ import { toast } from 'sonner';
 
 const MIN_AUDIO_BYTES = 2000;
 const MAX_OPENAI_FAILURES = 3;
-const FALLBACK_ROLLING_MS = 3000;
-/** If Realtime yields no text, start browser live captions (ChatGPT-like). */
-const REALTIME_SILENCE_FALLBACK_MS = 2500;
+/** Each cycle is a full stop()/start(), so every blob is a self-contained container. */
+const FALLBACK_ROLLING_MS = 5000;
+/** How long to wait for the first Realtime text before warning the clinician. */
+const REALTIME_SILENCE_WARN_MS = 8000;
 
 export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, onResync }) {
   const [sessionId, setSessionId] = useState(null);
@@ -75,7 +76,15 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
   sessionIdRef.current = sessionId;
   recordingRef.current = recording;
 
-  const liveTranscript = getLiveTranscript(finalLines, interimText);
+  // Re-cleans the whole transcript; must not run on every render — it shares the main
+  // thread with the ScriptProcessor audio callback.
+  const liveTranscript = useMemo(
+    () => getLiveTranscript(finalLines, interimText),
+    [finalLines, interimText],
+  );
+
+  /** Browser Web Speech is monolingual — only reachable when there is no OpenAI key. */
+  const browserOnly = sttMode === 'browser' || sttMode === 'manual';
 
   const flushInterimSync = useCallback(() => {
     const interim = interimTextRef.current?.trim();
@@ -258,23 +267,18 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     }
   }, []);
 
-  const combineAudioBlob = useCallback((blob, mimeType) => {
-    if (!blob) return null;
-    if (blob.size >= MIN_AUDIO_BYTES) {
-      audioBufferRef.current = [];
-      return blob;
-    }
-    audioBufferRef.current.push(blob);
-    const total = audioBufferRef.current.reduce((sum, b) => sum + b.size, 0);
-    if (total < MIN_AUDIO_BYTES) return null;
-    const combined = new Blob(audioBufferRef.current, { type: mimeType });
-    audioBufferRef.current = [];
-    return combined;
+  /**
+   * Each blob is now a complete media container, so concatenating two of them would
+   * produce an undecodable file. An undersized blob is silence — drop it.
+   */
+  const usableAudioBlob = useCallback((blob) => {
+    if (!blob || blob.size < MIN_AUDIO_BYTES) return null;
+    return blob;
   }, []);
 
   const transcribeBlob = useCallback(async (blob, mimeType, { rolling = false } = {}) => {
     const sid = sessionIdRef.current;
-    const combined = combineAudioBlob(blob, mimeType);
+    const combined = usableAudioBlob(blob);
     if (!sid || !openAiEnabledRef.current || !combined) {
       if (!rolling) recorderRef.current = null;
       processPendingSegment();
@@ -322,10 +326,19 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
       }
       processPendingSegment();
     }
-  }, [pushSession, combineAudioBlob, processPendingSegment]);
+  }, [pushSession, usableAudioBlob, processPendingSegment]);
 
   const restartRecognition = useCallback((lang) => {
-    try { recognitionRef.current?.stop?.(); } catch { /* ignore */ }
+    // Detach before stopping: otherwise the outgoing recognizer's onend fires with the
+    // ref still pointing at it and auto-restarts it in the OLD language.
+    const previous = recognitionRef.current;
+    recognitionRef.current = null;
+    if (previous) {
+      previous.onend = null;
+      previous.onresult = null;
+      previous.onerror = null;
+      try { previous.stop?.(); } catch { /* ignore */ }
+    }
     const recognition = getSpeechRecognition();
     if (!recognition) {
       setManualFallback(true);
@@ -352,6 +365,8 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
           runExtractRef.current?.(getLiveTranscript(next, ''), true);
           return next;
         });
+        // Web Speech takes exactly one language, so the best it can do is follow the
+        // dominant one. It cannot code-switch — that is why it only runs without a key.
         const profile = detectTranscriptLanguage(line);
         if (profile.detected_language === 'english' && lang !== 'en-US') {
           setRecognitionLang('en-US');
@@ -373,8 +388,19 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
         try { recognition.start(); } catch { /* ignore */ }
       }
     };
-    recognition.start();
-    recognitionRef.current = recognition;
+    // Chrome throws InvalidStateError if the previous recognizer has not fully ended.
+    try {
+      recognition.start();
+      recognitionRef.current = recognition;
+    } catch {
+      setTimeout(() => {
+        if (!recordingRef.current) return;
+        try {
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch { /* give up; batch path still runs */ }
+      }, 250);
+    }
   }, []);
 
   const startFallbackCapture = useCallback(async () => {
@@ -389,13 +415,11 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
       streamRef.current = await getMicrophoneStream();
     }
     const stream = streamRef.current;
+    // No onChunk: with MediaRecorder timeslice only the FIRST blob carries the container
+    // header (EBML for WebM, ftyp/moov for MP4). Blobs 2..N were headerless fragments,
+    // so every one of them was rejected by /v1/audio/transcriptions. Taking the
+    // accumulator path means each stop() yields a complete, decodable file.
     const { recorder, mimeType } = createMediaRecorder(stream, {
-      onChunk: (blob) => {
-        // timeslice segments — transcribe each usable chunk without stop/start corruption
-        if (blob?.size >= MIN_AUDIO_BYTES) {
-          transcribeBlob(blob, mimeType, { rolling: true });
-        }
-      },
       onStop: (blob) => {
         const rolling = segmentStopRef.current;
         segmentStopRef.current = false;
@@ -404,23 +428,25 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     });
     mimeTypeRef.current = mimeType;
     recorderRef.current = recorder;
-    // Continuous timeslice capture (ChatGPT-like rolling) instead of stop/start WebM
-    try {
-      recorder.start(FALLBACK_ROLLING_MS);
-    } catch {
-      recorder.start();
-      if (rollingIntervalRef.current) clearInterval(rollingIntervalRef.current);
-      rollingIntervalRef.current = setInterval(() => {
-        if (recorderRef.current?.state === 'recording') {
-          segmentStopRef.current = true;
-          try { recorderRef.current.requestData?.(); } catch { /* ignore */ }
-        }
-      }, FALLBACK_ROLLING_MS);
+    recorder.start();
+    if (rollingIntervalRef.current) clearInterval(rollingIntervalRef.current);
+    rollingIntervalRef.current = setInterval(() => {
+      if (recorderRef.current?.state === 'recording') {
+        segmentStopRef.current = true;
+        // stop() flushes a full container; the finally-block in transcribeBlob restarts it.
+        try { recorderRef.current.stop(); } catch { /* ignore */ }
+      }
+    }, FALLBACK_ROLLING_MS);
+
+    // Monolingual live captions are only acceptable when there is no OpenAI key at all.
+    if (browserOnly) {
+      browserCaptionActiveRef.current = true;
+      restartRecognition(recognitionLang);
+      setSttMode('browser');
+    } else {
+      setSttMode('browser_batch');
     }
-    browserCaptionActiveRef.current = true;
-    restartRecognition(recognitionLang);
-    setSttMode('browser_batch');
-  }, [recognitionLang, restartRecognition, transcribeBlob, clearSilenceWatchdog]);
+  }, [browserOnly, recognitionLang, restartRecognition, transcribeBlob, clearSilenceWatchdog]);
 
   startFallbackRef.current = startFallbackCapture;
 
@@ -473,7 +499,14 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     };
 
     if (sock?.socket) {
-      sock.socket.once('realtime_ready', () => { void startPcm(); });
+      sock.socket.once('realtime_ready', (payload) => {
+        // config_confirmed=false means OpenAI never acknowledged our session.update, so
+        // the languages/prompt/keywords are NOT in force — say so instead of pretending.
+        if (payload && payload.config_confirmed === false) {
+          setSttError('Realtime config unconfirmed — mixed AR/EN accuracy may be degraded');
+        }
+        void startPcm();
+      });
       sock.socket.once('realtime_ack', (ack) => {
         if (ack?.ok === false) return;
         setTimeout(() => { void startPcm(); }, 300);
@@ -482,21 +515,20 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
       setTimeout(() => { void startPcm(); }, 400);
     }
 
+    // Diagnostic only. Starting browser captions here put a monolingual recognizer in
+    // parallel with OpenAI: two producers writing competing lines that the cross-script
+    // dedupe cannot reconcile, which is what garbled mixed dictation.
     silenceWatchdogRef.current = setTimeout(() => {
       if (!recordingRef.current || !useRealtimeRef.current) return;
       const hasText = finalLinesRef.current.length > 0 || !!interimTextRef.current?.trim();
       if (hasText) return;
-      if (!supportsBrowserStt()) {
-        toast.error('No live transcript yet — check microphone / OpenAI Realtime');
-        return;
-      }
-      toast.message('Live captions (browser) — OpenAI still listening');
-      browserCaptionActiveRef.current = true;
-      restartRecognition(recognitionLang);
-    }, REALTIME_SILENCE_FALLBACK_MS);
+      const msg = 'No live transcript yet — check microphone permission and OpenAI Realtime status';
+      setSttError(msg);
+      toast.error(msg);
+    }, REALTIME_SILENCE_WARN_MS);
 
     sock?.startRealtime?.();
-  }, [clearSilenceWatchdog, recognitionLang, restartRecognition, initSession]);
+  }, [clearSilenceWatchdog, initSession]);
 
   const stopCapture = useCallback(() => {
     const flushed = flushInterimSync();
@@ -596,8 +628,8 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     realtime: recording ? 'OpenAI Realtime (live)' : 'OpenAI Realtime',
     openai: 'OpenAI STT',
     openai_error: 'OpenAI error',
-    browser_batch: 'Browser + batch fallback',
-    browser: 'Browser STT (EN/AR)',
+    browser_batch: 'OpenAI batch (AR+EN)',
+    browser: 'Browser STT — single language only',
     manual: 'Manual only',
   }[sttMode] || sttMode);
 
