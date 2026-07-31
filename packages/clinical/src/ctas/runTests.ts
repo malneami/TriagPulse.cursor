@@ -7,6 +7,7 @@ import {
   resolveVisibleQuestions,
   CLARIFYING_QUESTION_BANK,
 } from './clarifyingQuestionBank.js';
+import { runSttTests } from '../stt/runSttTests.js';
 
 let passed = 0;
 let failed = 0;
@@ -158,6 +159,9 @@ for (const testCase of CTAS_TEST_CASES) {
     failed++;
   }
 }
+
+// ── STT code-switching (Arabic/English) ─────────────────────────────────────
+runSttTests(assert);
 
 console.log(`\nCTAS tests: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
