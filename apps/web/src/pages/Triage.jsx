@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
-import { Stethoscope, CheckCircle2, Lock, Plus } from 'lucide-react';
+import { Stethoscope, Lock, Plus } from 'lucide-react';
 import PatientSelectorStrip from '@/components/triage/PatientSelectorStrip';
 import NewPatientConfirm from '@/components/triage/NewPatientConfirm';
 import TriageNextPrompt from '@/components/triage/TriageNextPrompt';
@@ -32,6 +32,7 @@ import {
   CTAS_REQUIRED_FIELDS,
 } from '@/lib/stt/ctasFieldMap';
 import VoiceTriagePanel from '@/components/triage/VoiceTriagePanel';
+import CompletenessChips from '@/components/triage/CompletenessChips';
 import ArrivalTimer from '@/components/triage/ArrivalTimer';
 import PatientTimeline from '@/components/journey/PatientTimeline';
 import { useQuery } from '@tanstack/react-query';
@@ -601,8 +602,6 @@ Return fields: field, question_ar, question_en, answer_type (yes_no|numeric|dura
   const missingFields = getMissingFields();
   const isReady = missingFields.length === 0;
   const confirmedCount = getConfirmedCount();
-  const barColor = confirmedCount <= 4 ? '#EF4444' : confirmedCount <= 8 ? '#EF9F27' : confirmedCount === 9 ? '#EF9F27' : '#0F6E56';
-  const barPulse = confirmedCount === 9;
 
   return (
     <div dir="rtl" className="space-y-4">
@@ -672,37 +671,12 @@ Return fields: field, question_ar, question_en, answer_type (yes_no|numeric|dura
 
       <LiveCTASPanel liveResult={liveResult} confirmed={allComplete()} selectedModifier={selectedModifier} />
 
-      {/* ═══ DATA COMPLETENESS BAR ═══ */}
+      {/* ═══ DATA COMPLETENESS BAR — shared with the floating recorder ═══ */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-black text-slate-600">اكتمال البيانات — Data Completeness</p>
-          <p className={`text-xs font-bold ${isReady ? 'text-green-700' : 'text-amber-600'}`}>
-            {confirmedCount} / ١٠ مكتمل — {confirmedCount} / 10 Complete
-          </p>
-        </div>
-        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden mb-3">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${barPulse ? 'animate-pulse' : ''}`}
-            style={{ width: `${confirmedCount / 10 * 100}%`, backgroundColor: barColor }}
-          />
-        </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {REQUIRED_FIELDS.map((f) => {
-            const done = f.check(patient);
-            return (
-              <button
-                key={f.key}
-                onClick={() => scrollToSection(f.scrollTo)}
-                className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium border transition-all ${
-                  done ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
-                }`}
-              >
-                {done && <CheckCircle2 className="w-3 h-3 shrink-0" />}
-                {f.label_ar} / {f.label_en}
-              </button>
-            );
-          })}
-        </div>
+        <CompletenessChips
+          patient={patient}
+          onFieldClick={(f) => scrollToSection(f.scrollTo)}
+        />
       </div>
 
       {/* ═══ CLARIFYING QUESTIONS ═══ */}

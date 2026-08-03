@@ -3,17 +3,23 @@
  * Logic mirrors packages/clinical/src/stt/{ctasFieldSchema,extractFields}.ts
  */
 
+/**
+ * `key` is the CTAS field id, which is NOT always a patient property — `name` is backed by
+ * patient_name_ar/en and `bp_systolic` reads better paired with the diastolic. Every entry
+ * therefore carries `value` alongside `check`, so anything displaying a field uses the same
+ * accessor the completeness check uses and the two cannot disagree.
+ */
 export const CTAS_REQUIRED_FIELDS = [
-  { key: 'name', label_ar: 'الاسم', label_en: 'Name', scrollTo: 'chief-complaint', check: (p) => !!(p.patient_name_ar || p.patient_name_en) },
-  { key: 'age', label_ar: 'العمر', label_en: 'Age', scrollTo: 'chief-complaint', check: (p) => !!p.age },
-  { key: 'chief_complaint', label_ar: 'الشكوى', label_en: 'Complaint', scrollTo: 'chief-complaint', check: (p) => !!p.chief_complaint },
-  { key: 'pain_score', label_ar: 'درجة الألم', label_en: 'Pain Score', scrollTo: 'pain-scale', check: (p) => p.pain_score != null && p.pain_score !== '' },
-  { key: 'hr', label_ar: 'النبض', label_en: 'HR', scrollTo: 'vitals-form', check: (p) => !!p.hr },
-  { key: 'bp_systolic', label_ar: 'الضغط', label_en: 'BP', scrollTo: 'vitals-form', check: (p) => !!p.bp_systolic },
-  { key: 'spo2', label_ar: 'الأكسجين', label_en: 'SpO₂', scrollTo: 'vitals-form', check: (p) => !!p.spo2 },
-  { key: 'rr', label_ar: 'معدل التنفس', label_en: 'RR', scrollTo: 'vitals-form', check: (p) => !!p.rr },
-  { key: 'temperature', label_ar: 'درجة الحرارة', label_en: 'Temp', scrollTo: 'vitals-form', check: (p) => !!p.temperature },
-  { key: 'gcs', label_ar: 'مستوى الوعي', label_en: 'GCS', scrollTo: 'vitals-form', check: (p) => !!p.gcs },
+  { key: 'name', label_ar: 'الاسم', label_en: 'Name', scrollTo: 'chief-complaint', check: (p) => !!(p.patient_name_ar || p.patient_name_en), value: (p) => p.patient_name_ar || p.patient_name_en },
+  { key: 'age', label_ar: 'العمر', label_en: 'Age', scrollTo: 'chief-complaint', check: (p) => !!p.age, value: (p) => p.age },
+  { key: 'chief_complaint', label_ar: 'الشكوى', label_en: 'Complaint', scrollTo: 'chief-complaint', check: (p) => !!p.chief_complaint, value: (p) => p.chief_complaint },
+  { key: 'pain_score', label_ar: 'درجة الألم', label_en: 'Pain Score', scrollTo: 'pain-scale', check: (p) => p.pain_score != null && p.pain_score !== '', value: (p) => `${p.pain_score}/10` },
+  { key: 'hr', label_ar: 'النبض', label_en: 'HR', scrollTo: 'vitals-form', check: (p) => !!p.hr, value: (p) => p.hr },
+  { key: 'bp_systolic', label_ar: 'الضغط', label_en: 'BP', scrollTo: 'vitals-form', check: (p) => !!p.bp_systolic, value: (p) => (p.bp_diastolic ? `${p.bp_systolic}/${p.bp_diastolic}` : p.bp_systolic) },
+  { key: 'spo2', label_ar: 'الأكسجين', label_en: 'SpO₂', scrollTo: 'vitals-form', check: (p) => !!p.spo2, value: (p) => `${p.spo2}%` },
+  { key: 'rr', label_ar: 'معدل التنفس', label_en: 'RR', scrollTo: 'vitals-form', check: (p) => !!p.rr, value: (p) => p.rr },
+  { key: 'temperature', label_ar: 'درجة الحرارة', label_en: 'Temp', scrollTo: 'vitals-form', check: (p) => !!p.temperature, value: (p) => `${p.temperature}°C` },
+  { key: 'gcs', label_ar: 'مستوى الوعي', label_en: 'GCS', scrollTo: 'vitals-form', check: (p) => !!p.gcs, value: (p) => `${p.gcs}/15` },
 ];
 
 export function computeCtasCompleteness(patient) {
@@ -139,6 +145,16 @@ export function conservativeTranscriptCleanup(text = '') {
   return t.replace(/\s+/g, ' ').trim();
 }
 
+/** Turn timestamp for display. Shared so the log and the floating window agree. */
+export function formatTurnTime(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
 export function linesToTranscript(lines) {
   return lines.map((l) => (typeof l === 'string' ? l : l.text)).join(' ');
 }
@@ -217,7 +233,7 @@ export function mergeTranscriptLines(existingLines, newLine, { source = 'browser
   const last = existingLines.length ? textOf(existingLines[existingLines.length - 1]) : '';
   if (last && last.includes(b)) return existingLines;
 
-  const entry = { text: cleaned, source };
+  const entry = { text: cleaned, source, at: Date.now() };
   // The new line supersedes the previous one when it is that line grown longer.
   if (last && b.includes(last)) {
     return [...existingLines.slice(0, -1), entry];
