@@ -242,6 +242,104 @@ export function runSttTests(
     );
   }
 
+  // ── A statement that something is NORMAL must not become a complaint ──────
+  // Observed live: "His heart beat is good" produced 'Palpitations/Irregular
+  // Heartbeat' and overwrote the real complaint (neck pain). A wrong chief
+  // complaint is worse than a missing one — it drives the CTAS pathway.
+  {
+    const negated: Array<[string, string]> = [
+      ['His heart beat is good', 'normal heart beat'],
+      ['pulse is good', 'normal pulse'],
+      ['heart rate is normal', 'explicitly normal HR'],
+      ['no chest pain', 'negated chest pain'],
+      ['denies chest pain', 'denied chest pain'],
+      ['النبض طبيعي', 'normal pulse (ar)'],
+      ['لا يوجد ألم صدر', 'negated chest pain (ar)'],
+    ];
+    for (const [transcript, label] of negated) {
+      const fields = extractFieldsFromTranscript(transcript, createEmptySttFields());
+      const { updates } = mapSttSessionToPatientUpdates(fields);
+      assert(
+        updates.chief_complaint == null || updates.chief_complaint === '',
+        `STT-20 [${label}]`,
+        `"${transcript}" does not invent a chief complaint`,
+        `got ${JSON.stringify(updates.chief_complaint)}`,
+      );
+    }
+  }
+
+  // ── An explicit complaint cue outranks an incidental keyword elsewhere ─────
+  {
+    const t = 'The patient is complaining about neck pain. His heart beat is good.';
+    const fields = extractFieldsFromTranscript(t, createEmptySttFields());
+    const { updates } = mapSttSessionToPatientUpdates(fields);
+    assert(
+      typeof updates.chief_complaint === 'string' && /neck/i.test(updates.chief_complaint),
+      'STT-21',
+      'explicit complaint cue wins over an incidental cardiac keyword',
+      `got ${JSON.stringify(updates.chief_complaint)}`,
+    );
+  }
+
+  // ── Label synonyms: same field, many ways to say it ───────────────────────
+  {
+    const synonyms: Array<[string, string, unknown]> = [
+      // complaint cues
+      ['patient complaining about neck pain', 'chief_complaint', 'neck pain'],
+      ['patient complains of neck pain', 'chief_complaint', 'neck pain'],
+      ['يشتكي من ألم الرقبة', 'chief_complaint', 'ألم الرقبة'],
+      // HR
+      ['heart beat 74', 'hr', '74'],
+      ['heartbeat 74', 'hr', '74'],
+      ['bpm 74', 'hr', '74'],
+      ['دقات القلب مئة وعشرة', 'hr', '110'],
+      ['نبضات القلب مئة وعشرة', 'hr', '110'],
+      // SpO2
+      ['sats ninety six', 'spo2', '96'],
+      ['saturation ninety six', 'spo2', '96'],
+      ['تشبع الأكسجين ستة وتسعين', 'spo2', '96'],
+      // RR
+      ['breathing rate eighteen', 'rr', '18'],
+      ['breaths per minute eighteen', 'rr', '18'],
+      // Temp
+      ['سخونة سبعة وثلاثين', 'temperature', '37'],
+      // GCS
+      ['level of consciousness fifteen', 'gcs', '15'],
+      ['مستوى الوعي خمسة عشر', 'gcs', '15'],
+      // BP
+      ['systolic one forty over ninety', 'bp_systolic', '140'],
+      ['ضغط الدم مئة وأربعين على تسعين', 'bp_systolic', '140'],
+    ];
+    for (const [transcript, key, expected] of synonyms) {
+      const fields = extractFieldsFromTranscript(transcript, createEmptySttFields());
+      const { updates } = mapSttSessionToPatientUpdates(fields);
+      const actual = updates[key];
+      const ok = key === 'chief_complaint'
+        ? typeof actual === 'string' && actual.toLowerCase().includes(String(expected).toLowerCase())
+        : JSON.stringify(actual) === JSON.stringify(expected);
+      assert(ok, `STT-22 [${key}]`, `synonym "${transcript}"`, `expected ${JSON.stringify(expected)} got ${JSON.stringify(actual)}`);
+    }
+  }
+
+  // ── A label with no number must stay empty, not borrow one from nearby ────
+  {
+    const t = 'pulse is good, age is 74, the patient is complaining about neck pain';
+    const fields = extractFieldsFromTranscript(t, createEmptySttFields());
+    const { updates } = mapSttSessionToPatientUpdates(fields);
+    assert(
+      updates.hr == null || updates.hr === '',
+      'STT-23',
+      'a vitals label with no spoken number does not borrow the age',
+      `hr=${JSON.stringify(updates.hr)}`,
+    );
+    assert(
+      updates.age === '74',
+      'STT-24',
+      'the age itself is still captured alongside a value-less vitals mention',
+      `age=${JSON.stringify(updates.age)}`,
+    );
+  }
+
   // ── Phase 1: turn_detection rejection is recoverable, not fatal ────────────
   {
     let state = createRealtimeConfigState();
