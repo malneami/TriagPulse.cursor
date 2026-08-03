@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Mic, MicOff, Square, Loader2, AlertTriangle } from 'lucide-react';
+import { Mic, Square, Loader2, AlertTriangle, Keyboard, ChevronDown } from 'lucide-react';
 import {
   detectTranscriptLanguage,
   conservativeTranscriptCleanup,
   mergeTranscriptLines,
   getLiveTranscript,
 } from '@/lib/stt/ctasFieldMap';
+import ConversationLog from './ConversationLog';
+import FloatingRecorder from './FloatingRecorder';
 import {
   createMediaRecorder,
   createPcmStreamer,
@@ -29,6 +31,28 @@ const FALLBACK_ROLLING_MS = 5000;
 /** How long to wait for the first Realtime text before warning the clinician. */
 const REALTIME_SILENCE_WARN_MS = 8000;
 
+/** Dictations that exercise each language path, including a mid-sentence switch. */
+const DEMO_SENTENCES = [
+  {
+    id: 'ar',
+    label: 'عربي فقط / Arabic only',
+    dir: 'rtl',
+    text: 'اسم المريض خالد العمر خمسة وعشرين ذكر عنده ألم صدر النبض مئة وعشرة الضغط مئة وأربعين على خمسة وستين الأكسجين تسعة وتسعين',
+  },
+  {
+    id: 'en',
+    label: 'إنجليزي فقط / English only',
+    dir: 'ltr',
+    text: 'patient name Sara age twenty five female complaint chest pain HR one ten BP one twenty over sixty five',
+  },
+  {
+    id: 'mixed',
+    label: 'مختلط / Mixed',
+    dir: 'rtl',
+    text: 'اسم المريض خالد age twenty five عنده chest pain HR one ten',
+  },
+];
+
 export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, onResync }) {
   const [sessionId, setSessionId] = useState(null);
   const [sessionOutput, setSessionOutput] = useState(null);
@@ -41,6 +65,9 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
   const [manualFallback, setManualFallback] = useState(false);
   const [manualText, setManualText] = useState('');
   const [recognitionLang, setRecognitionLang] = useState('ar-SA');
+  const [extracting, setExtracting] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
 
   const streamRef = useRef(null);
   const recorderRef = useRef(null);
@@ -642,13 +669,56 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     await startRecording();
   };
 
+  /** Run extraction over whatever is currently in the editable transcript box. */
   const handleManualExtract = async () => {
-    if (!sessionId || !manualText.trim()) return;
-    const cleaned = conservativeTranscriptCleanup(manualText.trim());
-    const output = await extractTranscript(sessionId, cleaned, true, true);
-    pushSession(output);
-    setFinalLines([{ text: cleaned, source: 'manual' }]);
-    finalLinesRef.current = [{ text: cleaned, source: 'manual' }];
+    const raw = (manualText || liveTranscript || '').trim();
+    if (!raw) return;
+    let sid = sessionIdRef.current;
+    if (!sid) {
+      await initSession();
+      sid = sessionIdRef.current;
+    }
+    if (!sid) return;
+    const cleaned = conservativeTranscriptCleanup(raw);
+    setExtracting(true);
+    try {
+      const output = await extractTranscript(sid, cleaned, true, true);
+      pushSession(output);
+      if (manualText.trim()) {
+        const line = [{ text: cleaned, source: 'manual', at: Date.now() }];
+        setFinalLines(line);
+        finalLinesRef.current = line;
+      }
+    } catch (e) {
+      setSttError(e?.message || 'Extraction failed');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const editLine = useCallback((index, text) => {
+    setFinalLines((prev) => {
+      const next = prev.map((l, i) => (
+        i === index ? { ...(typeof l === 'string' ? { source: 'manual' } : l), text } : l
+      ));
+      finalLinesRef.current = next;
+      runExtractRef.current?.(getLiveTranscript(next, ''), true, true);
+      return next;
+    });
+  }, []);
+
+  const deleteLine = useCallback((index) => {
+    setFinalLines((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      finalLinesRef.current = next;
+      runExtractRef.current?.(getLiveTranscript(next, ''), true, true);
+      return next;
+    });
+  }, []);
+
+  const pasteDemoSentence = (text) => {
+    setManualText(text);
+    setManualFallback(true);
   };
 
   const modeLabel = ({
@@ -661,27 +731,58 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     manual: 'Manual only',
   }[sttMode] || sttMode);
 
-  return (
+  const busy = loading || extracting;
+  const lastLine = finalLines[finalLines.length - 1];
+  const lastTurnAt = lastLine && typeof lastLine !== 'string' ? lastLine.at : null;
+
+  const panel = (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
           <p className="text-sm font-black text-slate-800">التقاط صوتي — Voice Triage STT</p>
-          <p className="text-xs text-slate-500">Live auto-fill · {modeLabel} · decision support only</p>
+          <p className="text-xs text-slate-500 truncate">Live auto-fill · decision support only</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${sttMode === 'realtime' ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-600'}`}>
-            {modeLabel}
+        <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${sttMode === 'realtime' ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-600'}`}>
+          {modeLabel}
+        </span>
+      </div>
+
+      {/* Guide — how the AI STT mode behaves + phrases that exercise it */}
+      <div className="mx-4 mt-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+        <button
+          type="button"
+          onClick={() => setShowGuide((v) => !v)}
+          className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-right"
+        >
+          <span className="text-xs font-black text-emerald-900">
+            كيف يعمل الالتقاط الصوتي — How AI voice capture works
           </span>
-          <button
-            type="button"
-            onClick={handleToggleRecord}
-            disabled={loading}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-white ${recording ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'}`}
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : recording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            {recording ? 'Stop / إيقاف' : 'Start / بدء'}
-          </button>
-        </div>
+          <ChevronDown className={`w-4 h-4 text-emerald-700 shrink-0 transition-transform ${showGuide ? 'rotate-180' : ''}`} />
+        </button>
+        {showGuide && (
+          <div className="px-3 pb-3 text-xs text-emerald-900 leading-relaxed space-y-2">
+            <p>
+              Backend AI STT records microphone audio only — it does <strong>not</strong> use browser
+              speech detection. On Stop the audio goes to <code className="font-mono">transcribeAudio</code>,
+              and OpenAI detects Arabic / English / mixed speech and returns the transcript.
+            </p>
+            <div className="space-y-1.5">
+              {DEMO_SENTENCES.map((d) => (
+                <div key={d.id} className="bg-white/70 border border-emerald-200 rounded-lg p-2">
+                  <p className="font-black mb-1">{d.label}</p>
+                  <p dir={d.dir} className="text-[11px] text-emerald-800 mb-1.5">{d.text}</p>
+                  <button
+                    type="button"
+                    onClick={() => pasteDemoSentence(d.text)}
+                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 underline"
+                  >
+                    لصق / Paste
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {browserOnly && (
@@ -699,66 +800,82 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
         </div>
       )}
 
-      {(sttError || manualFallback) && (
+      {sttError && (
         <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
-          {sttError && <p className="font-bold mb-1">{sttError}</p>}
-          {manualFallback && (
-            <>
-              <div className="flex items-center gap-2 font-bold mb-1"><MicOff className="w-4 h-4" /> Manual fallback</div>
-              <textarea
-                value={manualText}
-                onChange={(e) => setManualText(e.target.value)}
-                placeholder="Type triage dictation here (EN/AR)..."
-                className="w-full mt-2 rounded-lg border border-amber-200 p-2 text-sm"
-                rows={3}
-              />
-              <button type="button" onClick={handleManualExtract} className="mt-2 px-3 py-1.5 bg-amber-600 text-white rounded-lg font-bold">
-                Extract / استخراج
-              </button>
-            </>
-          )}
+          <p className="font-bold">{sttError}</p>
         </div>
       )}
 
-      <div className="p-4 space-y-4">
-        <div>
-          <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">Live transcript</p>
-          <div className="min-h-[100px] max-h-40 overflow-y-auto rounded-xl bg-slate-900 text-slate-100 p-3 text-sm leading-relaxed">
-            {finalLines.map((line, i) => {
-              const text = typeof line === 'string' ? line : line.text;
-              const src = typeof line === 'string' ? 'browser' : line.source;
-              return (
-              <div key={i} className="mb-1">
-                <span className="text-[10px] text-slate-400 mr-2">
-                  {src === 'openai' ? 'AI' : detectTranscriptLanguage(text).detected_language === 'arabic' ? 'AR' : detectTranscriptLanguage(text).detected_language === 'english' ? 'EN' : 'MIX'}
-                </span>
-                <span className="text-white">{text}</span>
-              </div>
-            );})}
-            {interimText && <span className="text-teal-300 opacity-80">{interimText}</span>}
-            {!liveTranscript && <span className="text-slate-500">Tap Start and speak (EN/AR) — اضغط بدء وتحدث</span>}
-          </div>
-        </div>
-
-        {sessionOutput && onResync && (
+      <div className="p-4 space-y-3">
+        {/* Primary action row — stacks on narrow screens */}
+        <div className="grid grid-cols-1 sm:grid-cols-[auto,1fr] gap-2">
           <button
             type="button"
-            onClick={async () => {
-              const full = getLiveTranscript(finalLinesRef.current, interimTextRef.current);
-              if (sessionId && full) {
-                try {
-                  const retry = await extractTranscript(sessionId, full, true, true);
-                  pushSession(retry);
-                } catch (e) {
-                  setSttError(e.message);
-                }
-              }
-              onResync(sessionOutput);
-            }}
-            className="w-full py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
+            onClick={() => setShowTranscript((v) => !v)}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 text-sm font-black text-slate-700 hover:bg-slate-50"
           >
-            Re-sync fields / إعادة مزامنة
+            <Keyboard className="w-4 h-4" /> Transcript
           </button>
+          <button
+            type="button"
+            onClick={handleToggleRecord}
+            disabled={busy}
+            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-black text-white transition-colors disabled:opacity-70 ${
+              recording ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-700 hover:bg-teal-800'
+            }`}
+          >
+            {busy
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : recording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            {busy
+              ? 'جاري النسخ / Transcribing…'
+              : recording ? 'إيقاف التسجيل / Stop' : 'تسجيل صوت / Record AI Audio'}
+          </button>
+        </div>
+
+        {showTranscript && (
+          <>
+            <textarea
+              value={manualText || liveTranscript}
+              onChange={(e) => setManualText(e.target.value)}
+              placeholder="تحدث أو اكتب الإملاء هنا (عربي/إنجليزي) — Speak or type dictation here"
+              rows={4}
+              className="w-full rounded-xl border border-slate-200 p-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+            />
+            {interimText && (
+              <p className="text-xs text-teal-600 -mt-1 px-1 truncate">{interimText}</p>
+            )}
+
+            <button
+              type="button"
+              onClick={handleManualExtract}
+              disabled={busy || !(manualText || liveTranscript).trim()}
+              className="w-full py-3 rounded-xl bg-teal-700 hover:bg-teal-800 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-black"
+            >
+              استخراج وتعبئة حقول CTAS / Extract + auto-fill CTAS fields
+            </button>
+
+            {sessionOutput && onResync && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const full = getLiveTranscript(finalLinesRef.current, interimTextRef.current);
+                  if (sessionIdRef.current && full) {
+                    try {
+                      const retry = await extractTranscript(sessionIdRef.current, full, true, true);
+                      pushSession(retry);
+                    } catch (e) {
+                      setSttError(e.message);
+                    }
+                  }
+                  onResync(sessionOutput);
+                }}
+                className="w-full py-2.5 border border-teal-200 bg-teal-50/50 rounded-xl text-xs font-black text-teal-700 hover:bg-teal-50"
+              >
+                إعادة مزامنة الحقول / Re-sync fields
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -780,6 +897,32 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
           </div>
         </div>
       )}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {panel}
+
+      <ConversationLog
+        lines={finalLines}
+        patient={patient}
+        onEditLine={editLine}
+        onDeleteLine={deleteLine}
+      />
+
+      <FloatingRecorder
+        open={recording || extracting}
+        recording={recording}
+        transcribing={extracting}
+        stream={streamRef.current}
+        patient={patient}
+        transcript={interimText || liveTranscript}
+        lastTurnAt={lastTurnAt}
+        ctasLevel={sessionOutput?.ctas_level}
+        onClose={stopCapture}
+        onStop={stopCapture}
+      />
     </div>
   );
 }
