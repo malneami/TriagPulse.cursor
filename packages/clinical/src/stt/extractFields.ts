@@ -210,9 +210,48 @@ function parseOnset(text: string): { value: string; span: string; confidence: nu
   return null;
 }
 
-function parseChiefComplaint(text: string): { value: string; span: string; confidence: number } | null {
+/**
+ * Clauses asserting absence or normality. A triage dictation is full of them
+ * ("pulse is good", "denies chest pain"), and the fuzzy complaint matcher will
+ * happily turn the clinical noun inside one into the chief complaint.
+ */
+const NEGATED_CLAUSE = new RegExp(
+  [
+    '\\b(?:no|not|nil|denies|denied|without|negative\\s+for|free\\s+of)\\b',
+    '\\b(?:is|are|was|were|looks?|seems?)\\s+(?:good|normal|fine|okay|ok|stable|unremarkable|wnl)\\b',
+    'لا\\s*يوجد',
+    'لا\\s*يشكو',
+    '\\bبدون\\b',
+    '\\bليس\\b',
+    'طبيعي(?:ة)?',
+    '\\bسليم(?:ة)?\\b',
+    '\\bكويس(?:ة)?\\b',
+    '\\bتمام\\b',
+  ].join('|'),
+  'i',
+);
+
+/**
+ * Drop clauses that assert normality/absence before looking for a complaint.
+ * Missing a complaint shows the nurse a red chip; inventing one silently routes
+ * the patient down the wrong CTAS pathway.
+ */
+function positiveClauses(text: string): string {
+  // Comma-delimited too: a single dictated sentence routinely ends with an
+  // unrelated negation ("…, SpO2 96 percent, no known allergies"), which would
+  // otherwise discard the complaint sitting earlier in the same sentence.
+  return String(text)
+    .split(/[.!?,،؛;\n]+/)
+    .filter((clause) => clause.trim() && !NEGATED_CLAUSE.test(clause))
+    .join('. ')
+    .trim();
+}
+
+function parseChiefComplaint(rawText: string): { value: string; span: string; confidence: number } | null {
+  const text = positiveClauses(rawText);
+  if (!text) return null;
   const patterns = [
-    /(?:chief complaint|complaint|presenting with|came with|شكوى|كومبلين|يشكو(?: من)?)\s*(?:is|of|:)?\s*([^.،;\n]+)/i,
+    /(?:chief complaint|complaint|complain(?:s|ing)?(?:\s+(?:about|of|from))?|presenting with|presents with|c\/o|came with|شكوى|الشكوى(?: الرئيسية)?|كومبلين|يشكو(?: من)?|يشتكي(?: من)?|يعاني من)\s*(?:is|of|:)?\s*([^.،;\n]+)/i,
     /(?:,\s*|\s)(chest pain|abdominal pain|headache|dyspnea|shortness of breath|fever|syncope|bleeding|back pain|nausea|vomiting|diarrhea|cough)(?:\s|,|$)/i,
     /(?:,\s*|\s)(ألم صدر|ألم بطن|صداع|ضيق تنفس|حمى|غثيان|قيء|إسهال|سعال)(?:\s|,|$)/i,
     /\b(chest pain|abdominal pain|headache|dyspnea|shortness of breath|fever|syncope|bleeding)\b/i,
@@ -265,6 +304,33 @@ function parseHistory(text: string): { value: string; span: string; confidence: 
   return null;
 }
 
+/**
+ * Bilingual label synonyms, one alternation per vital.
+ *
+ * Longest-first within each group so 'heart rate' is not shadowed by 'heart beat',
+ * and every entry still requires an adjacent number — a label alone never yields a
+ * value ("pulse is good" must stay empty rather than borrow a nearby figure).
+ */
+const HR_LABEL = [
+  'heart\\s?rate', 'heart\\s?beats?', 'heartbeats?', 'beats per minute', 'bpm', 'pulse rate', 'pulse', 'hr',
+  'معدل ضربات القلب', 'ضربات القلب', 'نبضات القلب', 'دقات القلب', 'معدل النبض', 'النبض', 'نبض',
+].join('|');
+
+const RR_LABEL = [
+  'respiratory rate', 'respiration rate', 'resp\\s?rate', 'breathing rate', 'breaths per minute', 'breath rate', 'rr',
+  'معدل التنفس', 'معدل تنفس', 'التنفس', 'تنفس',
+].join('|');
+
+const TEMP_LABEL = [
+  'temperature', 'temp',
+  'درجة الحرارة', 'الحرارة', 'حرارة', 'سخونة',
+].join('|');
+
+const GCS_LABEL = [
+  'glasgow coma scale', 'glasgow', 'level of consciousness', 'conscious(?:ness)? level', 'gcs',
+  'مستوى الوعي', 'درجة الوعي', 'غلاسكو', 'الوعي', 'وعي',
+].join('|');
+
 function parseVitals(text: string): { value: VitalSignEntry[]; span: string; confidence: number } | null {
   const t = normalizeDigits(text);
   const vitals: VitalSignEntry[] = [];
@@ -278,8 +344,8 @@ function parseVitals(text: string): { value: VitalSignEntry[]; span: string; con
     spans.push(span);
   };
 
-  const hr = t.match(/(?:hr|heart rate|pulse|نبض|النبض)[^\d]{0,12}(\d{2,3})/i)
-    || t.match(/(\d{2,3})\s*(?:bpm)?\s*(?:heart rate|hr|pulse|نبض|النبض)/i);
+  const hr = t.match(new RegExp(`(?:${HR_LABEL})[^\\d]{0,12}(\\d{2,3})`, 'i'))
+    || t.match(new RegExp(`(\\d{2,3})\\s*(?:bpm)?\\s*(?:${HR_LABEL})`, 'i'));
   if (hr) add('HR', Number(hr[1]), 'bpm', hr[0]);
 
   const bp = t.match(/(?:bp|blood pressure|ضغط|الضغط)[^\d]{0,12}(\d{2,3})\s*(?:[\/\\]|over|على|on)\s*(\d{2,3})/i)
@@ -290,15 +356,15 @@ function parseVitals(text: string): { value: VitalSignEntry[]; span: string; con
     || t.match(/(\d{2,3})\s*%\s*(?:spo2|sat|oxygen|أكسجين)?/i);
   if (spo2) add('SpO2', Number(spo2[1]), '%', spo2[0]);
 
-  const rr = t.match(/(?:rr|respiratory rate|resp rate|تنفس|معدل التنفس)[^\d]{0,8}(\d{1,2})/i)
+  const rr = t.match(new RegExp(`(?:${RR_LABEL})[^\\d]{0,8}(\\d{1,2})`, 'i'))
     || t.match(/\brr\s*(\d{1,2})\b/i);
   if (rr) add('RR', Number(rr[1]), '/min', rr[0]);
 
-  const temp = t.match(/(?:temp|temperature|حرارة|الحرارة)[^\d]{0,8}(\d{2}(?:\.\d)?)\s*(?:c|celsius|°)?/i)
+  const temp = t.match(new RegExp(`(?:${TEMP_LABEL})[^\\d]{0,8}(\\d{2}(?:\\.\\d)?)\\s*(?:c|celsius|°)?`, 'i'))
     || t.match(/\btemp\s*(\d{2}(?:\.\d)?)\b/i);
   if (temp) add('Temp', Number(temp[1]), '°C', temp[0]);
 
-  const gcs = t.match(/(?:gcs|glasgow|وعي|غلاسكو)[^\d]{0,8}(\d{1,2})/i)
+  const gcs = t.match(new RegExp(`(?:${GCS_LABEL})[^\\d]{0,8}(\\d{1,2})`, 'i'))
     || t.match(/\bgcs\s*(\d{1,2})\b/i);
   if (gcs) add('GCS', Number(gcs[1]), '/15', gcs[0]);
 
