@@ -422,6 +422,90 @@ export function runSttTests(
     );
   }
 
+  // ── Spellings clinicians and the transcriber actually produce ─────────────
+  {
+    const spellings: Array<[string, string, string]> = [
+      // bare 'oxygen' — only 'oxygen saturation' was a label before
+      ['oxygen ninety six', 'spo2', '96'],
+      ['oxygen ستة وتسعين', 'spo2', '96'],
+      ['oxygen level ninety six', 'spo2', '96'],
+      ['نسبة الأكسجين ستة وتسعين', 'spo2', '96'],
+      // the transcriber writes SpO2 with a digit zero about as often as the letter O
+      ['SP02 ninety six', 'spo2', '96'],
+      ['sp 02 ninety six', 'spo2', '96'],
+      // acronyms dictated letter by letter come through spaced
+      ['R R eighteen', 'rr', '18'],
+      ['H R one ten', 'hr', '110'],
+      ['G C S fifteen', 'gcs', '15'],
+      ['B P one forty over ninety', 'bp_systolic', '140'],
+      // clipped Arabic — STT commonly drops the trailing ة
+      ['درجة الحرار سبعة وثلاثين', 'temperature', '37'],
+      ['مستوي الوعي خمسة عشر', 'gcs', '15'],
+    ];
+    for (const [transcript, key, expected] of spellings) {
+      const { updates } = mapSttSessionToPatientUpdates(
+        extractFieldsFromTranscript(transcript, createEmptySttFields()),
+      );
+      assert(
+        String(updates[key]) === expected,
+        `STT-29 [${key}]`,
+        `spelling "${transcript}"`,
+        `expected ${expected} got ${JSON.stringify(updates[key])}`,
+      );
+    }
+  }
+
+  // ── A label must not bind to the NEXT vital's number ──────────────────────
+  // 'heart rate, BP 140 over 90' has no heart rate in it. The gap between label
+  // and number was loose enough to jump over an intervening label.
+  {
+    const { updates } = mapSttSessionToPatientUpdates(
+      extractFieldsFromTranscript('heart rate, BP 140 over 90', createEmptySttFields()),
+    );
+    assert(
+      updates.hr == null || updates.hr === '',
+      'STT-31',
+      'a label does not borrow the next vital\'s number',
+      `hr=${JSON.stringify(updates.hr)}`,
+    );
+    assert(
+      String(updates.bp_systolic) === '140',
+      'STT-32',
+      'the BP itself is still captured',
+      `bp=${JSON.stringify(updates.bp_systolic)}`,
+    );
+  }
+
+  // Mixed dictation where the Arabic label carries the value and an English
+  // label follows it — the per-segment pass must not overwrite the good value.
+  {
+    const t = 'Patient Ahmed, عمره 55, chest pain, النبض 110 heart rate, BP 140 على 90, SpO2 96';
+    const { updates } = mapSttSessionToPatientUpdates(
+      extractFieldsFromTranscript(t, createEmptySttFields()),
+    );
+    assert(
+      String(updates.hr) === '110',
+      'STT-33',
+      'segment pass does not overwrite a vital resolved from the full text',
+      `hr=${JSON.stringify(updates.hr)}`,
+    );
+  }
+
+  // ── 'oxygen' is also how flow rate is dictated — don't read litres as SpO2 ─
+  {
+    for (const t of ['patient on oxygen 15 liters', 'on oxygen 2 litres', 'أكسجين ٥ لتر']) {
+      const { updates } = mapSttSessionToPatientUpdates(
+        extractFieldsFromTranscript(t, createEmptySttFields()),
+      );
+      assert(
+        updates.spo2 == null || updates.spo2 === '',
+        'STT-30',
+        `"${t}" is an oxygen flow rate, not a saturation`,
+        `spo2=${JSON.stringify(updates.spo2)}`,
+      );
+    }
+  }
+
   // ── Phase 1: turn_detection rejection is recoverable, not fatal ────────────
   {
     let state = createRealtimeConfigState();
