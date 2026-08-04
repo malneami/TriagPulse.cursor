@@ -312,24 +312,65 @@ function parseHistory(text: string): { value: string; span: string; confidence: 
  * value ("pulse is good" must stay empty rather than borrow a nearby figure).
  */
 const HR_LABEL = [
-  'heart\\s?rate', 'heart\\s?beats?', 'heartbeats?', 'beats per minute', 'bpm', 'pulse rate', 'pulse', 'hr',
+  'heart\\s?rate', 'heart\\s?beats?', 'heartbeats?', 'beats per minute', 'bpm', 'pulse rate', 'pulse',
+  '\\bh\\s?r\\b',
   'معدل ضربات القلب', 'ضربات القلب', 'نبضات القلب', 'دقات القلب', 'معدل النبض', 'النبض', 'نبض',
 ].join('|');
 
 const RR_LABEL = [
-  'respiratory rate', 'respiration rate', 'resp\\s?rate', 'breathing rate', 'breaths per minute', 'breath rate', 'rr',
+  'respiratory rate', 'respiration rate', 'resp\\s?rate', 'breathing rate', 'breaths per minute', 'breath rate',
+  '\\br\\s?r\\b',
   'معدل التنفس', 'معدل تنفس', 'التنفس', 'تنفس',
 ].join('|');
 
 const TEMP_LABEL = [
   'temperature', 'temp',
-  'درجة الحرارة', 'الحرارة', 'حرارة', 'سخونة',
+  // STT routinely clips the trailing ة off حرارة
+  'درجة الحرار(?:ة)?', 'الحرار(?:ة)?', 'حرار(?:ة)?', 'سخونة',
 ].join('|');
 
 const GCS_LABEL = [
-  'glasgow coma scale', 'glasgow', 'level of consciousness', 'conscious(?:ness)? level', 'gcs',
-  'مستوى الوعي', 'درجة الوعي', 'غلاسكو', 'الوعي', 'وعي',
+  'glasgow coma scale', 'glasgow', 'level of consciousness', 'conscious(?:ness)? level',
+  '\\bg\\s?c\\s?s\\b',
+  'مستو[يى] الوعي', 'درجة الوعي', 'غلاسكو', 'الوعي', 'وعي',
 ].join('|');
+
+/**
+ * SpO2 is dictated more loosely than any other vital, and the transcriber writes
+ * the "O" as a digit zero about as often as the letter.
+ */
+const SPO2_LABEL = [
+  'sp\\s?[o0]\\s?2', 's\\s?p\\s?[o0]\\s?2',
+  'oxygen saturation', '[o0]2\\s?sat(?:uration)?', 'oxygen level', 'oxygen', 'saturation', 'sats?',
+  'تشبع الأكسجين', 'نسبة الأكسجين', 'ال[أا]كسجين', '[أا]كسجين',
+].join('|');
+
+/** Saturation is a percentage; anything outside this is a flow rate or a misparse. */
+const SPO2_MIN = 50;
+const SPO2_MAX = 100;
+
+const BP_LABEL = ['blood pressure', 'systolic', 'diastolic', '\\bb\\s?p\\b', 'ضغط الدم', 'الضغط', 'ضغط'].join('|');
+
+/** Any vital label, used to detect a label sitting between another label and its number. */
+const ANY_VITAL_LABEL = new RegExp(
+  [HR_LABEL, RR_LABEL, TEMP_LABEL, GCS_LABEL, SPO2_LABEL, BP_LABEL].join('|'),
+  'i',
+);
+
+/**
+ * Reject a label→number match whose gap contains a DIFFERENT vital's label.
+ *
+ * The gap is deliberately permissive ("HR is about 110"), which also let a bare
+ * label bind to the next vital's figure: in "heart rate, BP 140 over 90" the HR
+ * pattern happily reached past "BP" and reported a heart rate of 140.
+ */
+function bindsAcrossAnotherLabel(match: RegExpMatchArray, ownLabel: string): boolean {
+  const span = match[0];
+  const numberAt = span.search(/\d/);
+  if (numberAt < 0) return false;
+  const gap = span.slice(0, numberAt).replace(new RegExp(ownLabel, 'ig'), ' ');
+  return ANY_VITAL_LABEL.test(gap);
+}
 
 function parseVitals(text: string): { value: VitalSignEntry[]; span: string; confidence: number } | null {
   const t = normalizeDigits(text);
@@ -346,27 +387,31 @@ function parseVitals(text: string): { value: VitalSignEntry[]; span: string; con
 
   const hr = t.match(new RegExp(`(?:${HR_LABEL})[^\\d]{0,12}(\\d{2,3})`, 'i'))
     || t.match(new RegExp(`(\\d{2,3})\\s*(?:bpm)?\\s*(?:${HR_LABEL})`, 'i'));
-  if (hr) add('HR', Number(hr[1]), 'bpm', hr[0]);
+  if (hr && !bindsAcrossAnotherLabel(hr, HR_LABEL)) add('HR', Number(hr[1]), 'bpm', hr[0]);
 
   const bp = t.match(/(?:bp|blood pressure|ضغط|الضغط)[^\d]{0,12}(\d{2,3})\s*(?:[\/\\]|over|على|on)\s*(\d{2,3})/i)
     || t.match(/(\d{2,3})\s*(?:[\/\\]|over|على|on)\s*(\d{2,3})\s*(?:mmhg|mm hg|ضغط|bp)?/i);
   if (bp) add('BP', `${bp[1]}/${bp[2]}`, 'mmHg', bp[0]);
 
-  const spo2 = t.match(/(?:spo2|sp o2|sp\s*o2|oxygen saturation|sat|أكسجين|الأكسجين|o2)[^\d]{0,8}(\d{2,3})\s*%?/i)
+  // 'oxygen 15 liters' is a flow rate, not a saturation — hence the range check.
+  const spo2 = t.match(new RegExp(`(?:${SPO2_LABEL})[^\\d]{0,8}(\\d{2,3})\\s*%?`, 'i'))
     || t.match(/(\d{2,3})\s*%\s*(?:spo2|sat|oxygen|أكسجين)?/i);
-  if (spo2) add('SpO2', Number(spo2[1]), '%', spo2[0]);
+  if (spo2 && !bindsAcrossAnotherLabel(spo2, SPO2_LABEL)) {
+    const pct = Number(spo2[1]);
+    if (pct >= SPO2_MIN && pct <= SPO2_MAX) add('SpO2', pct, '%', spo2[0]);
+  }
 
   const rr = t.match(new RegExp(`(?:${RR_LABEL})[^\\d]{0,8}(\\d{1,2})`, 'i'))
     || t.match(/\brr\s*(\d{1,2})\b/i);
-  if (rr) add('RR', Number(rr[1]), '/min', rr[0]);
+  if (rr && !bindsAcrossAnotherLabel(rr, RR_LABEL)) add('RR', Number(rr[1]), '/min', rr[0]);
 
   const temp = t.match(new RegExp(`(?:${TEMP_LABEL})[^\\d]{0,8}(\\d{2}(?:\\.\\d)?)\\s*(?:c|celsius|°)?`, 'i'))
     || t.match(/\btemp\s*(\d{2}(?:\.\d)?)\b/i);
-  if (temp) add('Temp', Number(temp[1]), '°C', temp[0]);
+  if (temp && !bindsAcrossAnotherLabel(temp, TEMP_LABEL)) add('Temp', Number(temp[1]), '°C', temp[0]);
 
   const gcs = t.match(new RegExp(`(?:${GCS_LABEL})[^\\d]{0,8}(\\d{1,2})`, 'i'))
     || t.match(/\bgcs\s*(\d{1,2})\b/i);
-  if (gcs) add('GCS', Number(gcs[1]), '/15', gcs[0]);
+  if (gcs && !bindsAcrossAnotherLabel(gcs, GCS_LABEL)) add('GCS', Number(gcs[1]), '/15', gcs[0]);
 
   if (vitals.length === 0) return null;
   return { value: vitals, span: spans.join('; '), confidence: 0.88 };
@@ -404,6 +449,72 @@ export function mergeFieldSlot<T>(
   return current;
 }
 
+function joinSpans(a: string, b: string): string {
+  const seen = [a, b].filter(Boolean).join('; ');
+  return seen.length > 400 ? `${seen.slice(0, 397)}...` : seen;
+}
+
+/**
+ * Union-merge for the array-valued slots.
+ *
+ * `vital_signs` carries all six vitals in ONE slot, so the scalar rule above
+ * ("replace only on strictly higher confidence") froze it after the first
+ * extraction — parseVitals always reports 0.88, so a later pass that found BP,
+ * SpO2, RR, Temp and GCS could never replace a slot already holding just HR.
+ * A collection has to accumulate, keyed so a restated value still wins.
+ */
+function mergeCollectionSlot<T>(
+  current: SttFieldSlot<T[]>,
+  incoming: { value: T[]; confidence: number; source_span: string },
+  keyOf: (item: T) => string,
+  { overwrite = true }: { overwrite?: boolean } = {},
+): SttFieldSlot<T[]> {
+  if (current.edited_by_user) return current;
+  const byKey = new Map<string, T>();
+  for (const item of (current.value || [])) byKey.set(keyOf(item), item);
+  for (const item of (incoming.value || [])) {
+    // The per-segment pass only fills gaps: it re-reads a fragment of the same
+    // transcript, so it must never replace a value the full text already resolved.
+    if (!overwrite && byKey.has(keyOf(item))) continue;
+    byKey.set(keyOf(item), item);
+  }
+  return {
+    value: [...byKey.values()],
+    confidence: Math.max(current.confidence || 0, incoming.confidence),
+    source_span: joinSpans(current.source_span, incoming.source_span),
+    edited_by_user: false,
+  };
+}
+
+const VITALS_KEY = (v: VitalSignEntry) => String(v.type);
+const MED_KEY = (m: string) => String(m).trim().toLowerCase();
+
+/** Route array-valued slots to the union merge; everything else keeps scalar semantics. */
+function mergeAnySlot(
+  key: SttFieldKey,
+  current: SttFieldSlot,
+  incoming: { value: unknown; confidence: number; source_span: string },
+  opts: { overwrite?: boolean } = {},
+): SttFieldSlot {
+  if (key === 'vital_signs') {
+    return mergeCollectionSlot(
+      current as SttFieldSlot<VitalSignEntry[]>,
+      incoming as { value: VitalSignEntry[]; confidence: number; source_span: string },
+      VITALS_KEY,
+      opts,
+    ) as SttFieldSlot;
+  }
+  if (key === 'current_medications') {
+    return mergeCollectionSlot(
+      current as SttFieldSlot<string[]>,
+      incoming as { value: string[]; confidence: number; source_span: string },
+      MED_KEY,
+      opts,
+    ) as SttFieldSlot;
+  }
+  return mergeFieldSlot(current, incoming) as SttFieldSlot;
+}
+
 export function createEmptySttFields(): Record<SttFieldKey, SttFieldSlot> {
   return {
     name: emptySlot<string>(),
@@ -431,11 +542,11 @@ export function extractFieldsFromTranscript(
     const local = { ...createEmptySttFields() };
     const apply = <T>(key: SttFieldKey, hit: { value: T; span: string; confidence: number } | null) => {
       if (!hit) return;
-      local[key] = mergeFieldSlot(local[key] as SttFieldSlot<T>, {
+      local[key] = mergeAnySlot(key, local[key], {
         value: hit.value,
         confidence: hit.confidence,
         source_span: hit.span,
-      }) as SttFieldSlot;
+      });
     };
     apply('name', parseName(chunk));
     apply('age', parseSpokenAge(chunk));
@@ -450,11 +561,11 @@ export function extractFieldsFromTranscript(
     if (vitals) apply('vital_signs', vitals);
     const meds = parseMedications(chunk);
     if (meds) {
-      local.current_medications = mergeFieldSlot(local.current_medications, {
+      local.current_medications = mergeAnySlot('current_medications', local.current_medications, {
         value: meds.value,
         confidence: meds.confidence,
         source_span: meds.span,
-      });
+      }) as SttFieldSlot<string[]>;
     }
     return local;
   };
@@ -463,24 +574,26 @@ export function extractFieldsFromTranscript(
   for (const key of Object.keys(full) as SttFieldKey[]) {
     const slot = full[key];
     if (isFilled(slot)) {
-      fields[key] = mergeFieldSlot(fields[key], {
+      fields[key] = mergeAnySlot(key, fields[key], {
         value: slot.value,
         confidence: slot.confidence,
         source_span: slot.source_span,
-      }) as SttFieldSlot;
+      });
     }
   }
 
+  // Supplementary pass: re-read each script run to catch what the whole-text pass
+  // missed. It sees less context than the full pass, so it fills gaps only.
   for (const seg of segmentTranscriptByLanguage(text)) {
     const segFields = runExtract(seg.text);
     for (const key of Object.keys(segFields) as SttFieldKey[]) {
       const slot = segFields[key];
       if (isFilled(slot)) {
-        fields[key] = mergeFieldSlot(fields[key], {
+        fields[key] = mergeAnySlot(key, fields[key], {
           value: slot.value,
           confidence: slot.confidence,
           source_span: slot.source_span,
-        }) as SttFieldSlot;
+        }, { overwrite: false });
       }
     }
   }
