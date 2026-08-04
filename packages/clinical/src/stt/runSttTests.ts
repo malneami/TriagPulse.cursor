@@ -340,6 +340,88 @@ export function runSttTests(
     );
   }
 
+  // ── Vitals must ACCUMULATE across successive extractions ──────────────────
+  // The panel re-extracts the full transcript on every turn, passing the previous
+  // fields in. All six vitals share one array-valued slot, so merging it with
+  // scalar "higher confidence wins" semantics froze it at whatever the first
+  // extraction found — parseVitals always returns 0.88, so 0.88 > 0.88 is never
+  // true. One-shot extraction passed; the real incremental path captured only
+  // the first vital spoken and every later one stayed red in the UI.
+  {
+    const turns = [
+      'النبض مئة وعشرة',
+      'النبض مئة وعشرة الضغط مئة وأربعين على تسعين',
+      'النبض مئة وعشرة الضغط مئة وأربعين على تسعين الأكسجين ستة وتسعين',
+      'النبض مئة وعشرة الضغط مئة وأربعين على تسعين الأكسجين ستة وتسعين معدل التنفس ثمانية عشر',
+      'النبض مئة وعشرة الضغط مئة وأربعين على تسعين الأكسجين ستة وتسعين معدل التنفس ثمانية عشر الحرارة سبعة وثلاثين مستوى الوعي خمسة عشر',
+    ];
+    let fields = createEmptySttFields();
+    for (const t of turns) fields = extractFieldsFromTranscript(t, fields);
+    const { updates } = mapSttSessionToPatientUpdates(fields);
+
+    const expected: Array<[string, string]> = [
+      ['hr', '110'], ['bp_systolic', '140'], ['bp_diastolic', '90'],
+      ['spo2', '96'], ['rr', '18'], ['temperature', '37'], ['gcs', '15'],
+    ];
+    for (const [key, want] of expected) {
+      assert(
+        String(updates[key]) === want,
+        `STT-25 [${key}]`,
+        'vitals accumulate across successive extractions',
+        `expected ${want} got ${JSON.stringify(updates[key])}`,
+      );
+    }
+  }
+
+  // Same accumulation, dictated in English across turns.
+  {
+    const turns = [
+      'heart rate one ten',
+      'heart rate one ten blood pressure one forty over ninety',
+      'heart rate one ten blood pressure one forty over ninety SpO2 ninety six',
+      'heart rate one ten blood pressure one forty over ninety SpO2 ninety six respiratory rate eighteen temperature thirty seven GCS fifteen',
+    ];
+    let fields = createEmptySttFields();
+    for (const t of turns) fields = extractFieldsFromTranscript(t, fields);
+    const { updates } = mapSttSessionToPatientUpdates(fields);
+    for (const [key, want] of [['hr', '110'], ['bp_systolic', '140'], ['spo2', '96'], ['rr', '18'], ['temperature', '37'], ['gcs', '15']] as Array<[string, string]>) {
+      assert(
+        String(updates[key]) === want,
+        `STT-26 [${key}]`,
+        'vitals accumulate across turns (English)',
+        `expected ${want} got ${JSON.stringify(updates[key])}`,
+      );
+    }
+  }
+
+  // A later, corrected value for the same vital must replace the earlier one.
+  {
+    let fields = createEmptySttFields();
+    fields = extractFieldsFromTranscript('heart rate one ten', fields);
+    fields = extractFieldsFromTranscript('heart rate ninety', fields);
+    const { updates } = mapSttSessionToPatientUpdates(fields);
+    assert(
+      String(updates.hr) === '90',
+      'STT-27',
+      'a restated vital overwrites the earlier value',
+      `expected 90 got ${JSON.stringify(updates.hr)}`,
+    );
+  }
+
+  // Medications share the same array-slot problem.
+  {
+    let fields = createEmptySttFields();
+    fields = extractFieldsFromTranscript('patient takes aspirin', fields);
+    fields = extractFieldsFromTranscript('patient takes aspirin and metformin', fields);
+    const meds = (fields.current_medications.value || []) as string[];
+    assert(
+      meds.some((m) => /aspirin/i.test(m)) && meds.some((m) => /metformin/i.test(m)),
+      'STT-28',
+      'medications accumulate across successive extractions',
+      JSON.stringify(meds),
+    );
+  }
+
   // ── Phase 1: turn_detection rejection is recoverable, not fatal ────────────
   {
     let state = createRealtimeConfigState();
