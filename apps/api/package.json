@@ -7,6 +7,7 @@
     "build": "nest build",
     "start": "node dist/src/main.js",
     "db:migrate": "prisma migrate dev --schema=../../prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema=../../prisma/schema.prisma",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio --schema=../../prisma/schema.prisma",
     "db:generate": "prisma generate --schema=../../prisma/schema.prisma"
