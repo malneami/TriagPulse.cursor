@@ -22,3 +22,7 @@ export function appendAuditTrail(existing: AuditEventInput[] | null | undefined,
   const list = Array.isArray(existing) ? existing : [];
   return [...list, event];
 }
+
+export function serializeAuditTrail(events: AuditEventInput[] = []): string {
+  return JSON.stringify(events, null, 2);
+}

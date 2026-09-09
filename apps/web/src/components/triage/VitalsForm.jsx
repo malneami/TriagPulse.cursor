@@ -1,5 +1,5 @@
 import VitalsBadge from './VitalsBadge';
-import { interpretHR, interpretSpO2, interpretRR, interpretTemp, interpretGCS } from '../../lib/vitalRanges';
+import { interpretHR, interpretSpO2, interpretRR, interpretTemp, interpretGCS } from '@triagepulse/clinical';
 
 export default function VitalsForm({ vitals, onChange, highlightedFields = new Set() }) {
   const INTERP_FN = {
@@ -77,6 +77,7 @@ export default function VitalsForm({ vitals, onChange, highlightedFields = new S
         {vital('معدل التنفس', 'RR', 'rr', '/min', 0, 60)}
         {vital('درجة الحرارة', 'Temp', 'temperature', '°C', 30, 45)}
         {vital('مقياس غلاسكو', 'GCS', 'gcs', '/15', 3, 15)}
+        {vital('الوزن', 'Weight', 'weight', 'kg', 1, 300)}
       </div>
     </div>
   );

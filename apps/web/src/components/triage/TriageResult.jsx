@@ -53,6 +53,7 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
   const modifiers = result?.modifiers_applied || [];
   const redFlags = result?.red_flags;
   const summary = result?.clinical_summary_ar;
+  const summaryEn = result?.clinical_summary_en;
   const disposition = result?.disposition;
   const safetyNote = result?.safety_note;
 
@@ -78,6 +79,13 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
       </div>
 
       <div className="bg-white">
+        {(summary || summaryEn) && (
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+            <p className="text-xs font-black text-slate-500 mb-1">الملخص السريري — Clinical Summary</p>
+            {summary && <p className="text-sm text-slate-800 leading-relaxed">{summary}</p>}
+            {summaryEn && <p className="text-xs text-slate-600 mt-2 leading-relaxed">{summaryEn}</p>}
+          </div>
+        )}
         <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-start gap-2">
           <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
           <div>

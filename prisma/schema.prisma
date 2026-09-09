@@ -38,6 +38,7 @@ model User {
   journeys     PatientJourney[] @relation("JourneyCreator")
   triageRecords TriageRecord[]  @relation("TriageCreator")
   auditEvents  AuditEvent[]
+  libraryPublishes ClinicalLibraryPublish[]
 
   @@map("users")
 }
@@ -167,6 +168,9 @@ model TriageRecord {
   safetyNote        String?   @map("safety_note")
   missingFields     Json?     @map("missing_fields")
   assessmentTrail   Json?     @map("assessment_trail_json")
+  libraryVersions   Json?     @map("library_versions")
+  clinicalSummaryEn String?   @map("clinical_summary_en")
+  validatedPayload  Json?     @map("validated_payload")
 
   journey   PatientJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
   createdBy User           @relation("TriageCreator", fields: [createdById], references: [id])
@@ -174,6 +178,25 @@ model TriageRecord {
   @@index([journeyId])
   @@index([createdById])
   @@map("triage_records")
+}
+
+model ClinicalLibraryPublish {
+  id            String   @id @default(uuid())
+  version       String
+  isActive      Boolean  @default(false) @map("is_active")
+  modifiers     Json
+  modifiersVersion String @map("modifiers_version")
+  redFlags      Json     @map("red_flags")
+  changelog     String?
+  publishedAt   DateTime @default(now()) @map("published_at")
+  publishedById String   @map("published_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  publishedBy User @relation(fields: [publishedById], references: [id])
+
+  @@index([isActive])
+  @@index([publishedById])
+  @@map("clinical_library_publishes")
 }
 
 model AuditEvent {

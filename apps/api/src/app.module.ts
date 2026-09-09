@@ -6,6 +6,8 @@ import { JourneysModule } from './journeys/journeys.module';
 import { TriageModule } from './triage/triage.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { SttModule } from './stt/stt.module';
+import { ClinicalLibrariesModule } from './clinical-libraries/clinical-libraries.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { HealthController } from './health.controller';
 
 /**
@@ -26,6 +28,8 @@ export const ENV_FILE_PATHS = ['../../.env', '.env'];
     TriageModule,
     TrackingModule,
     SttModule,
+    ClinicalLibrariesModule,
+    AnalyticsModule,
   ],
   controllers: [HealthController],
 })

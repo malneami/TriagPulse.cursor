@@ -45,6 +45,8 @@ export const PERMISSIONS: Record<string, Role[]> = {
   acknowledge_critical_alert: ['nurse', 'physician', 'admin'],
   view_dashboard: ['nurse', 'physician', 'admin'],
   manage_security: ['admin'],
+  manage_clinical_libraries: ['admin'],
+  view_clinical_analytics: ['admin', 'physician'],
 };
 
 export function canAccess(role: Role, permission: string): boolean {

@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
-import { assignDestination } from '@/lib/destinationEngine';
+import { assignDestination } from '@triagepulse/clinical';
 import { Plus, Users } from 'lucide-react';
 import SectionA from '@/components/visualTriage/SectionA';
 import SectionB from '@/components/visualTriage/SectionB';

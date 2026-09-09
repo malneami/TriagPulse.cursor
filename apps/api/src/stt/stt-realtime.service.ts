@@ -409,14 +409,17 @@ export class SttRealtimeService {
 
     if (type === 'error') {
       const errObj = event.error as { message?: string; code?: string } | undefined;
-      const msg = errObj?.message || 'Realtime transcription error';
+      let msg = errObj?.message || 'Realtime transcription error';
       // Benign empty-buffer commit race — noisy and non-fatal.
       if (errObj?.code === 'input_audio_buffer_commit_empty') return;
+      if (/no credits|insufficient.?quota|billing|payment.?required/i.test(msg)) {
+        msg = 'OpenAI account has no credits remaining — add billing credits to restore Realtime STT.';
+      }
       this.logger.warn(`Realtime error [${sessionId}]: ${msg}`);
       // A turn_detection refusal is handled by the negotiation retry in startSession;
       // surfacing it to the clinician would be noise.
       if (session.config.vadRejected && !session.config.ready) return;
-      session.emit('stt_error', { message: msg, code: errObj?.code, realtime: true });
+      session.emit('stt_error', { message: msg, code: errObj?.code, realtime: true, billing: /no credits|billing/i.test(msg) });
       return;
     }
 

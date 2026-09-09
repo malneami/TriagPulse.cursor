@@ -1,7 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
-import { Activity, LogOut, Eye, Users } from 'lucide-react';
+import { Activity, LogOut, Eye, Users, Library, BarChart3, ShieldCheck } from 'lucide-react';
 import PatientStrip from '@/components/PatientStrip';
+import { canAccess } from '@/lib/security/roles';
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -11,6 +12,15 @@ export default function Layout({ children }) {
     { path: '/visual-triage', label: 'الفرز البصري', labelEn: 'Visual', Icon: Eye },
     { path: '/triage', label: 'CTAS', labelEn: 'CTAS', Icon: Activity },
     { path: '/tracking', label: 'التتبع', labelEn: 'Track', Icon: Users },
+    ...(canAccess(user, 'manage_clinical_libraries')
+      ? [{ path: '/admin/libraries', label: 'المكتبات', labelEn: 'Libs', Icon: Library }]
+      : []),
+    ...(canAccess(user, 'view_clinical_analytics')
+      ? [
+          { path: '/admin/analytics', label: 'التحليل', labelEn: 'Stats', Icon: BarChart3 },
+          { path: '/admin/ai-evaluation', label: 'تقييم AI', labelEn: 'AI Eval', Icon: ShieldCheck },
+        ]
+      : []),
   ];
 
   return (
@@ -40,29 +50,33 @@ export default function Layout({ children }) {
       <PatientStrip />
 
       <nav className="bg-red-600 border-b border-red-700">
-        <div className="max-w-3xl mx-auto px-4 flex gap-1">
-          {navItems.map(({ path, label, labelEn, Icon }) => {
-            const active = location.pathname === path;
-            return (
-              <Link
-                key={path}
-                to={path}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${
-                  active
-                    ? 'border-white text-white'
-                    : 'border-transparent text-red-200 hover:text-white'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{label}</span>
-                <span className="text-xs opacity-60">{labelEn}</span>
-              </Link>
-            );
-          })}
+        <div className="max-w-5xl mx-auto px-2 sm:px-4 overflow-x-auto">
+          <div className="flex gap-1 min-w-max">
+            {navItems.map(({ path, label, labelEn, Icon }) => {
+              const active = location.pathname === path || location.pathname.startsWith(`${path}/`);
+              return (
+                <Link
+                  key={path}
+                  to={path}
+                  className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${
+                    active
+                      ? 'border-white text-white'
+                      : 'border-transparent text-red-200 hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{label}</span>
+                  <span className="text-xs opacity-60">{labelEn}</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </nav>
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6">
+      <main className={`flex-1 mx-auto w-full px-4 py-6 ${
+        location.pathname.startsWith('/admin/') ? 'max-w-5xl' : 'max-w-3xl'
+      }`}>
         {children}
       </main>
     </div>

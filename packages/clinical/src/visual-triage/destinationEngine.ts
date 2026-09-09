@@ -146,3 +146,11 @@ export function assignDestination(input: {
 export function calculateRespiratoryScore(symptoms: Record<string, boolean>): number {
   return Object.values(symptoms).filter(Boolean).length;
 }
+
+/** Temporary visual-triage patient ID before hospital MRN is assigned. */
+export function generatePatientId(): string {
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[-:TZ.]/g, '').slice(2, 14);
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `VT-${stamp}-${random}`;
+}

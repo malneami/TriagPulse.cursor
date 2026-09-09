@@ -3,13 +3,18 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
+import { useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import Layout from './components/Layout';
 import RoleGuard from '@/components/auth/RoleGuard';
 import Triage from './pages/Triage';
 import VisualTriage from './pages/VisualTriage';
 import PatientTracking from './pages/PatientTracking';
+import ClinicalLibrariesAdmin from './pages/ClinicalLibrariesAdmin';
+import ClinicalAnalytics from './pages/ClinicalAnalytics';
+import AiEvaluationDashboard from './pages/AiEvaluationDashboard';
 import Login from './pages/Login';
+import { syncClinicalLibrariesFromApi } from '@/lib/clinicalLibrariesSync';
 
 function HomeRedirect() {
   const location = useLocation();
@@ -26,6 +31,10 @@ function Guarded({ permission, children }) {
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (isAuthenticated) syncClinicalLibrariesFromApi();
+  }, [isAuthenticated]);
 
   if (isLoadingAuth) {
     return (
@@ -51,6 +60,9 @@ const AuthenticatedApp = () => {
         <Route path="/visual-triage" element={<Guarded permission="perform_triage"><VisualTriage /></Guarded>} />
         <Route path="/triage" element={<Guarded permission="perform_triage"><Triage /></Guarded>} />
         <Route path="/tracking" element={<Guarded permission="perform_triage"><PatientTracking /></Guarded>} />
+        <Route path="/admin/libraries" element={<Guarded permission="manage_clinical_libraries"><ClinicalLibrariesAdmin /></Guarded>} />
+        <Route path="/admin/analytics" element={<Guarded permission="view_clinical_analytics"><ClinicalAnalytics /></Guarded>} />
+        <Route path="/admin/ai-evaluation" element={<Guarded permission="view_clinical_analytics"><AiEvaluationDashboard /></Guarded>} />
       </Route>
       <Route path="/login" element={<Navigate to="/visual-triage" replace />} />
       <Route path="*" element={<PageNotFound />} />

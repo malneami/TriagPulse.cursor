@@ -6,7 +6,6 @@ import {
   mergeTranscriptLines,
   getLiveTranscript,
 } from '@/lib/stt/ctasFieldMap';
-import ConversationLog from './ConversationLog';
 import FloatingRecorder from './FloatingRecorder';
 import {
   createMediaRecorder,
@@ -31,6 +30,21 @@ const FALLBACK_ROLLING_MS = 5000;
 /** How long to wait for the first Realtime text before warning the clinician. */
 const REALTIME_SILENCE_WARN_MS = 8000;
 
+function isOpenAiBillingError(msg = '') {
+  return /no credits|insufficient.?quota|billing|payment.?required|credits remaining/i.test(String(msg || ''));
+}
+
+function humanizeSttError(msg = '') {
+  const raw = String(msg || '').trim();
+  if (isOpenAiBillingError(raw)) {
+    return 'OpenAI has no credits — using browser speech until billing is restored.';
+  }
+  if (/fetch failed/i.test(raw)) {
+    return 'Cannot reach OpenAI API (network). Check internet/firewall, then press Record again.';
+  }
+  return raw || 'STT unavailable';
+}
+
 /** Dictations that exercise each language path, including a mid-sentence switch. */
 const DEMO_SENTENCES = [
   {
@@ -53,7 +67,17 @@ const DEMO_SENTENCES = [
   },
 ];
 
-export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, onResync }) {
+export default function VoiceTriagePanel({
+  journeyId,
+  patient,
+  onSessionUpdate,
+  onResync,
+  onRecordingStart,
+  ctasLevel = null,
+  ctasLabelAr = null,
+  ctasLabelEn = null,
+  ctasHex = null,
+}) {
   const [sessionId, setSessionId] = useState(null);
   const [sessionOutput, setSessionOutput] = useState(null);
   const [interimText, setInterimText] = useState('');
@@ -93,6 +117,7 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
   const useRealtimeRef = useRef(false);
   const realtimeFailureCountRef = useRef(0);
   const startFallbackRef = useRef(null);
+  const restartRecognitionRef = useRef(null);
   const silenceWatchdogRef = useRef(null);
   const browserCaptionActiveRef = useRef(false);
   const pcmStartedRef = useRef(false);
@@ -135,7 +160,11 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
   const pushSession = useCallback((payload) => {
     if (!payload) return;
     setSessionOutput(payload);
-    onSessionUpdate?.(payload);
+    try {
+      onSessionUpdate?.(payload);
+    } catch (err) {
+      throw err;
+    }
     const analysis = payload.transcript_analysis;
     if (analysis?.mentionedNotExtracted?.length > 0 && !llmRetryRef.current && sessionIdRef.current) {
       llmRetryRef.current = true;
@@ -168,7 +197,9 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
         setSttError('');
       } else if (s.configured) {
         setSttMode('openai_error');
-        setSttError(s.lastError || 'OpenAI key invalid');
+        const raw = s.lastError || 'OpenAI unreachable';
+        const friendly = humanizeSttError(raw);
+        setSttError(friendly);
       } else {
         setSttMode(supportsBrowserStt() ? 'browser' : 'manual');
         if (!supportsBrowserStt()) setManualFallback(true);
@@ -254,22 +285,34 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
         onRealtimeAck: (ack) => {
           if (ack?.ok === false && recordingRef.current) {
             realtimeFailureCountRef.current += 1;
-            toast.error('Realtime STT failed — switching to browser fallback');
-            startFallbackRef.current?.();
+            const msg = humanizeSttError(ack?.message || 'Realtime STT failed');
+            if (isOpenAiBillingError(ack?.message || msg)) {
+              openAiEnabledRef.current = false;
+              serverSttRef.current = false;
+            }
+            setSttError(msg);
+            toast.error(msg);
+            startFallbackRef.current?.({ forceBrowserOnly: isOpenAiBillingError(ack?.message || msg) });
           }
         },
         onError: (err) => {
-          const msg = err?.message || 'STT unavailable';
+          const msg = humanizeSttError(err?.message || 'STT unavailable');
           if (err?.code === 'input_audio_buffer_commit_empty') return;
           // Ignore transient socket handshake aborts from React Strict Mode remounts
-          if (/closed before the connection|websocket error|transport close/i.test(msg) && !recordingRef.current) {
+          if (/closed before the connection|websocket error|transport close/i.test(String(err?.message || '')) && !recordingRef.current) {
             return;
+          }
+          const billing = !!(err?.billing || isOpenAiBillingError(err?.message || msg));
+          if (billing) {
+            openAiEnabledRef.current = false;
+            serverSttRef.current = false;
           }
           if (err?.realtime && useRealtimeRef.current && recordingRef.current) {
             realtimeFailureCountRef.current += 1;
-            if (realtimeFailureCountRef.current >= MAX_OPENAI_FAILURES) {
-              toast.error('Realtime STT unavailable — using browser + batch');
-              startFallbackRef.current?.();
+            if (billing || realtimeFailureCountRef.current >= MAX_OPENAI_FAILURES) {
+              setSttError(msg);
+              toast.error(msg);
+              startFallbackRef.current?.({ forceBrowserOnly: billing || !serverSttRef.current });
               return;
             }
           }
@@ -358,11 +401,18 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     } catch (err) {
       if (!rolling) recorderRef.current = null;
       openAiFailureCountRef.current += 1;
-      if (openAiFailureCountRef.current >= MAX_OPENAI_FAILURES) {
+      const billing = isOpenAiBillingError(err?.message);
+      if (billing || openAiFailureCountRef.current >= MAX_OPENAI_FAILURES) {
         openAiEnabledRef.current = false;
+        serverSttRef.current = false;
         setSttMode('browser');
+        // Batch path never started Web Speech — start it now so capture continues.
+        if (recordingRef.current && supportsBrowserStt()) {
+          browserCaptionActiveRef.current = true;
+          restartRecognitionRef.current?.(recognitionLang);
+        }
       }
-      const msg = err?.message || 'OpenAI transcription unavailable — using browser STT';
+      const msg = humanizeSttError(err?.message || 'OpenAI transcription unavailable — using browser STT');
       setSttError(msg);
       if (!transcribeErrorShownRef.current) {
         transcribeErrorShownRef.current = true;
@@ -370,12 +420,12 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
       }
     } finally {
       transcribeInFlightRef.current = false;
-      if (rolling && streamRef.current && recorderRef.current?.state === 'inactive') {
+      if (rolling && streamRef.current && recorderRef.current?.state === 'inactive' && openAiEnabledRef.current) {
         try { recorderRef.current.start(); } catch { /* ignore */ }
       }
       processPendingSegment();
     }
-  }, [pushSession, usableAudioBlob, processPendingSegment]);
+  }, [pushSession, usableAudioBlob, processPendingSegment, recognitionLang]);
 
   const restartRecognition = useCallback((lang) => {
     // Detach before stopping: otherwise the outgoing recognizer's onend fires with the
@@ -419,10 +469,10 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
         const profile = detectTranscriptLanguage(line);
         if (profile.detected_language === 'english' && lang !== 'en-US') {
           setRecognitionLang('en-US');
-          restartRecognition('en-US');
+          restartRecognitionRef.current?.('en-US');
         } else if (profile.detected_language === 'arabic' && lang !== 'ar-SA') {
           setRecognitionLang('ar-SA');
-          restartRecognition('ar-SA');
+          restartRecognitionRef.current?.('ar-SA');
         }
       } else if (interim.trim() && sessionIdRef.current) {
         const live = getLiveTranscript(finalLinesRef.current, conservativeTranscriptCleanup(interim));
@@ -452,7 +502,12 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     }
   }, []);
 
-  const startFallbackCapture = useCallback(async () => {
+  restartRecognitionRef.current = restartRecognition;
+
+  const startFallbackCapture = useCallback(async (opts = {}) => {
+    const forceBrowserOnly = !!opts.forceBrowserOnly
+      || !openAiEnabledRef.current
+      || !serverSttRef.current;
     useRealtimeRef.current = false;
     clearSilenceWatchdog();
     try { pcmStreamerRef.current?.stop?.(); } catch { /* ignore */ }
@@ -460,20 +515,39 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     pcmStartedRef.current = false;
     socketRef.current?.stopRealtime?.();
 
+    if (forceBrowserOnly) {
+      if (rollingIntervalRef.current) {
+        clearInterval(rollingIntervalRef.current);
+        rollingIntervalRef.current = null;
+      }
+      try {
+        if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+      } catch { /* ignore */ }
+      recorderRef.current = null;
+    }
+
     if (!streamRef.current) {
       streamRef.current = await getMicrophoneStream();
     }
     const stream = streamRef.current;
 
-    // With no server key there is nothing to POST audio to. Recording and uploading
-    // anyway produced a stream of failed /stt/transcribe calls whose only visible
-    // effect was an error toast.
-    if (!serverSttRef.current) {
+    // Billing / no-key / forced browser: Web Speech only (do not POST failing OpenAI batch).
+    if (forceBrowserOnly || !serverSttRef.current || !openAiEnabledRef.current) {
+      if (!supportsBrowserStt()) {
+        setManualFallback(true);
+        setSttMode('manual');
+        setSttError((prev) => prev || 'Browser speech not available — type the transcript manually.');
+        return;
+      }
       browserCaptionActiveRef.current = true;
       restartRecognition(recognitionLang);
       setSttMode('browser');
       return;
     }
+
+    // Live captions via Web Speech + periodic OpenAI batch for AR/EN quality
+    browserCaptionActiveRef.current = true;
+    restartRecognition(recognitionLang);
 
     // No onChunk: with MediaRecorder timeslice only the FIRST blob carries the container
     // header (EBML for WebM, ftyp/moov for MP4). Blobs 2..N were headerless fragments,
@@ -654,6 +728,8 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
         await startFallbackCapture();
         setSttError('');
       }
+      // Triage Time starts with the first successful Record press
+      onRecordingStart?.();
     } catch {
       toast.error('Microphone access denied');
       setManualFallback(true);
@@ -695,26 +771,6 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
       setExtracting(false);
     }
   };
-
-  const editLine = useCallback((index, text) => {
-    setFinalLines((prev) => {
-      const next = prev.map((l, i) => (
-        i === index ? { ...(typeof l === 'string' ? { source: 'manual' } : l), text } : l
-      ));
-      finalLinesRef.current = next;
-      runExtractRef.current?.(getLiveTranscript(next, ''), true, true);
-      return next;
-    });
-  }, []);
-
-  const deleteLine = useCallback((index) => {
-    setFinalLines((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      finalLinesRef.current = next;
-      runExtractRef.current?.(getLiveTranscript(next, ''), true, true);
-      return next;
-    });
-  }, []);
 
   const pasteDemoSentence = (text) => {
     setManualText(text);
@@ -801,8 +857,15 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
       )}
 
       {sttError && (
-        <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
-          <p className="font-bold">{sttError}</p>
+        <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-start justify-between gap-2">
+          <p className="font-bold flex-1">{sttError}</p>
+          <button
+            type="button"
+            onClick={() => { void refreshSttStatus(); }}
+            className="shrink-0 text-[11px] font-black underline text-amber-800 hover:text-amber-950"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -904,13 +967,6 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
     <div className="space-y-4">
       {panel}
 
-      <ConversationLog
-        lines={finalLines}
-        patient={patient}
-        onEditLine={editLine}
-        onDeleteLine={deleteLine}
-      />
-
       <FloatingRecorder
         open={recording || extracting}
         recording={recording}
@@ -919,7 +975,10 @@ export default function VoiceTriagePanel({ journeyId, patient, onSessionUpdate, 
         patient={patient}
         transcript={interimText || liveTranscript}
         lastTurnAt={lastTurnAt}
-        ctasLevel={sessionOutput?.ctas_level}
+        ctasLevel={ctasLevel ?? sessionOutput?.ctas_level ?? null}
+        ctasLabelAr={ctasLabelAr}
+        ctasLabelEn={ctasLabelEn}
+        ctasHex={ctasHex}
         onClose={stopCapture}
         onStop={stopCapture}
       />

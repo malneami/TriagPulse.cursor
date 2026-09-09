@@ -1,3 +1,5 @@
+import { getRedFlagLibrary } from '../libraries/runtime';
+
 export interface RedFlagSymptom {
   ar: string;
   en: string;
@@ -26,6 +28,8 @@ export function detectRedFlags(
   patient: Record<string, unknown> = {},
   answers: Record<string, unknown> = {},
 ): RedFlagResult | null {
+  const lib = getRedFlagLibrary();
+  const th = lib.thresholds;
   const symptoms: RedFlagSymptom[] = [];
   const complaintText = [patient.chief_complaint, patient.transcription, answers?.notes]
     .filter(Boolean)
@@ -43,28 +47,49 @@ export function detectRedFlags(
     ctasLevel = ctasLevel === null ? level : Math.min(ctasLevel, level);
   };
 
-  if (spo2 !== null && spo2 < 90) add(spo2 < 85 ? 1 : 2, `SpO₂ ${spo2}% — نقص أكسجين`, `SpO₂ ${spo2}% — hypoxia`);
-  if (gcs !== null && gcs < 13) add(gcs <= 8 ? 1 : 2, `GCS ${gcs} — اضطراب وعي`, `GCS ${gcs} — altered consciousness`);
-  if (sbp !== null && sbp < 90) add(sbp < 70 ? 1 : 2, `ضغط انقباضي ${sbp} — عدم استقرار`, `SBP ${sbp} — hemodynamic instability`);
-  if (hr !== null && hr > 130) add(2, `نبض ${hr} — تسرع شديد`, `HR ${hr} — severe tachycardia`);
-  if (rr !== null && rr > 35) add(2, `تنفس ${rr}/دقيقة — ضائقة تنفسية`, `RR ${rr}/min — respiratory distress`);
+  if (spo2 !== null && spo2 < th.spo2_urgent) {
+    add(
+      spo2 < th.spo2_critical ? 1 : 2,
+      `SpO₂ ${spo2}% — نقص أكسجين`,
+      `SpO₂ ${spo2}% — hypoxia`,
+    );
+  }
+  if (gcs !== null && gcs < th.gcs_urgent) {
+    add(
+      gcs <= th.gcs_critical ? 1 : 2,
+      `GCS ${gcs} — اضطراب وعي`,
+      `GCS ${gcs} — altered consciousness`,
+    );
+  }
+  if (sbp !== null && sbp < th.sbp_urgent) {
+    add(
+      sbp < th.sbp_critical ? 1 : 2,
+      `ضغط انقباضي ${sbp} — عدم استقرار`,
+      `SBP ${sbp} — hemodynamic instability`,
+    );
+  }
+  if (hr !== null && hr > th.hr_severe) {
+    add(2, `نبض ${hr} — تسرع شديد`, `HR ${hr} — severe tachycardia`);
+  }
+  if (rr !== null && rr > th.rr_severe) {
+    add(2, `تنفس ${rr}/دقيقة — ضائقة تنفسية`, `RR ${rr}/min — respiratory distress`);
+  }
 
-  if (textHas(complaintText, ['chest pain', 'ألم صدر', 'الم صدر', 'diaphoresis', 'تعرق', 'radiation', 'يمتد', 'dyspnea', 'ضيق تنفس'])) {
-    if (textHas(complaintText, ['chest pain', 'ألم صدر', 'الم صدر'])) add(2, 'ألم صدر عالي الخطورة', 'High-risk chest pain');
+  for (const rule of lib.text_rules) {
+    if (rule.active === false) continue;
+    if (!textHas(complaintText, rule.terms)) continue;
+    // Chest-pain rule: only fire when chest-pain terms present (legacy behavior)
+    if (rule.id === 'rf_chest_pain') {
+      if (!textHas(complaintText, ['chest pain', 'ألم صدر', 'الم صدر'])) continue;
+    }
+    add(rule.level, rule.label_ar, rule.label_en);
   }
-  if (textHas(complaintText, ['stroke', 'سكتة', 'facial droop', 'arm weakness', 'speech difficulty', 'ضعف ذراع', 'ثقل لسان', 'تلعثم'])) {
-    add(2, 'اشتباه سكتة دماغية', 'Possible stroke presentation');
-  }
-  if (textHas(complaintText, ['uncontrolled bleeding', 'نزيف شديد', 'نزيف لا يتوقف', 'major bleeding'])) {
-    add(1, 'نزيف شديد غير مسيطر عليه', 'Uncontrolled major bleeding');
-  }
-  if (textHas(complaintText, ['anaphylaxis', 'تأق', 'throat swelling', 'تورم الحلق', 'stridor', 'صفير حنجري'])) {
-    add(1, 'اشتباه تأق أو اضطراب مجرى الهواء', 'Possible anaphylaxis or airway compromise');
-  }
-  if (textHas(complaintText, ['seizure', 'تشنج', 'اختلاج'])) {
-    add(2, 'تشنج/اختلاج', 'Seizure presentation');
-  }
-  if (pain !== null && pain >= 9 && ((sbp !== null && sbp < 100) || (hr !== null && hr > 120))) {
+
+  if (
+    pain !== null
+    && pain >= th.pain_severe
+    && ((sbp !== null && sbp < th.pain_unstable_sbp) || (hr !== null && hr > th.pain_unstable_hr))
+  ) {
     add(2, `ألم شديد ${pain}/10 مع عدم استقرار`, `Severe pain ${pain}/10 with instability`);
   }
 

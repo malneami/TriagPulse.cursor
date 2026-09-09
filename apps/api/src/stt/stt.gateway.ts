@@ -68,11 +68,12 @@ export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
       client.emit('realtime_ack', { ok: true, sessionId: data.sessionId });
     } catch (err) {
+      const message = (err as Error).message || 'Failed to start Realtime STT';
       client.emit('stt_error', {
-        message: (err as Error).message || 'Failed to start Realtime STT',
+        message,
         realtime: true,
       });
-      client.emit('realtime_ack', { ok: false, sessionId: data.sessionId });
+      client.emit('realtime_ack', { ok: false, sessionId: data.sessionId, message });
     }
   }
 

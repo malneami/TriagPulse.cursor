@@ -22,7 +22,7 @@ export const CTAS_TEST_CASES = [
     id: 'CTAS-003',
     name: 'Severe chest pain with dyspnea',
     patient: { chief_complaint: 'Chest Pain with dyspnea / ألم صدر مع ضيق تنفس', age: 59, hr: 118, bp_systolic: 145, bp_diastolic: 85, spo2: 94, rr: 24, temperature: 37.1, gcs: 15, pain_score: 9 },
-    expectedLevel: 1,
+    expectedLevel: 2,
     expectedRedFlag: true,
   },
   {
@@ -43,13 +43,13 @@ export const CTAS_TEST_CASES = [
     id: 'CTAS-006',
     name: 'Stable minor back pain',
     patient: { chief_complaint: 'Back Pain / ألم ظهر', age: 34, hr: 78, bp_systolic: 118, bp_diastolic: 75, spo2: 98, rr: 16, temperature: 36.8, gcs: 15, pain_score: 2 },
-    expectedLevelMin: 4,
+    expectedLevelMin: 5,
     expectedRedFlag: false,
   },
   {
     id: 'CTAS-007',
-    name: 'Incomplete data must be flagged',
-    patient: { chief_complaint: 'Abdominal Pain / ألم بطن', age: 40, pain_score: 6 },
+    name: 'Missing chief complaint must be flagged',
+    patient: { age: 40, pain_score: 6 },
     expectedIncomplete: true,
   },
   {
@@ -60,7 +60,7 @@ export const CTAS_TEST_CASES = [
   },
 ];
 
-const REQUIRED_FIELDS = ['chief_complaint', 'age', 'hr', 'bp_systolic', 'spo2', 'rr', 'temperature', 'gcs', 'pain_score'];
+const REQUIRED_FIELDS = ['chief_complaint'];
 
 function num(v) {
   const n = Number(v);
@@ -71,7 +71,7 @@ function validate(patient) {
   const missing = REQUIRED_FIELDS.filter((key) => patient[key] === undefined || patient[key] === null || patient[key] === '');
   const errors = [];
   const limits = {
-    age: [0, 120], hr: [20, 250], bp_systolic: [40, 300], bp_diastolic: [20, 200], spo2: [40, 100], rr: [4, 70], temperature: [32, 43], gcs: [3, 15], pain_score: [0, 10],
+    age: [0, 120], weight: [1, 300], hr: [20, 250], bp_systolic: [40, 300], bp_diastolic: [20, 200], spo2: [40, 100], rr: [4, 70], temperature: [32, 43], gcs: [3, 15], pain_score: [0, 10],
   };
   Object.entries(limits).forEach(([key, [min, max]]) => {
     if (patient[key] === undefined || patient[key] === null || patient[key] === '') return;

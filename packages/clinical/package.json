@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsc && tsc -p tsconfig.esm.json",
     "test": "node ./dist/ctas/runTests.js",
-    "test:ctas": "npm run build && npm run test"
+    "test:ctas": "npm run build && npm run test",
+    "test:eval": "npm run build && node ./dist/analytics/runEvaluationTests.js"
   },
   "devDependencies": {
     "typescript": "^5.8.2"

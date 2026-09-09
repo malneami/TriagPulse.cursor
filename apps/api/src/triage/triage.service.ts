@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Gender, JourneyStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.module';
 import { AuditService } from '../audit/audit.service';
-import { computeLiveCTAS, detectRedFlags, validateTriageReady } from '@triagepulse/clinical';
+import { computeLiveCTAS, detectRedFlags, getLibraryVersions, validateTriageReady } from '@triagepulse/clinical';
 
 @Injectable()
 export class TriageService {
@@ -87,7 +87,25 @@ export class TriageService {
           aiConfidence: record.ai_confidence as number | undefined,
           safetyNote: record.safety_note as string | undefined,
           missingFields: record.missing_fields as object | undefined,
-          assessmentTrail: record.assessment_trail_json as object | undefined,
+          assessmentTrail: typeof record.assessment_trail_json === 'string'
+            ? (() => { try { return JSON.parse(record.assessment_trail_json as string); } catch { return record.assessment_trail_json; } })()
+            : (record.assessment_trail_json as object | undefined)
+              ?? (record.assessment_trail as object | undefined),
+          libraryVersions: (record.library_versions as object | undefined)
+            ?? getLibraryVersions(),
+          clinicalSummaryEn: record.clinical_summary_en as string | undefined,
+          validatedPayload: (record.validated_payload as object | undefined) ?? {
+            rules_recommended_ctas: record.rules_recommended_ctas,
+            ai_recommended_ctas: record.ai_recommended_ctas,
+            clinician_final_ctas: record.clinician_final_ctas,
+            agreement: record.agreement,
+            override_reason: record.override_reason,
+            library_versions: record.library_versions ?? getLibraryVersions(),
+            triage_duration_min: record.triage_duration_min,
+            modifier_answers: (record.assessment_trail as { clarifying?: { answers?: unknown } } | undefined)
+              ?.clarifying?.answers
+              ?? null,
+          },
         },
       });
 

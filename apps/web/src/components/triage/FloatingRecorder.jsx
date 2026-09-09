@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Square, X } from 'lucide-react';
 import { formatTurnTime } from '@/lib/stt/ctasFieldMap';
-import CompletenessChips from './CompletenessChips';
+import { computeLiveCTAS, normalizeSpokenNumbers } from '@triagepulse/clinical';
+import CompletenessChips, { REQUIRED_FIELDS } from './CompletenessChips';
 
 const BAR_COUNT = 21;
+
+const CTAS_HEX = {
+  1: '#E24B4A',
+  2: '#EF9F27',
+  3: '#0F6E56',
+  4: '#378ADD',
+  5: '#888780',
+};
 
 /** Deterministic idle heights so the bar row isn't empty before audio arrives. */
 const IDLE_BARS = Array.from({ length: BAR_COUNT }, (_, i) => 0.25 + 0.2 * Math.sin(i * 0.9));
@@ -61,6 +70,38 @@ function useLevels(stream, active) {
   return levels;
 }
 
+/** Coerce spoken number words (تسعين / ninety) into digits for CTAS scoring. */
+function coerceVital(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const raw = String(value).trim();
+  const direct = parseFloat(raw.replace(/%/g, ''));
+  if (Number.isFinite(direct)) return direct;
+  try {
+    const spaced = raw.replace(/ninetynine/gi, 'ninety nine').replace(/ninetyeight/gi, 'ninety eight');
+    const normalized = normalizeSpokenNumbers(spaced);
+    const n = parseFloat(String(normalized).replace(/%/g, ''));
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function patientForCtas(patient = {}) {
+  return {
+    ...patient,
+    age: coerceVital(patient.age) ?? patient.age,
+    hr: coerceVital(patient.hr) ?? patient.hr,
+    bp_systolic: coerceVital(patient.bp_systolic) ?? patient.bp_systolic,
+    bp_diastolic: coerceVital(patient.bp_diastolic) ?? patient.bp_diastolic,
+    spo2: coerceVital(patient.spo2) ?? patient.spo2,
+    rr: coerceVital(patient.rr) ?? patient.rr,
+    temperature: coerceVital(patient.temperature) ?? patient.temperature,
+    gcs: coerceVital(patient.gcs) ?? patient.gcs,
+    pain_score: coerceVital(patient.pain_score) ?? patient.pain_score,
+  };
+}
+
 /**
  * Floating recording window: drag by the title bar, minimise to a pill, close to stop.
  * Fixed-position so it stays put while the clinician scrolls the triage form.
@@ -74,6 +115,9 @@ export default function FloatingRecorder({
   transcript,
   lastTurnAt,
   ctasLevel,
+  ctasLabelAr,
+  ctasLabelEn,
+  ctasHex,
   onClose,
   onStop,
 }) {
@@ -82,6 +126,38 @@ export default function FloatingRecorder({
   const [pos, setPos] = useState(null); // null = default centred placement
   const dragRef = useRef(null);
   const levels = useLevels(stream, recording);
+
+  const captured = REQUIRED_FIELDS.filter((f) => f.check(patient || {})).length;
+  const total = REQUIRED_FIELDS.length;
+  const dataComplete = captured >= total;
+
+  const derived = useMemo(() => {
+    if (ctasLevel != null && ctasLevel !== '') {
+      const level = Number(ctasLevel);
+      if (Number.isFinite(level)) {
+        return {
+          level,
+          ar: ctasLabelAr || null,
+          en: ctasLabelEn || null,
+          hex: ctasHex || CTAS_HEX[level] || '#0F6E56',
+        };
+      }
+    }
+    try {
+      const result = computeLiveCTAS(patientForCtas(patient || {}), {});
+      if (result?.level != null) {
+        return {
+          level: result.level,
+          ar: result.ctas_ar || null,
+          en: result.ctas_en || null,
+          hex: result.hex || CTAS_HEX[result.level] || '#0F6E56',
+        };
+      }
+    } catch {
+      /* ignore scoring errors in floater */
+    }
+    return null;
+  }, [ctasLevel, ctasLabelAr, ctasLabelEn, ctasHex, patient]);
 
   const onPointerDown = useCallback((e) => {
     // Ignore drags that start on the window buttons.
@@ -133,6 +209,14 @@ export default function FloatingRecorder({
         <span className="flex items-center gap-2 text-xs font-black">
           <span className={`w-2.5 h-2.5 rounded-full ${recording ? 'bg-red-500 animate-pulse' : 'bg-slate-500'}`} />
           {recording ? 'يسجّل صوت / Recording' : 'التسجيل متوقف / Paused'}
+          {derived?.level != null && (
+            <span
+              className="ms-1 px-1.5 py-0.5 rounded-md text-[10px] font-black"
+              style={{ backgroundColor: derived.hex, color: '#fff' }}
+            >
+              CTAS {derived.level}
+            </span>
+          )}
         </span>
         <span className="text-[10px] text-slate-300">اضغط للتوسيع</span>
       </button>
@@ -214,13 +298,34 @@ export default function FloatingRecorder({
       </div>
 
       <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-slate-50 border-t border-slate-100">
-        <p className="text-xs font-bold text-slate-500">
-          CTAS تقديري {ctasLevel ? <span className="text-slate-900 font-black">{ctasLevel}</span> : '—'}
-        </p>
+        {derived?.level != null ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-xl text-white text-lg font-black shadow-sm"
+              style={{ backgroundColor: derived.hex }}
+              title={dataComplete ? 'Estimated CTAS (data complete)' : 'Estimated CTAS (partial data)'}
+            >
+              {derived.level}
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                {dataComplete ? 'CTAS تقديري · Estimated' : 'CTAS أولي · Preliminary'}
+              </p>
+              <p className="text-xs font-black text-slate-800 truncate">
+                {derived.ar || derived.en || `CTAS ${derived.level}`}
+                {derived.ar && derived.en ? ` / ${derived.en}` : ''}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs font-bold text-slate-500">
+            CTAS تقديري — <span className="text-slate-400">بانتظار بيانات كافية</span>
+          </p>
+        )}
         {recording && (
           <button
             type="button" onClick={onStop}
-            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-black"
+            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-black shrink-0"
           >
             إيقاف / Stop
           </button>

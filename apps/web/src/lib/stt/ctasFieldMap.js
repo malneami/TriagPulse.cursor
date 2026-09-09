@@ -4,14 +4,30 @@
  */
 
 /**
- * `key` is the CTAS field id, which is NOT always a patient property — `name` is backed by
- * patient_name_ar/en and `bp_systolic` reads better paired with the diastolic. Every entry
- * therefore carries `value` alongside `check`, so anything displaying a field uses the same
- * accessor the completeness check uses and the two cannot disagree.
+ * `key` is the CTAS field id, which is NOT always a patient property — `bp_systolic`
+ * reads better paired with the diastolic. Every entry therefore carries `value`
+ * alongside `check`, so anything displaying a field uses the same accessor the
+ * completeness check uses and the two cannot disagree.
  */
+function hasNumericWeight(p) {
+  const n = Number(p.weight);
+  return p.weight != null && p.weight !== '' && Number.isFinite(n) && n > 0;
+}
+
 export const CTAS_REQUIRED_FIELDS = [
-  { key: 'name', label_ar: 'الاسم', label_en: 'Name', scrollTo: 'chief-complaint', check: (p) => !!(p.patient_name_ar || p.patient_name_en), value: (p) => p.patient_name_ar || p.patient_name_en },
-  { key: 'age', label_ar: 'العمر', label_en: 'Age', scrollTo: 'chief-complaint', check: (p) => !!p.age, value: (p) => p.age },
+  { key: 'weight', label_ar: 'الوزن', label_en: 'Weight', scrollTo: 'vitals-form', check: hasNumericWeight, value: (p) => `${p.weight} kg` },
+  { key: 'age', label_ar: 'العمر', label_en: 'Age', scrollTo: 'chief-complaint', check: (p) => !!p.age, value: (p) => {
+    const n = parseFloat(p.age);
+    if (!Number.isFinite(n)) return p.age;
+    if (n > 0 && n < 1) {
+      const months = Math.round(n * 12);
+      if (months >= 1) return `${months} شهر`;
+      const weeks = Math.round(n * 52);
+      if (weeks >= 1) return `${weeks} أسبوع`;
+      return `${Math.max(1, Math.round(n * 365))} يوم`;
+    }
+    return p.age;
+  } },
   { key: 'chief_complaint', label_ar: 'الشكوى', label_en: 'Complaint', scrollTo: 'chief-complaint', check: (p) => !!p.chief_complaint, value: (p) => p.chief_complaint },
   { key: 'pain_score', label_ar: 'درجة الألم', label_en: 'Pain Score', scrollTo: 'pain-scale', check: (p) => p.pain_score != null && p.pain_score !== '', value: (p) => `${p.pain_score}/10` },
   { key: 'hr', label_ar: 'النبض', label_en: 'HR', scrollTo: 'vitals-form', check: (p) => !!p.hr, value: (p) => p.hr },
@@ -67,8 +83,14 @@ export function mapSttSessionToPatientUpdates(fields) {
   const complaintSlot = slotValue(fields, 'chief_complaint');
   if (complaintSlot) set('chief_complaint', complaintSlot.value, complaintSlot.confidence);
 
+  const onsetSlot = slotValue(fields, 'onset_duration');
+  if (onsetSlot) set('onset_duration', onsetSlot.value, onsetSlot.confidence);
+
   const painSlot = slotValue(fields, 'pain_score');
   if (painSlot) set('pain_score', painSlot.value, painSlot.confidence);
+
+  const weightSlot = slotValue(fields, 'weight');
+  if (weightSlot) set('weight', weightSlot.value, weightSlot.confidence);
 
   const vitalsSlot = slotValue(fields, 'vital_signs');
   const vitals = vitalsSlot?.value;
@@ -80,6 +102,7 @@ export function mapSttSessionToPatientUpdates(fields) {
       if (v.type === 'RR') set('rr', String(v.value), conf);
       if (v.type === 'Temp') set('temperature', String(v.value), conf);
       if (v.type === 'GCS') set('gcs', String(v.value), conf);
+      if (v.type === 'Weight') set('weight', v.value, conf);
       if (v.type === 'BP' && typeof v.value === 'string') {
         const [sys, dia] = v.value.split('/');
         if (sys) set('bp_systolic', sys, conf);
@@ -167,7 +190,7 @@ export function getLiveTranscript(lines = [], interim = '') {
 }
 
 const FIELD_MENTION_PATTERNS = {
-  name: [/(?:patient(?:\s+name)?|name is|اسم)/i],
+  weight: [/weight|وزن|الوزن|\b\d{1,3}(?:\.\d+)?\s*kg\b/i],
   age: [/age|عمر(?:ه|ها)?|years?\s*old|سنة/i],
   chief_complaint: [/complaint|شكوى|كومبلين|chest pain|ألم صدر|headache|حمى/i],
   pain_score: [/pain score|ben score|بين سكور|\/10|out of ten/i],
@@ -180,7 +203,7 @@ const FIELD_MENTION_PATTERNS = {
 };
 
 const SUGGESTED_PHRASES = {
-  name: { en: 'Patient name is Ahmed', ar: 'اسم المريض أحمد' },
+  weight: { en: 'Weight seventy kilograms', ar: 'الوزن سبعون كيلوغرام' },
   age: { en: 'Age fifty five', ar: 'عمره خمسة وخمسين' },
   chief_complaint: { en: 'Chief complaint chest pain', ar: 'الشكوى ألم صدر' },
   pain_score: { en: 'Pain score seven out of ten', ar: 'درجة الألم سبعة من عشرة' },

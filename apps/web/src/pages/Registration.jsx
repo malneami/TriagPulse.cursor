@@ -7,7 +7,7 @@ import JourneyProgress from '@/components/journey/JourneyProgress';
 import ReceiptScanner from '@/components/triage/ReceiptScanner';
 import { toast } from 'sonner';
 import { ArrowRight } from 'lucide-react';
-import { validateRegistration } from '@/lib/triageValidation';
+import { validateRegistration } from '@triagepulse/clinical';
 
 export default function Registration() {
   const navigate = useNavigate();

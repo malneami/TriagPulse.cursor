@@ -1,7 +1,7 @@
 /** 10-field CTAS completeness schema — mirrors Triage.jsx REQUIRED_FIELDS. */
 
 export type CtasFieldKey =
-  | 'name'
+  | 'weight'
   | 'age'
   | 'chief_complaint'
   | 'pain_score'
@@ -20,8 +20,13 @@ export interface CtasFieldDefinition {
   check: (patient: Record<string, unknown>) => boolean;
 }
 
+function hasNumericWeight(p: Record<string, unknown>): boolean {
+  const n = Number(p.weight);
+  return p.weight != null && p.weight !== '' && Number.isFinite(n) && n > 0;
+}
+
 export const CTAS_REQUIRED_FIELDS: CtasFieldDefinition[] = [
-  { key: 'name', label_ar: 'الاسم', label_en: 'Name', scrollTo: 'chief-complaint', check: (p) => !!(p.patient_name_ar || p.patient_name_en) },
+  { key: 'weight', label_ar: 'الوزن', label_en: 'Weight', scrollTo: 'vitals-form', check: hasNumericWeight },
   { key: 'age', label_ar: 'العمر', label_en: 'Age', scrollTo: 'chief-complaint', check: (p) => !!p.age },
   { key: 'chief_complaint', label_ar: 'الشكوى', label_en: 'Complaint', scrollTo: 'chief-complaint', check: (p) => !!p.chief_complaint },
   { key: 'pain_score', label_ar: 'درجة الألم', label_en: 'Pain Score', scrollTo: 'pain-scale', check: (p) => p.pain_score != null && p.pain_score !== '' },
@@ -37,8 +42,7 @@ export const CTAS_REQUIRED_FIELD_KEYS = CTAS_REQUIRED_FIELDS.map((f) => f.key);
 
 /** Maps STT/extraction patient keys to CTAS field keys for confidence tracking. */
 export const PATIENT_KEY_TO_CTAS: Record<string, CtasFieldKey> = {
-  patient_name_ar: 'name',
-  patient_name_en: 'name',
+  weight: 'weight',
   age: 'age',
   chief_complaint: 'chief_complaint',
   pain_score: 'pain_score',

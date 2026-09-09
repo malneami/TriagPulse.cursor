@@ -2,7 +2,7 @@
  * Step 2 — Complaint Specific Modifier Selector
  * Displays the official CTAS 2025 complaint-specific modifiers as a tap list.
  */
-import { CTAS_CONFIG } from '@/lib/ctasDatabase';
+import { CTAS_CONFIG } from '@triagepulse/clinical';
 
 const LEVEL_COLORS = {
   1: 'border-red-500 bg-red-50 text-red-800',
