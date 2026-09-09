@@ -21,7 +21,7 @@ export interface SttFieldSlot<T = unknown> {
 }
 
 export interface VitalSignEntry {
-  type: 'BP' | 'HR' | 'Temp' | 'SpO2' | 'RR' | 'GCS';
+  type: 'BP' | 'HR' | 'Temp' | 'SpO2' | 'RR' | 'GCS' | 'Weight';
   value: string | number;
   unit?: string;
 }

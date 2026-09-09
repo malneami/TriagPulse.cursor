@@ -67,7 +67,9 @@ export function buildLlmExtractPrompt(transcript: string, missingFields: CtasFie
   return `You are a bilingual ED triage extraction assistant (Arabic + English code-switching).
 
 Extract ONLY explicitly stated clinical facts from this triage dictation transcript.
-Do NOT invent or guess vitals. Use null for any field not clearly spoken.
+Do NOT invent or guess vitals, age, or pain. Use null for any field not clearly spoken.
+- pain_score: null unless the speaker explicitly states a pain score or "no pain" / "ألم". Never default to 0.
+- age: if stated in months/weeks/days (e.g. "شهرين", "2 months"), return that phrase (e.g. "2 months") — do not convert incorrectly to years.
 
 Missing CTAS fields to prioritize: ${missingLabels}
 
@@ -76,7 +78,7 @@ Transcript:
 ${transcript.slice(0, 4000)}
 """
 
-Return JSON with patient_name_ar, patient_name_en, age (string), chief_complaint, pain_score (0-10),
+Return JSON with patient_name_ar, patient_name_en, age (string), chief_complaint, pain_score (0-10 or null),
 hr, bp_systolic, bp_diastolic, spo2, rr, temperature, gcs, and field_confidence (0-1 per populated field).`;
 }
 

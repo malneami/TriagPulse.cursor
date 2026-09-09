@@ -131,7 +131,7 @@ export class SttService {
     if (shouldLlm) {
       const llmResult = await this.callLlmExtract(session.transcript, ctas.missing as CtasFieldKey[]);
       if (llmResult) {
-        session.fields = mergeLlmExtractIntoFields(session.fields, llmResult);
+        session.fields = mergeLlmExtractIntoFields(session.fields, llmResult, session.transcript);
         llmUsed = true;
         session.stagnantExtractCount = 0;
       }
@@ -260,22 +260,29 @@ export class SttService {
         lastError: 'OPENAI_API_KEY not set',
       };
     }
-    try {
+
+    const probe = async () => {
       const res = await fetch('https://api.openai.com/v1/models', {
         headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(12_000),
       });
       if (!res.ok) {
         const err = await res.text();
-        this.lastOpenAiError = `OpenAI ${res.status}: ${err.slice(0, 120)}`;
-        return {
-          configured: true,
-          model,
-          reachable: false,
-          realtime: false,
-          realtime_model,
-          lastError: this.lastOpenAiError,
-        };
+        throw Object.assign(new Error(`OpenAI ${res.status}: ${err.slice(0, 120)}`), { http: true });
       }
+      return true;
+    };
+
+    const humanizeNetworkError = (err: unknown) => {
+      const msg = String((err as Error)?.message || err || '');
+      if (/fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|network|AbortError|timeout/i.test(msg)) {
+        return 'Cannot reach OpenAI API (network). Check internet/firewall, then retry Record.';
+      }
+      return msg || 'OpenAI unreachable';
+    };
+
+    try {
+      await probe();
       this.lastOpenAiError = null;
       return {
         configured: true,
@@ -284,8 +291,27 @@ export class SttService {
         realtime: true,
         realtime_model,
       };
-    } catch (err) {
-      this.lastOpenAiError = (err as Error).message;
+    } catch (firstErr) {
+      // One retry — transient DNS/TLS blips otherwise sticky "OpenAI error / fetch failed"
+      if (!(firstErr as { http?: boolean })?.http) {
+        try {
+          await new Promise((r) => setTimeout(r, 400));
+          await probe();
+          this.lastOpenAiError = null;
+          return {
+            configured: true,
+            model,
+            reachable: true,
+            realtime: true,
+            realtime_model,
+          };
+        } catch (retryErr) {
+          this.lastOpenAiError = humanizeNetworkError(retryErr);
+        }
+      } else {
+        this.lastOpenAiError = String((firstErr as Error).message || firstErr);
+      }
+      if (!this.lastOpenAiError) this.lastOpenAiError = humanizeNetworkError(firstErr);
       return {
         configured: true,
         model,
@@ -365,6 +391,12 @@ export class SttService {
       }
 
       const err = await res.text();
+      if (res.status === 429 || /no credits|insufficient.?quota|billing|payment.?required/i.test(err)) {
+        lastError = 'OpenAI account has no credits remaining — add billing credits or use browser speech.';
+        this.lastOpenAiError = lastError;
+        this.logger.warn(lastError);
+        break;
+      }
       lastError = `STT provider error (${model}): ${res.status} ${err.slice(0, 200)}`;
       this.lastOpenAiError = lastError;
       this.logger.warn(lastError);

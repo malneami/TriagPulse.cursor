@@ -302,18 +302,50 @@ export default function ClarifyingQuestions({
     </div>
   );
 
-  // Hide questions whose field is already confirmed in patient
+  // Bank questions are clarifying-specific fields — do not hide them when patient vitals exist.
+  // LLM questions still skip fields already confirmed on the patient form.
   const visibleQuestions = (questions || []).filter(q => {
     if (!q.field) return true;
+    if (source === 'bank') return true;
     const val = patient[q.field];
     return val == null || val === '';
   });
 
-  if (visibleQuestions.length === 0) return null;
+  if (visibleQuestions.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-amber-200 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <HelpCircle className="w-5 h-5 text-amber-600 shrink-0" />
+          <div>
+            <h3 className="font-bold text-slate-800 text-sm">أسئلة استيضاحية</h3>
+            <p className="text-xs text-slate-500">
+              لا توجد أسئلة متاحة لهذا المستوى/المسار حالياً — No clarifying questions for this CTAS level/pathway yet
+            </p>
+          </div>
+        </div>
+        {onRegenerate && (
+          <button
+            type="button"
+            onClick={onRegenerate}
+            className="text-xs text-teal-700 font-bold flex items-center gap-1.5 hover:text-teal-900"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            توليد أسئلة / Generate questions
+          </button>
+        )}
+      </div>
+    );
+  }
 
   const answeredCount = visibleQuestions.filter(q => answers[q.field] !== undefined).length;
 
   const levelBadge = clarifyingLevel ?? liveLevel;
+  const categories = [...new Set(
+    visibleQuestions.map((q) => q.question_category || q.category || q._category).filter(Boolean),
+  )];
+  const hasCtasVerifyQs = categories.includes('ctas_modifier');
+  const onlyDirectionOrSafety = categories.length > 0
+    && categories.every((c) => c === 'patient_direction' || c === 'safety_escalation');
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-teal-100 p-4 space-y-4">
@@ -323,15 +355,23 @@ export default function ClarifyingQuestions({
           <div className="min-w-0">
             <h3 className="font-bold text-slate-800 text-sm">أسئلة استيضاحية</h3>
             <p className="text-xs text-slate-400">Clarifying Questions · {answeredCount}/{visibleQuestions.length} answered</p>
-            {levelBadge != null && (
+            {source === 'modifier_engine' ? (
+              <p className="text-[11px] font-bold text-teal-700 mt-0.5">
+                {onlyDirectionOrSafety
+                  ? 'توجيه / سلامة فقط — Destination & safety gaps (not CTAS re-verification)'
+                  : hasCtasVerifyQs
+                    ? 'فجوات عالية الأثر — High-impact clinical gaps'
+                    : 'محرك الأسئلة — Clarifying Question Engine'}
+              </p>
+            ) : levelBadge != null ? (
               <p className="text-[11px] font-bold text-teal-700 mt-0.5">
                 أسئلة توضيحية لـ CTAS {levelBadge} — Clarifying for CTAS {levelBadge}
                 {source === 'bank' ? ' · بنك / Bank' : source === 'llm' ? ' · ذكاء اصطناعي / LLM' : ''}
               </p>
-            )}
+            ) : null}
           </div>
         </div>
-        {source !== 'bank' && (
+        {source !== 'bank' && source !== 'modifier_engine' && (
           <button onClick={onRegenerate} className="text-xs text-teal-600 flex items-center gap-1 hover:text-teal-800 shrink-0">
             <RefreshCw className="w-3.5 h-3.5" />
             إعادة التوليد

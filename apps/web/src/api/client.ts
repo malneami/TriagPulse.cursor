@@ -179,6 +179,21 @@ export const api = {
         }),
       }),
   },
+  clinicalLibraries: {
+    current: () => request('/clinical-libraries/current'),
+    history: () => request('/clinical-libraries/history'),
+    publish: (body) =>
+      request('/clinical-libraries/publish', { method: 'POST', body: JSON.stringify(body) }),
+    activate: (id) =>
+      request(`/clinical-libraries/${id}/activate`, { method: 'POST', body: '{}' }),
+    get: (id) => request(`/clinical-libraries/${id}`),
+  },
+  analytics: {
+    agreement: (days = 30) => request(`/analytics/agreement?days=${days}`),
+    exportValidated: (limit = 200, flaggedOnly = false) =>
+      request(`/analytics/export/validated?limit=${limit}&flaggedOnly=${flaggedOnly ? 'true' : 'false'}`),
+    evaluation: (days = 30) => request(`/analytics/evaluation?days=${days}`),
+  },
   tracking: {
     board: () => request('/tracking/board').then((list) => list.map(mapJourney)),
   },

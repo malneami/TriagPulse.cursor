@@ -214,6 +214,18 @@ export function runSttTests(
       ['GCS fifteen', 'gcs', '15'],
       // patient updates are the form shape — string-typed for every field
       ['عمره خمسة وخمسين', 'age', '55'],
+      // ASR hamza-drop + common triage age phrasings
+      ['مريض عمره اربعين', 'age', '40'],
+      ['عمر المريض 48', 'age', '48'],
+      ['العمر تقريبا خمسين', 'age', '50'],
+      ['حوالي 50 سنة', 'age', '50'],
+      ['patient is fifty five years of age', 'age', '55'],
+      ['how old is he, fifty five', 'age', '55'],
+      // Infant ages → fractional years (2 months ≈ 0.167)
+      ['عمره شهرين', 'age', String(Math.round((2 / 12) * 1000) / 1000)],
+      ['اسم المريض علي عمره شهرين', 'age', String(Math.round((2 / 12) * 1000) / 1000)],
+      ['عمرها ثلاثة أشهر', 'age', String(Math.round((3 / 12) * 1000) / 1000)],
+      ['age 2 months', 'age', String(Math.round((2 / 12) * 1000) / 1000)],
     ];
     for (const [transcript, key, expected] of cases) {
       const fields = extractFieldsFromTranscript(transcript, createEmptySttFields());
@@ -504,6 +516,35 @@ export function runSttTests(
         `spo2=${JSON.stringify(updates.spo2)}`,
       );
     }
+  }
+
+
+  // ── Voice correction: last labeled vital in one utterance wins ────────────
+  {
+    const fields = extractFieldsFromTranscript(
+      'respiratory rate 40, heart rate 88, respiratory rate twenty five',
+      createEmptySttFields(),
+    );
+    const { updates } = mapSttSessionToPatientUpdates(fields);
+    assert(
+      String(updates.rr) === '25' && String(updates.hr) === '88',
+      'STT-34',
+      're-dictated RR replaces earlier RR (last labeled match wins)',
+      JSON.stringify({ rr: updates.rr, hr: updates.hr }),
+    );
+  }
+
+  // ── Voice correction across incremental chunks (RR) ───────────────────────
+  {
+    let fields = extractFieldsFromTranscript('respiratory rate 100', createEmptySttFields());
+    fields = extractFieldsFromTranscript('respiratory rate twenty five', fields);
+    const { updates } = mapSttSessionToPatientUpdates(fields);
+    assert(
+      String(updates.rr) === '25',
+      'STT-35',
+      'later chunk overwrites earlier RR at equal confidence',
+      `rr=${updates.rr}`,
+    );
   }
 
   // ── Phase 1: turn_detection rejection is recoverable, not fatal ────────────

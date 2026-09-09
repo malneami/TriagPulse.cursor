@@ -53,11 +53,13 @@ export default function CompletenessChips({
       <div className={`flex flex-wrap ${compact ? 'gap-1 justify-center' : 'gap-1.5'}`}>
         {REQUIRED_FIELDS.map((f) => {
           const done = f.check(patient);
+          const displayValue = done && typeof f.value === 'function' ? f.value(patient) : null;
           const Tag = onFieldClick ? 'button' : 'span';
           return (
             <Tag
               key={f.key}
               {...(onFieldClick ? { onClick: () => onFieldClick(f), type: 'button' } : {})}
+              title={displayValue != null && displayValue !== '' ? String(displayValue) : undefined}
               className={`flex items-center gap-1 rounded-full font-bold border transition-all ${
                 compact ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2 py-1 font-medium'
               } ${
@@ -70,6 +72,11 @@ export default function CompletenessChips({
                 ? <CheckCircle2 className={compact ? 'w-2.5 h-2.5 shrink-0' : 'w-3 h-3 shrink-0'} />
                 : <X className={compact ? 'w-2.5 h-2.5 shrink-0' : 'w-3 h-3 shrink-0'} strokeWidth={3} />}
               {compact ? f.label_ar : `${f.label_ar} / ${f.label_en}`}
+              {done && displayValue != null && displayValue !== '' && (
+                <span className={`font-black tabular-nums ${compact ? 'text-teal-800' : 'text-teal-800 ms-0.5'}`}>
+                  {String(displayValue)}
+                </span>
+              )}
             </Tag>
           );
         })}

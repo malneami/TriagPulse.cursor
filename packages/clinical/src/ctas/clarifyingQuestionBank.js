@@ -223,7 +223,7 @@ export const CLARIFYING_QUESTION_BANK = [
     levels: [2, 3, 4],
     pathways: [
       'head_injury', 'multisystem_trauma_blunt', 'multisystem_trauma_penetrating',
-      'traumatic_back_spine', 'limb_pain', 'general',
+      'traumatic_back_spine',
     ],
     text_ar: 'هل الإصابة نتيجة آلية عالية الطاقة (سقوط عالٍ، تدهور، قذف، دهس)؟',
     text_en: 'Was there a high-energy mechanism (high fall, rollover, ejection, pedestrian struck)?',
@@ -234,6 +234,22 @@ export const CLARIFYING_QUESTION_BANK = [
       { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown', next: ['tr_loc'] },
     ],
     clinical_relevance: 'Trauma MOI upgrade',
+    root: true,
+  },
+  {
+    id: 'tr_moi_limb',
+    field: 'high_energy_mechanism',
+    levels: [2, 3, 4],
+    pathways: ['limb_pain', 'lower_extremity_injury', 'upper_extremity_injury'],
+    text_ar: 'هل الإصابة نتيجة آلية عالية الطاقة (سقوط عالٍ، تدهور، قذف، دهس)؟',
+    text_en: 'Was there a high-energy mechanism (high fall, rollover, ejection, pedestrian struck)?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', next: [], ctas_hint: 2 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No', next: [] },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown', next: [] },
+    ],
+    clinical_relevance: 'Limb trauma MOI',
     root: true,
   },
   {
@@ -256,7 +272,7 @@ export const CLARIFYING_QUESTION_BANK = [
     id: 'tr_weight',
     field: 'weight_bearing',
     levels: [3, 4, 5],
-    pathways: ['limb_pain', 'general'],
+    pathways: ['limb_pain', 'lower_extremity_injury', 'upper_extremity_injury'],
     text_ar: 'هل يستطيع تحمل وزنه على الطرف المصاب؟',
     text_en: 'Can the patient bear weight on the injured limb?',
     answer_type: 'yes_no',
@@ -272,7 +288,7 @@ export const CLARIFYING_QUESTION_BANK = [
     id: 'tr_deformity',
     field: 'swelling_deformity',
     levels: [3, 4, 5],
-    pathways: ['limb_pain', 'general'],
+    pathways: ['limb_pain', 'lower_extremity_injury', 'upper_extremity_injury'],
     text_ar: 'هل يوجد تورم أو تشوه ظاهر؟',
     text_en: 'Is there visible swelling or deformity?',
     answer_type: 'options',
@@ -306,15 +322,16 @@ export const CLARIFYING_QUESTION_BANK = [
     field: 'sirs_criteria_count',
     levels: [2, 3],
     pathways: ['fever', 'fever_unspecified'],
-    text_ar: 'هل يوجد تنفس سريع (>20) ونبض سريع (>90) معاً؟ (معايير SIRS)',
-    text_en: 'Both tachypnea (>20) AND tachycardia (>90)? (SIRS)',
+    text_ar: 'هل توجد ≥3 معايير SIRS معروفة (حرارة شاذة، نبض >90، تنفس >20، و/أو كريات بيض شاذة إن توفرت)؟',
+    text_en: 'Are ≥3 known SIRS criteria present (abnormal temp, HR>90, RR>20, and/or abnormal WBC if available)? Pulse and HR count as one.',
     answer_type: 'yes_no',
     options: [
-      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', next: [], ctas_hint: 2 },
+      // No direct ctas_hint — fever CTAS 2 requires full rule evaluation (immuno / ≥3 SIRS / compromise / RD / AMS)
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', next: [] },
       { value: 'لا', label_ar: 'لا', label_en: 'No', next: [] },
       { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown', next: [] },
     ],
-    clinical_relevance: 'Looks septic',
+    clinical_relevance: 'Feeds structured SIRS tally — does not auto-floor CTAS',
   },
   {
     id: 'fev_immuno',
@@ -346,6 +363,30 @@ export const CLARIFYING_QUESTION_BANK = [
       { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown', next: [] },
     ],
     clinical_relevance: 'Rigors',
+  },
+
+  // ── Symptom chronicity (injected when conversation-unclear; also in bank) ──
+  {
+    id: 'symptom_chronicity_baseline',
+    field: 'symptom_chronicity',
+    // Not level 1 — avoid stealing nearby-level bank fallback for CTAS 1 pathways
+    levels: [2, 3, 4, 5],
+    pathways: [
+      'general', 'fever', 'shortness_of_breath', 'general_weakness', 'headache',
+      'abdominal_pain', 'syncope', 'back_pain', 'urti_complaints', 'palpitations', 'hypertension',
+    ],
+    text_ar: 'هل هذا جديد أو مختلف عن خط الأساس المعتاد للمريض؟',
+    text_en: 'Is this new or different from the patient’s usual baseline?',
+    answer_type: 'multiple_choice',
+    options: [
+      { value: 'new', label_ar: 'جديد / لأول مرة', label_en: 'New / first time', next: [] },
+      { value: 'acute_on_chronic', label_ar: 'حاد على مزمن / تفاقم', label_en: 'Acute on chronic / flare', next: [] },
+      { value: 'worse_than_baseline', label_ar: 'أسوأ من المعتاد', label_en: 'Worse than usual baseline', next: [] },
+      { value: 'chronic_unchanged', label_ar: 'مزمن بدون تغير', label_en: 'Chronic unchanged / same as baseline', next: [] },
+      { value: 'uncertain', label_ar: 'غير واضح', label_en: 'Uncertain', next: [] },
+    ],
+    clinical_relevance: 'Chronic stable findings must not score as acute',
+    root: true,
   },
 
   // ── Headache / neuro ──────────────────────────────────────────────────────
@@ -400,21 +441,51 @@ export const CLARIFYING_QUESTION_BANK = [
 
 const byId = new Map(CLARIFYING_QUESTION_BANK.map((q) => [q.id, q]));
 
+/** CEDIS key synonyms used by bank + modifier pathway matching. */
+export const PATHWAY_KEY_ALIASES = {
+  vaginal_bleed: ['vaginal_bleeding'],
+  vaginal_bleeding: ['vaginal_bleed'],
+  blood_in_stools: ['gi_bleed'],
+  gi_bleed: ['blood_in_stools'],
+};
+
+/** True when two pathway keys are the same or listed aliases of each other. */
+export function pathwaysAreAliases(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const aliases = PATHWAY_KEY_ALIASES[a] || [];
+  return aliases.includes(b);
+}
+
 /** Normalize CEDIS pathway to family aliases used by Step-4 engine + bank matching. */
 export function normalizePathwayFamily(pathway = 'general') {
   const p = String(pathway || 'general');
-  if (p.startsWith('chest_pain') || p === 'palpitations' || p === 'cool_pulseless_limb') return 'chest_pain';
+  if (p.startsWith('chest_pain') || p === 'palpitations') return 'chest_pain';
   if (p.includes('stroke') || p === 'stroke_symptoms' || p === 'tia') return 'stroke_symptoms';
+  // Keep facial/ENT trauma out of head/limb trauma families
+  if (p === 'nasal_trauma' || p === 'ear_injury') return p;
   if (
-    p.includes('trauma') || p === 'head_injury' || p === 'traumatic_back_spine'
-    || p === 'sexual_assault' || p === 'limb_pain'
-  ) return 'trauma';
+    p === 'limb_pain'
+    || p === 'upper_extremity_injury'
+    || p === 'lower_extremity_injury'
+  ) return 'limb_trauma';
+  if (
+    p === 'head_injury'
+    || p === 'traumatic_back_spine'
+    || p === 'sexual_assault'
+    || p === 'multisystem_trauma_blunt'
+    || p === 'multisystem_trauma_penetrating'
+    || p === 'trauma'
+  ) return 'head_trauma';
   if (p.includes('headache') || p === 'migraine') return 'headache';
   if (p.includes('allerg') || p === 'anaphylaxis') return 'allergic_reaction';
   if (p.includes('fever') || p === 'urti_complaints') return 'fever';
   if (p.includes('abdominal') || p === 'flank_pain') return 'abdominal_pain';
-  if (p.includes('dyspnea') || p.includes('shortness') || p.includes('asthma')
-    || p.includes('copd') || p.includes('respirat')) return 'dyspnea';
+  if (
+    p.includes('dyspnea') || p.includes('shortness') || p.includes('asthma')
+    || p.includes('copd') || p.includes('respirat')
+    || p === 'wheezing' || p === 'stridor_resp'
+  ) return 'dyspnea';
   if (p === 'back_pain') return 'back_pain';
   return p || 'general';
 }
@@ -424,6 +495,7 @@ function matchesLevelAndPathway(q, level, pathway) {
   if (!q.levels?.includes(lvl)) return false;
   if (!q.pathways?.length) return true;
   if (q.pathways.includes(pathway)) return true;
+  if (q.pathways.some((p) => pathwaysAreAliases(p, pathway))) return true;
   const family = normalizePathwayFamily(pathway);
   return q.pathways.some((p) => normalizePathwayFamily(p) === family);
 }
@@ -491,23 +563,58 @@ export function resolveVisibleQuestions(bankSlice, answers = {}) {
     .map(toUiQuestion);
 }
 
+function sliceForLevelPathway(level, pathway) {
+  return CLARIFYING_QUESTION_BANK.filter((q) => matchesLevelAndPathway(q, level, pathway));
+}
+
+function sliceForPathwayAnyLevel(pathway) {
+  const path = pathway || 'general';
+  const family = normalizePathwayFamily(path);
+  return CLARIFYING_QUESTION_BANK.filter((q) => {
+    if (!q.pathways?.length) return false;
+    if (q.pathways.includes(path)) return true;
+    if (q.pathways.some((p) => pathwaysAreAliases(p, path))) return true;
+    return q.pathways.some((p) => normalizePathwayFamily(p) === family);
+  });
+}
+
 /**
  * Fetch clarifying questions for a modified CTAS level + pathway, resolved against answers.
+ * If the exact level has no bank coverage, tries nearby levels then any level for the pathway family
+ * so clarifying MCQs still appear after CTAS is built.
  * @param {{ level?: number, pathway?: string, answers?: Record<string, string> }} [opts]
  * @returns {{ questions: Array<{ id?: string, field: string, text_ar: string, text_en: string, answer_type: string, answer_options?: string[], clinical_relevance?: string, source?: string }>, source: 'bank'|'empty', level: number, pathway: string, bankIds: string[] }}
  */
 export function getClarifyingQuestions({ level, pathway, answers = {} } = {}) {
   const lvl = Number(level) || 5;
   const path = pathway || 'general';
-  const slice = CLARIFYING_QUESTION_BANK.filter((q) => matchesLevelAndPathway(q, lvl, path));
+  let slice = sliceForLevelPathway(lvl, path);
+  let resolvedLevel = lvl;
+
+  if (!slice.length) {
+    const nearby = [lvl - 1, lvl + 1, lvl - 2, lvl + 2].filter((l) => l >= 1 && l <= 5);
+    for (const tryLvl of nearby) {
+      slice = sliceForLevelPathway(tryLvl, path);
+      if (slice.length) {
+        resolvedLevel = tryLvl;
+        break;
+      }
+    }
+  }
+
+  if (!slice.length) {
+    slice = sliceForPathwayAnyLevel(path);
+    resolvedLevel = lvl;
+  }
+
   if (!slice.length) {
     return { questions: [], source: 'empty', level: lvl, pathway: path, bankIds: [] };
   }
   const questions = resolveVisibleQuestions(slice, answers);
   return {
     questions,
-    source: 'bank',
-    level: lvl,
+    source: questions.length ? 'bank' : 'empty',
+    level: resolvedLevel,
     pathway: path,
     bankIds: questions.map((q) => q.id).filter(Boolean),
   };
@@ -515,4 +622,43 @@ export function getClarifyingQuestions({ level, pathway, answers = {} } = {}) {
 
 export function getBankQuestionById(id) {
   return byId.get(id) || null;
+}
+
+/**
+ * Resolve CTAS acuity floors from clarifying answers whose options declare `ctas_hint`.
+ * Matches by field + option value/label across the full bank (any pathway/level).
+ * Acuity can only increase (lower CTAS number); callers apply Math.min.
+ *
+ * @param {Record<string, string>} [answers]
+ * @returns {{ hints: Array<{ field: string, value: string, ctas_hint: number, question_id?: string, text_ar: string, text_en: string }> }}
+ */
+export function resolveCtasHintsFromAnswers(answers = {}) {
+  const hints = [];
+  const seen = new Set();
+
+  for (const q of CLARIFYING_QUESTION_BANK) {
+    const ans = answers[q.field];
+    if (ans == null || ans === '') continue;
+    const opt = (q.options || []).find(
+      (o) => o.value === ans || o.label_ar === ans || o.label_en === ans,
+    );
+    if (!opt || opt.ctas_hint == null) continue;
+    const hint = Number(opt.ctas_hint);
+    if (!Number.isFinite(hint) || hint < 1 || hint > 5) continue;
+
+    const key = `${q.field}:${hint}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    hints.push({
+      field: q.field,
+      value: String(ans),
+      ctas_hint: hint,
+      question_id: q.id,
+      text_ar: q.text_ar || q.field,
+      text_en: q.text_en || q.field,
+    });
+  }
+
+  return { hints };
 }

@@ -41,7 +41,7 @@ async function bootstrap() {
   app.use(json({ limit: '8mb' }));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix('api');
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`TriagePulse API running on http://localhost:${port}/api`);
 }

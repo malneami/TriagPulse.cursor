@@ -1,5 +1,6 @@
 const NUMERIC_LIMITS: Record<string, { min: number; max: number; label: string }> = {
   age: { min: 0, max: 120, label: 'Age' },
+  weight: { min: 1, max: 300, label: 'Weight' },
   hr: { min: 20, max: 250, label: 'HR' },
   bp_systolic: { min: 40, max: 300, label: 'Systolic BP' },
   bp_diastolic: { min: 20, max: 200, label: 'Diastolic BP' },
@@ -10,17 +11,9 @@ const NUMERIC_LIMITS: Record<string, { min: number; max: number; label: string }
   pain_score: { min: 0, max: 10, label: 'Pain score' },
 };
 
+/** Minimal hard gate for Confirm Triage — blank vitals are treated as non-abnormal by the rules engine. */
 export const REQUIRED_TRIAGE_FIELDS = [
-  { key: 'patient_name_ar', label_ar: 'الاسم', label_en: 'Name', alt: 'patient_name_en' },
-  { key: 'age', label_ar: 'العمر', label_en: 'Age' },
   { key: 'chief_complaint', label_ar: 'الشكوى الرئيسية', label_en: 'Chief complaint' },
-  { key: 'pain_score', label_ar: 'درجة الألم', label_en: 'Pain score' },
-  { key: 'hr', label_ar: 'النبض', label_en: 'HR' },
-  { key: 'bp_systolic', label_ar: 'الضغط الانقباضي', label_en: 'SBP' },
-  { key: 'spo2', label_ar: 'الأكسجين', label_en: 'SpO₂' },
-  { key: 'rr', label_ar: 'معدل التنفس', label_en: 'RR' },
-  { key: 'temperature', label_ar: 'الحرارة', label_en: 'Temperature' },
-  { key: 'gcs', label_ar: 'مستوى الوعي', label_en: 'GCS' },
 ];
 
 function isBlank(value: unknown): boolean {
@@ -36,7 +29,7 @@ function toNumber(value: unknown): number | null {
 export function getMissingTriageFields(patient: Record<string, unknown>) {
   return REQUIRED_TRIAGE_FIELDS.filter((field) => {
     if ('alt' in field && field.alt) {
-      return isBlank(patient?.[field.key]) && isBlank(patient?.[field.alt]);
+      return isBlank(patient?.[field.key]) && isBlank(patient?.[field.alt as string]);
     }
     return isBlank(patient?.[field.key]);
   });

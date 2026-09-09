@@ -4,10 +4,7 @@ import { CTAS_REQUIRED_FIELDS, computeCtasCompleteness, type CtasFieldKey } from
 import { conservativeTranscriptCleanup } from './vocabulary';
 
 const FIELD_MENTION_PATTERNS: Record<CtasFieldKey, RegExp[]> = {
-  name: [
-    /(?:patient(?:\s+name)?|name is|اسم(?: المريض)?)/i,
-    /\bpatient\s+[A-Za-z\u0600-\u06FF]{2,}/i,
-  ],
+  weight: [/weight|وزن|الوزن|\b\d{1,3}(?:\.\d+)?\s*kg\b/i],
   age: [/age|عمر(?:ه|ها)?|years?\s*old|سنة/i, /\b\d{1,3}\s*(?:yo|y\/o)\b/i],
   chief_complaint: [
     /complaint|شكوى|كومبلين|presenting with/i,
@@ -23,7 +20,7 @@ const FIELD_MENTION_PATTERNS: Record<CtasFieldKey, RegExp[]> = {
 };
 
 const SUGGESTED_PHRASES: Record<CtasFieldKey, { en: string; ar: string }> = {
-  name: { en: 'Patient name is Ahmed', ar: 'اسم المريض أحمد' },
+  weight: { en: 'Weight seventy kilograms', ar: 'الوزن سبعون كيلوغرام' },
   age: { en: 'Age fifty five', ar: 'عمره خمسة وخمسين' },
   chief_complaint: { en: 'Chief complaint chest pain', ar: 'الشكوى ألم صدر' },
   pain_score: { en: 'Pain score seven out of ten', ar: 'درجة الألم سبعة من عشرة' },

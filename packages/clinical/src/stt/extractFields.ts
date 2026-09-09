@@ -1,5 +1,5 @@
 import { mapClinicalCodes } from './coding';
-import { matchComplaint } from '../ctas/ctasDatabase';
+import { matchComplaint } from '../ctas/resolveChiefComplaint';
 import { STT_FIELD_DEFINITIONS, STT_REQUIRED_KEYS } from './vocabulary';
 import { conservativeTranscriptCleanup, detectTranscriptLanguage, segmentTranscriptByLanguage } from './vocabulary';
 import type {
@@ -15,9 +15,10 @@ const ARABIC_DIGITS: Record<string, string> = {
 
 const ARABIC_NUMBERS: Record<string, number> = {
   'صفر': 0, 'واحد': 1, 'واحدة': 1, 'اثنين': 2, 'اثنان': 2, 'ثلاث': 3, 'ثلاثة': 3, 'أربع': 4, 'أربعة': 4,
+  'اربع': 4, 'اربعة': 4,
   'خمس': 5, 'خمسة': 5, 'ست': 6, 'ستة': 6, 'سبع': 7, 'سبعة': 7, 'ثمان': 8, 'ثمانية': 8, 'تسع': 9, 'تسعة': 9,
-  'عشر': 10, 'عشرة': 10, 'عشرين': 20, 'ثلاثين': 30, 'أربعين': 40, 'خمسين': 50, 'ستين': 60, 'سبعين': 70,
-  'ثمانين': 80, 'تسعين': 90, 'مئة': 100, 'مائة': 100,
+  'عشر': 10, 'عشرة': 10, 'عشرين': 20, 'ثلاثين': 30, 'أربعين': 40, 'اربعين': 40, 'خمسين': 50, 'ستين': 60, 'سبعين': 70,
+  'ثمانين': 80, 'تسعين': 90, 'مئة': 100, 'مائة': 100, 'ميه': 100, 'مية': 100,
 };
 
 const ENGLISH_NUMBERS: Record<string, number> = {
@@ -31,13 +32,31 @@ const ENGLISH_NUMBERS: Record<string, number> = {
 /** Word / Arabic-run / separator, so a rewrite can preserve everything in between. */
 const NUMBER_TOKEN_RE = /[A-Za-z]+|[؀-ۿ]+|[^A-Za-z؀-ۿ]+/g;
 
+/** ASR often drops / swaps Arabic hamza forms (أ/إ/آ → ا). */
+function normalizeArabicAlef(word: string): string {
+  return String(word).replace(/[أإآ]/g, 'ا');
+}
+
+function lookupArabicNumber(word: string): number | null {
+  if (ARABIC_NUMBERS[word] != null) return ARABIC_NUMBERS[word];
+  const folded = normalizeArabicAlef(word);
+  if (ARABIC_NUMBERS[folded] != null) return ARABIC_NUMBERS[folded];
+  // Prefer folded keys that were stored with hamza
+  for (const [k, v] of Object.entries(ARABIC_NUMBERS)) {
+    if (normalizeArabicAlef(k) === folded) return v;
+  }
+  return null;
+}
+
 function classifyNumberWord(word: string): { lang: 'en' | 'ar'; value: number } | null {
   const lower = word.toLowerCase();
   if (ENGLISH_NUMBERS[lower] != null) return { lang: 'en', value: ENGLISH_NUMBERS[lower] };
-  if (ARABIC_NUMBERS[word] != null) return { lang: 'ar', value: ARABIC_NUMBERS[word] };
-  // Arabic prefixes 'and' onto the following number: مئة وأربعين
-  if (word.startsWith('و') && ARABIC_NUMBERS[word.slice(1)] != null) {
-    return { lang: 'ar', value: ARABIC_NUMBERS[word.slice(1)] };
+  const ar = lookupArabicNumber(word);
+  if (ar != null) return { lang: 'ar', value: ar };
+  // Arabic prefixes 'and' onto the following number: مئة وأربعين / واربعين
+  if (word.startsWith('و')) {
+    const rest = lookupArabicNumber(word.slice(1));
+    if (rest != null) return { lang: 'ar', value: rest };
   }
   return null;
 }
@@ -120,46 +139,168 @@ function normalizeDigits(text: string): string {
 }
 
 function parseSpokenNumberWord(word: string): number | null {
-  const map: Record<string, number> = {
-    zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-    eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
-    twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
-    ...ARABIC_NUMBERS,
-  };
-  return map[String(word).toLowerCase()] ?? null;
+  const lower = String(word).toLowerCase();
+  if (ENGLISH_NUMBERS[lower] != null) return ENGLISH_NUMBERS[lower];
+  return lookupArabicNumber(word);
+}
+
+function clampAge(n: number | null | undefined): number | null {
+  if (n == null || !Number.isFinite(n)) return null;
+  if (n <= 0 || n > 130) return null;
+  return Math.round(n * 1000) / 1000;
+}
+
+/** Convert infant ages (months/weeks/days) to fractional years for getAgeGroup. */
+function parseAgeInSmallUnits(text: string): { value: number; span: string; confidence: number } | null {
+  const t = normalizeDigits(text);
+  const cue = '(?:\\bage\\b|العمر|عمر(?:ه|ها|ي)?)';
+  const fillers = '(?:المريض|patient|is|around|about|حوالي|تقريباً?|نحو)?';
+
+  // Arabic dual: شهرين / يومين / أسبوعين (= 2)
+  const dual = t.match(
+    new RegExp(`${cue}\\s*${fillers}\\s*(شهرين|شهران|يومين|يومان|أسبوعين|أسبوعان)`, 'i'),
+  );
+  if (dual) {
+    const unit = dual[1];
+    let years = 2 / 12;
+    if (/يوم/.test(unit)) years = 2 / 365;
+    else if (/أسبوع/.test(unit)) years = 2 / 52;
+    const val = clampAge(years);
+    if (val != null) return { value: val, span: dual[0], confidence: 0.93 };
+  }
+
+  // N + months/weeks/days (digits or spoken words)
+  const unitMatch = t.match(
+    new RegExp(
+      `${cue}\\s*${fillers}\\s*(\\d{1,3}|[a-z\\u0600-\\u06FF]+(?:\\s+(?:and|و)?\\s*[a-z\\u0600-\\u06FF]+)?)\\s*`
+      + `(months?|month|أشهر|شهور|شهر|weeks?|week|أسابيع|أسبوع|days?|day|أيام|يوم)`,
+      'i',
+    ),
+  )
+    || t.match(
+      /(\d{1,3})\s*(months?\s*old|weeks?\s*old|days?\s*old|أشهر|شهور|أسابيع|أيام)/i,
+    );
+  if (unitMatch) {
+    const raw = unitMatch[1].trim();
+    let amount = Number(raw);
+    if (!Number.isFinite(amount)) {
+      const parts = raw.split(/\s+/).filter((w) => !/^(and|و)$/i.test(w));
+      amount = 0;
+      for (const w of parts) {
+        const n = parseSpokenNumberWord(w);
+        if (n != null) amount += n;
+      }
+    }
+    // "شهر واحد" style already handled via word+شهر; bare "شهر" after cue = 1 month
+    if (!amount && /^(شهر|month)$/i.test(raw)) amount = 1;
+    const unit = unitMatch[2].toLowerCase();
+    let years = amount / 12;
+    if (/week|أسبوع/.test(unit)) years = amount / 52;
+    else if (/day|يوم|أيام/.test(unit)) years = amount / 365;
+    else if (/month|شهر|أشهر|شهور/.test(unit)) years = amount / 12;
+    const val = clampAge(years);
+    if (val != null && amount > 0) return { value: val, span: unitMatch[0], confidence: 0.93 };
+  }
+
+  // Bare dual / "شهر واحد" with age cue: عمره شهر، age one month
+  const oneMonth = t.match(
+    new RegExp(`${cue}\\s*${fillers}\\s*(?:one\\s+month|شهر(?:\\s*واحد)?|واحد\\s*شهر)`, 'i'),
+  );
+  if (oneMonth) {
+    const val = clampAge(1 / 12);
+    if (val != null) return { value: val, span: oneMonth[0], confidence: 0.92 };
+  }
+
+  return null;
+}
+
+function yearUnitFollows(text: string, matchIndex: number, matchLen: number): boolean {
+  const after = text.slice(matchIndex + matchLen, matchIndex + matchLen + 20);
+  return /^\s*(months?|month|أشهر|شهور|شهر|weeks?|week|أسابيع|أسبوع|days?|day|أيام|يوم)\b/i.test(after);
 }
 
 function parseSpokenAge(text: string): { value: number; span: string; confidence: number } | null {
   const t = normalizeDigits(text);
-  const digitMatch = t.match(/(?:age|عمر(?:ه|ها)?|سنة)\s*(?:is|around|about|حوالي)?\s*(\d{1,3})/i)
-    || t.match(/(?:^|[,\s])(\d{1,3})\s*(?:years?\s*old|year\s*old|y\/o|yo|سنة)\b/i);
-  if (digitMatch) return { value: Number(digitMatch[1]), span: digitMatch[0], confidence: 0.92 };
 
-  const mixedAge = t.match(/(?:age|عمر(?:ه|ها)?)\s+([a-z\u0600-\u06FF]+)/i)
-    || t.match(/(?:,\s*|\s)عمر(?:ه|ها)?\s+(\d{1,3}|\w+)/i);
-  if (mixedAge) {
-    const raw = mixedAge[1].trim();
-    const val = parseSpokenNumberWord(raw) ?? (Number.isFinite(Number(raw)) ? Number(raw) : null);
-    if (val != null && val > 0 && val <= 130) return { value: val, span: mixedAge[0], confidence: 0.87 };
+  // Infants first — "عمره شهرين", "age 2 months" (must beat bare "عمر 2")
+  const unitAge = parseAgeInSmallUnits(t);
+  if (unitAge) return unitAge;
+
+  // Cue + optional fillers + digits (years), reject if month/week/day unit follows
+  const digitRe = /(?:\bage\b|العمر|عمر(?:ه|ها|ي)?)\s*(?:المريض|patient|is|around|about|approx(?:imately)?|حوالي|تقريباً?|نحو)?\s*(?:is|around|about|حوالي|تقريباً?)?\s*(\d{1,3})/gi;
+  let digitMatch: RegExpExecArray | null;
+  while ((digitMatch = digitRe.exec(t)) != null) {
+    if (yearUnitFollows(t, digitMatch.index, digitMatch[0].length)) continue;
+    const val = clampAge(Number(digitMatch[1]));
+    if (val != null) return { value: val, span: digitMatch[0], confidence: 0.92 };
   }
 
-  const arWord = t.match(/(?:عمر(?:ه|ها)?)\s+([\u0600-\u06FF\s]+?)(?:\s+سنة|$)/i);
-  if (arWord) {
-    const words = arWord[1].trim().split(/\s+/);
+  const yearsOld = t.match(/(?:^|[,\s])(\d{1,3})\s*(?:years?\s*old|year\s*old|years?\s+of\s+age|y\/o|yo|سن[ةها])/i)
+    || t.match(/(?:حوالي|تقريباً?|نحو)\s*(\d{1,3})\s*سن[ةها]?/i)
+    || t.match(/سن[ةها]\s*(\d{1,3})/i);
+  if (yearsOld) {
+    const val = clampAge(Number(yearsOld[1]));
+    if (val != null) return { value: val, span: yearsOld[0], confidence: 0.92 };
+  }
+
+  // how old … fifty five / how old is he, 55
+  const howOld = t.match(/how\s+old[^.\n,]{0,40}?(?:,|\bis\b)?\s*(\d{1,3})\b/i);
+  if (howOld) {
+    const val = clampAge(Number(howOld[1]));
+    if (val != null) return { value: val, span: howOld[0], confidence: 0.86 };
+  }
+
+  // Cue + spoken number words (years): عمره اربعين / age fifty five — not followed by أشهر
+  const mixedAge = t.match(
+    /(?:\bage\b|العمر|عمر(?:ه|ها|ي)?)\s*(?:المريض|patient|is|around|about|حوالي|تقريباً?)?\s*([a-z\u0600-\u06FF]+(?:\s+(?:and|و)?\s*[a-z\u0600-\u06FF]+)?)/i,
+  );
+  if (mixedAge) {
+    const after = t.slice(mixedAge.index! + mixedAge[0].length, mixedAge.index! + mixedAge[0].length + 12);
+    if (!/^\s*(months?|أشهر|شهور|شهر|weeks?|days?|أسابيع|أيام)/i.test(after)
+      && !/شهرين|شهران|يومين|أسبوعين/i.test(mixedAge[1])) {
+      const raw = mixedAge[1].trim();
+      const parts = raw.split(/\s+/).filter((w) => !/^(and|و)$/i.test(w));
+      let total = 0;
+      let parsedAny = false;
+      for (const w of parts) {
+        const n = parseSpokenNumberWord(w);
+        if (n != null) {
+          total += n;
+          parsedAny = true;
+        }
+      }
+      const val = parsedAny ? clampAge(total) : clampAge(Number(raw));
+      if (val != null) return { value: val, span: mixedAge[0], confidence: 0.87 };
+    }
+  }
+
+  const arWord = t.match(/(?:العمر|عمر(?:ه|ها|ي)?)\s+([\u0600-\u06FF\s]+?)(?:\s+سن[ةها]|$)/i);
+  if (arWord && !/شهر|يوم|أسبوع|أشهر|أيام/.test(arWord[1])) {
+    const words = arWord[1].trim().split(/\s+/).filter((w) => !/^و$/.test(w));
     let total = 0;
     for (const w of words) {
       const n = parseSpokenNumberWord(w);
       if (n != null) total += n;
     }
-    if (total > 0 && total <= 130) return { value: total, span: arWord[0], confidence: 0.88 };
+    const val = clampAge(total);
+    if (val != null) return { value: val, span: arWord[0], confidence: 0.88 };
   }
 
-  const wordAge = t.match(/\b(fifty|sixty|seventy|eighty|ninety|forty|thirty|twenty|\d{1,3})\s*(?:years?\s*old|year\s*old|y\/o|yo)\b/i);
+  const wordAge = t.match(
+    /\b(fifty|sixty|seventy|eighty|ninety|forty|fourty|thirty|twenty|\d{1,3})(?:\s+(?:one|two|three|four|five|six|seven|eight|nine))?\s*(?:years?\s*old|year\s*old|years?\s+of\s+age|y\/o|yo)\b/i,
+  );
   if (wordAge) {
-    const val = parseSpokenNumberWord(wordAge[1]) ?? Number(wordAge[1]);
-    if (val > 0 && val <= 130) return { value: val, span: wordAge[0], confidence: 0.9 };
+    const head = parseSpokenNumberWord(wordAge[1]) ?? Number(wordAge[1]);
+    const restMatch = wordAge[0].match(/\b(one|two|three|four|five|six|seven|eight|nine)\b/i);
+    const rest = restMatch ? (parseSpokenNumberWord(restMatch[1]) || 0) : 0;
+    const val = clampAge(Number(head) + Number(rest));
+    if (val != null) return { value: val, span: wordAge[0], confidence: 0.9 };
   }
   return null;
+}
+
+function transcriptMentionsPain(text: string): boolean {
+  return /(?:\bpain\b|ألم|الألم|درجة\s*الألم|pain\s*score|\/\s*10|من\s*10|out of ten)/i.test(text);
 }
 
 function parseSex(text: string): { value: 'M' | 'F'; span: string; confidence: number } | null {
@@ -351,9 +492,14 @@ const SPO2_MAX = 100;
 
 const BP_LABEL = ['blood pressure', 'systolic', 'diastolic', '\\bb\\s?p\\b', 'ضغط الدم', 'الضغط', 'ضغط'].join('|');
 
+const WEIGHT_LABEL = [
+  'weight', 'body weight', 'wt',
+  'الوزن', 'وزن', 'كيلو', 'كيلوغرام',
+].join('|');
+
 /** Any vital label, used to detect a label sitting between another label and its number. */
 const ANY_VITAL_LABEL = new RegExp(
-  [HR_LABEL, RR_LABEL, TEMP_LABEL, GCS_LABEL, SPO2_LABEL, BP_LABEL].join('|'),
+  [HR_LABEL, RR_LABEL, TEMP_LABEL, GCS_LABEL, SPO2_LABEL, BP_LABEL, WEIGHT_LABEL].join('|'),
   'i',
 );
 
@@ -372,47 +518,96 @@ function bindsAcrossAnotherLabel(match: RegExpMatchArray, ownLabel: string): boo
   return ANY_VITAL_LABEL.test(gap);
 }
 
+/** Last labeled dictation wins so voice corrections replace earlier values. */
+function lastRegexMatch(
+  text: string,
+  patterns: RegExp[],
+  ownLabel?: string,
+): RegExpMatchArray | null {
+  let best: RegExpMatchArray | null = null;
+  let bestIndex = -1;
+  for (const re of patterns) {
+    const flags = re.flags.includes('g') ? re.flags : `${re.flags}g`;
+    const global = new RegExp(re.source, flags);
+    let m: RegExpExecArray | null;
+    while ((m = global.exec(text)) !== null) {
+      if (ownLabel && bindsAcrossAnotherLabel(m, ownLabel)) {
+        if (m[0].length === 0) global.lastIndex += 1;
+        continue;
+      }
+      if (m.index >= bestIndex) {
+        bestIndex = m.index;
+        best = m;
+      }
+      if (m[0].length === 0) global.lastIndex += 1;
+    }
+  }
+  return best;
+}
+
 function parseVitals(text: string): { value: VitalSignEntry[]; span: string; confidence: number } | null {
   const t = normalizeDigits(text);
-  const vitals: VitalSignEntry[] = [];
+  const byType = new Map<VitalSignEntry['type'], VitalSignEntry>();
   const spans: string[] = [];
-  const seen = new Set<string>();
 
   const add = (type: VitalSignEntry['type'], value: VitalSignEntry['value'], unit: string, span: string) => {
-    if (seen.has(type)) return;
-    seen.add(type);
-    vitals.push({ type, value, unit });
+    byType.set(type, { type, value, unit });
     spans.push(span);
   };
 
-  const hr = t.match(new RegExp(`(?:${HR_LABEL})[^\\d]{0,12}(\\d{2,3})`, 'i'))
-    || t.match(new RegExp(`(\\d{2,3})\\s*(?:bpm)?\\s*(?:${HR_LABEL})`, 'i'));
-  if (hr && !bindsAcrossAnotherLabel(hr, HR_LABEL)) add('HR', Number(hr[1]), 'bpm', hr[0]);
+  const hr = lastRegexMatch(t, [
+    new RegExp(`(?:${HR_LABEL})[^\\d]{0,12}(\\d{2,3})`, 'i'),
+    new RegExp(`(\\d{2,3})\\s*(?:bpm)?\\s*(?:${HR_LABEL})`, 'i'),
+  ], HR_LABEL);
+  if (hr) add('HR', Number(hr[1]), 'bpm', hr[0]);
 
-  const bp = t.match(/(?:bp|blood pressure|ضغط|الضغط)[^\d]{0,12}(\d{2,3})\s*(?:[\/\\]|over|على|on)\s*(\d{2,3})/i)
-    || t.match(/(\d{2,3})\s*(?:[\/\\]|over|على|on)\s*(\d{2,3})\s*(?:mmhg|mm hg|ضغط|bp)?/i);
+  const bp = lastRegexMatch(t, [
+    new RegExp(`(?:${BP_LABEL})[^\\d]{0,12}(\\d{2,3})\\s*(?:[\\/\\\\]|over|على|on)\\s*(\\d{2,3})`, 'i'),
+    /(\d{2,3})\s*(?:[\/\\]|over|على|on)\s*(\d{2,3})\s*(?:mmhg|mm hg|ضغط|bp)?/i,
+  ], BP_LABEL);
   if (bp) add('BP', `${bp[1]}/${bp[2]}`, 'mmHg', bp[0]);
 
   // 'oxygen 15 liters' is a flow rate, not a saturation — hence the range check.
-  const spo2 = t.match(new RegExp(`(?:${SPO2_LABEL})[^\\d]{0,8}(\\d{2,3})\\s*%?`, 'i'))
-    || t.match(/(\d{2,3})\s*%\s*(?:spo2|sat|oxygen|أكسجين)?/i);
-  if (spo2 && !bindsAcrossAnotherLabel(spo2, SPO2_LABEL)) {
+  const spo2 = lastRegexMatch(t, [
+    new RegExp(`(?:${SPO2_LABEL})[^\\d]{0,8}(\\d{2,3})\\s*%?`, 'i'),
+    /(\d{2,3})\s*%\s*(?:spo2|sat|oxygen|أكسجين)?/i,
+  ], SPO2_LABEL);
+  if (spo2) {
     const pct = Number(spo2[1]);
     if (pct >= SPO2_MIN && pct <= SPO2_MAX) add('SpO2', pct, '%', spo2[0]);
   }
 
-  const rr = t.match(new RegExp(`(?:${RR_LABEL})[^\\d]{0,8}(\\d{1,2})`, 'i'))
-    || t.match(/\brr\s*(\d{1,2})\b/i);
-  if (rr && !bindsAcrossAnotherLabel(rr, RR_LABEL)) add('RR', Number(rr[1]), '/min', rr[0]);
+  const rr = lastRegexMatch(t, [
+    new RegExp(`(?:${RR_LABEL})[^\\d]{0,8}(\\d{1,3})`, 'i'),
+    /\brr\s*(\d{1,3})\b/i,
+  ], RR_LABEL);
+  if (rr) {
+    const n = Number(rr[1]);
+    if (n >= 1 && n <= 120) add('RR', n, '/min', rr[0]);
+  }
 
-  const temp = t.match(new RegExp(`(?:${TEMP_LABEL})[^\\d]{0,8}(\\d{2}(?:\\.\\d)?)\\s*(?:c|celsius|°)?`, 'i'))
-    || t.match(/\btemp\s*(\d{2}(?:\.\d)?)\b/i);
-  if (temp && !bindsAcrossAnotherLabel(temp, TEMP_LABEL)) add('Temp', Number(temp[1]), '°C', temp[0]);
+  const temp = lastRegexMatch(t, [
+    new RegExp(`(?:${TEMP_LABEL})[^\\d]{0,8}(\\d{2}(?:\\.\\d)?)\\s*(?:c|celsius|°)?`, 'i'),
+    /\btemp\s*(\d{2}(?:\.\d)?)\b/i,
+  ], TEMP_LABEL);
+  if (temp) add('Temp', Number(temp[1]), '°C', temp[0]);
 
-  const gcs = t.match(new RegExp(`(?:${GCS_LABEL})[^\\d]{0,8}(\\d{1,2})`, 'i'))
-    || t.match(/\bgcs\s*(\d{1,2})\b/i);
-  if (gcs && !bindsAcrossAnotherLabel(gcs, GCS_LABEL)) add('GCS', Number(gcs[1]), '/15', gcs[0]);
+  const gcs = lastRegexMatch(t, [
+    new RegExp(`(?:${GCS_LABEL})[^\\d]{0,8}(\\d{1,2})`, 'i'),
+    /\bgcs\s*(\d{1,2})\b/i,
+  ], GCS_LABEL);
+  if (gcs) add('GCS', Number(gcs[1]), '/15', gcs[0]);
 
+  const weight = lastRegexMatch(t, [
+    new RegExp(`(?:${WEIGHT_LABEL})[^\\d]{0,12}(\\d{1,3}(?:\\.\\d+)?)\\s*(?:kg|kgs|kilograms?|كيلو(?:غرام)?)?`, 'i'),
+    /(\d{1,3}(?:\.\d+)?)\s*(?:kg|kgs|kilograms?|كيلو(?:غرام)?)/i,
+  ], WEIGHT_LABEL);
+  if (weight) {
+    const kg = Number(weight[1]);
+    if (Number.isFinite(kg) && kg >= 1 && kg <= 300) add('Weight', kg, 'kg', weight[0]);
+  }
+
+  const vitals = [...byType.values()];
   if (vitals.length === 0) return null;
   return { value: vitals, span: spans.join('; '), confidence: 0.88 };
 }
@@ -434,7 +629,34 @@ function isFilled(slot: SttFieldSlot): boolean {
   return true;
 }
 
-/** Overwrite only when new confidence is higher, or field empty, or user-edited preserved. */
+function isVitalSignArray(value: unknown): value is VitalSignEntry[] {
+  if (!Array.isArray(value)) return false;
+  if (value.length === 0) return true;
+  const first = value[0];
+  return !!first && typeof first === 'object' && 'type' in first;
+}
+
+/** Union vitals by type so incremental transcripts accumulate BP/SpO2/RR/Temp/GCS. */
+export function mergeVitalSignEntries(
+  current: VitalSignEntry[] | null | undefined,
+  incoming: VitalSignEntry[] | null | undefined,
+): VitalSignEntry[] {
+  const byType = new Map<VitalSignEntry['type'], VitalSignEntry>();
+  for (const v of current || []) {
+    if (v?.type) byType.set(v.type, v);
+  }
+  for (const v of incoming || []) {
+    if (v?.type) byType.set(v.type, v); // incoming overwrites same type
+  }
+  return [...byType.values()];
+}
+
+/**
+ * Overwrite when new confidence is higher, values differ (voice correction), field empty,
+ * or user-edited preserved only when value is unchanged.
+ * Special case: vital_signs arrays are union-merged by type so later chunks can add
+ * BP/SpO2/RR/Temp/GCS without losing HR already captured at equal confidence.
+ */
 export function mergeFieldSlot<T>(
   current: SttFieldSlot<T>,
   incoming: { value: T; confidence: number; source_span: string },
@@ -443,7 +665,20 @@ export function mergeFieldSlot<T>(
   if (!isFilled(current)) {
     return { value: incoming.value, confidence: incoming.confidence, source_span: incoming.source_span, edited_by_user: false };
   }
-  if (incoming.confidence > current.confidence) {
+
+  if (isVitalSignArray(current.value) && isVitalSignArray(incoming.value)) {
+    const merged = mergeVitalSignEntries(current.value, incoming.value);
+    const spans = [current.source_span, incoming.source_span].filter(Boolean);
+    return {
+      value: merged as T,
+      confidence: Math.max(current.confidence, incoming.confidence),
+      source_span: spans.join('; '),
+      edited_by_user: false,
+    };
+  }
+
+  const changed = JSON.stringify(current.value) !== JSON.stringify(incoming.value);
+  if (incoming.confidence > current.confidence || (changed && incoming.confidence >= current.confidence)) {
     return { value: incoming.value, confidence: incoming.confidence, source_span: incoming.source_span, edited_by_user: false };
   }
   return current;
@@ -667,19 +902,52 @@ export function mapSttSessionToPatientUpdates(fields: Record<SttFieldKey, SttFie
   if (fields.chief_complaint.value) set('chief_complaint', fields.chief_complaint.value, fields.chief_complaint.confidence);
   if (fields.pain_score.value != null) set('pain_score', fields.pain_score.value, fields.pain_score.confidence);
 
+  const coerceNum = (raw: unknown): string | number | null => {
+    if (raw == null || raw === '') return null;
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    const s = String(raw).trim().replace(/%/g, '');
+    const direct = Number(s);
+    if (Number.isFinite(direct)) return direct;
+    const spaced = s.replace(/ninetynine/gi, 'ninety nine').replace(/ninetyeight/gi, 'ninety eight');
+    const normalized = normalizeSpokenNumbers(spaced);
+    const n = Number(String(normalized).replace(/%/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+
   const vitals = fields.vital_signs.value as VitalSignEntry[] | null;
   if (Array.isArray(vitals)) {
     for (const v of vitals) {
       const conf = fields.vital_signs.confidence;
-      if (v.type === 'HR') set('hr', String(v.value), conf);
-      if (v.type === 'SpO2') set('spo2', String(v.value), conf);
-      if (v.type === 'RR') set('rr', String(v.value), conf);
-      if (v.type === 'Temp') set('temperature', String(v.value), conf);
-      if (v.type === 'GCS') set('gcs', String(v.value), conf);
+      if (v.type === 'HR') {
+        const n = coerceNum(v.value);
+        if (n != null) set('hr', String(n), conf);
+      }
+      if (v.type === 'SpO2') {
+        const n = coerceNum(v.value);
+        if (n != null) set('spo2', String(n), conf);
+      }
+      if (v.type === 'RR') {
+        const n = coerceNum(v.value);
+        if (n != null) set('rr', String(n), conf);
+      }
+      if (v.type === 'Temp') {
+        const n = coerceNum(v.value);
+        if (n != null) set('temperature', String(n), conf);
+      }
+      if (v.type === 'GCS') {
+        const n = coerceNum(v.value);
+        if (n != null) set('gcs', String(n), conf);
+      }
+      if (v.type === 'Weight') {
+        const n = coerceNum(v.value);
+        if (n != null) set('weight', n, conf);
+      }
       if (v.type === 'BP' && typeof v.value === 'string') {
-        const [sys, dia] = v.value.split('/');
-        if (sys) set('bp_systolic', sys, conf);
-        if (dia) set('bp_diastolic', dia, conf);
+        const parts = String(v.value).split('/');
+        const sys = coerceNum(parts[0]);
+        const dia = parts[1] != null ? coerceNum(parts[1]) : null;
+        if (sys != null) set('bp_systolic', String(sys), conf);
+        if (dia != null) set('bp_diastolic', String(dia), conf);
       }
     }
   }
@@ -701,6 +969,7 @@ export function clampConfidence(value: unknown, fallback = 0.65): number {
 export function mergeLlmExtractIntoFields(
   fields: Record<SttFieldKey, SttFieldSlot>,
   llm: import('./llmExtractSchema').LlmCtasExtractResult,
+  transcript = '',
 ): Record<SttFieldKey, SttFieldSlot> {
   const out = { ...fields };
   const cap = (n: number) => Math.min(0.85, Math.max(0, n || 0.75));
@@ -713,15 +982,28 @@ export function mergeLlmExtractIntoFields(
     out.name = mergeFieldSlot(out.name, { value: llm.patient_name_en, confidence: cap(conf.patient_name_en ?? 0.8), source_span: 'llm' });
   }
   if (llm.age) {
-    const ageNum = Number(String(llm.age).replace(/[^\d.]/g, ''));
-    if (ageNum > 0 && ageNum <= 130) {
-      out.age = mergeFieldSlot(out.age, { value: ageNum, confidence: cap(conf.age ?? 0.8), source_span: 'llm' });
+    const spoken = parseSpokenAge(String(llm.age))
+      || parseSpokenAge(`age ${llm.age}`)
+      || parseSpokenAge(`عمره ${llm.age}`);
+    if (spoken) {
+      out.age = mergeFieldSlot(out.age, { value: spoken.value, confidence: cap(conf.age ?? 0.8), source_span: 'llm' });
+    } else {
+      const ageNum = Number(String(llm.age).replace(/[^\d.]/g, ''));
+      if (ageNum > 0 && ageNum <= 130 && !/month|شهر|week|day|يوم|أسبوع/i.test(String(llm.age))) {
+        out.age = mergeFieldSlot(out.age, { value: ageNum, confidence: cap(conf.age ?? 0.8), source_span: 'llm' });
+      }
     }
   }
   if (llm.chief_complaint) {
     out.chief_complaint = mergeFieldSlot(out.chief_complaint, { value: llm.chief_complaint, confidence: cap(conf.chief_complaint ?? 0.8), source_span: 'llm' });
   }
-  if (llm.pain_score != null && llm.pain_score >= 0 && llm.pain_score <= 10) {
+  // Never invent pain — especially "0 / no pain" when the transcript never mentioned pain
+  if (
+    llm.pain_score != null
+    && llm.pain_score >= 0
+    && llm.pain_score <= 10
+    && transcriptMentionsPain(transcript)
+  ) {
     out.pain_score = mergeFieldSlot(out.pain_score, { value: llm.pain_score, confidence: cap(conf.pain_score ?? 0.8), source_span: 'llm' });
   }
 
