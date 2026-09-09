@@ -37,9 +37,12 @@ npm run dev
 
 ## GitHub Pages
 
-The frontend can be deployed as a static site via GitHub Actions (`.github/workflows/deploy-pages.yml`).
+The frontend deploys as a static site via GitHub Actions (`.github/workflows/deploy-pages.yml`) on every push to `main`.
 
-> **Note:** GitHub Pages hosts the **web UI only**. The NestJS API, PostgreSQL, and realtime STT require a separate backend host. Set repository secret `VITE_API_URL` (e.g. `https://your-api.example.com`) so the built UI can call a remote API.
+- **Live UI:** https://malneami.github.io/TriagPulse.cursor/
+- **Full deploy guide (API host checklist):** [docs/DEPLOY.md](docs/DEPLOY.md)
+
+> **Note:** GitHub Pages hosts the **web UI only**. The NestJS API, PostgreSQL, and realtime STT require a separate backend host. Set repository secret `VITE_API_URL` (e.g. `https://your-api.example.com`) so the built UI can call a remote API, then re-run the Pages workflow.
 
 ## Demo Users
 
