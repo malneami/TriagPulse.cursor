@@ -1,0 +1,101 @@
+name: CI
+
+# Runs on every pull request (and on demand): unit tests, builds, and an
+# end-to-end check of the real API against a throwaway Postgres.
+# Nothing is deployed; this only reports pass or fail on the PR.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Tests and builds
+    runs-on: ubuntu-latest
+    env:
+      # prisma generate needs these defined; no database is contacted in this job.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Clinical engine tests (CTAS + speech extraction)
+        run: npm run build --workspace=@triagepulse/clinical && npm test
+      - name: Build web app
+        run: npm run build --workspace=@triagepulse/web
+      - name: Production bundle has no demo credentials
+        run: |
+          if grep -rl "triage123\|triagepulse.local" apps/web/dist/assets/; then
+            echo "Demo credentials found in the production bundle"; exit 1
+          fi
+      - name: Build API
+        run: npm run build:api
+
+  e2e:
+    name: End-to-end API checks
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: triagepulse
+          POSTGRES_PASSWORD: triagepulse
+          POSTGRES_DB: triagepulse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U triagepulse -d triagepulse"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://triagepulse:triagepulse@localhost:5432/triagepulse
+      DIRECT_URL: postgresql://triagepulse:triagepulse@localhost:5432/triagepulse
+      PORT: '3001'
+      CORS_ORIGIN: http://localhost:5174
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Build API
+        run: npm run build:api
+      - name: Apply migrations and seed demo users
+        run: npm run db:migrate:deploy && npm run db:seed
+      - name: API refuses to start with a weak JWT secret
+        run: |
+          set +e
+          JWT_SECRET=short timeout 30 npm run start:api > weak.log 2>&1
+          code=$?
+          set -e
+          cat weak.log | tail -20
+          if [ "$code" -eq 0 ] || [ "$code" -eq 124 ]; then
+            echo "API started (or hung) with a weak secret; expected it to refuse"; exit 1
+          fi
+          grep -q "JWT_SECRET" weak.log
+      - name: Start API
+        run: |
+          export JWT_SECRET="$(openssl rand -base64 48)"
+          nohup npm run start:api > api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3001/api/health > /dev/null; then echo "API up"; exit 0; fi
+            sleep 2
+          done
+          echo "API did not start"; cat api.log; exit 1
+      - name: End-to-end checks
+        run: node scripts/e2e-api.mjs
+      - name: API log
+        if: always()
+        run: tail -100 api.log || true

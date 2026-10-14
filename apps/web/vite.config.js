@@ -29,6 +29,10 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5174,
     strictPort: true,
+    // GitHub Codespaces serves the dev server at https://<name>-5174.app.github.dev.
+    allowedHosts: ['localhost', '.app.github.dev'],
+    // Behind the Codespaces HTTPS proxy, hot reload must connect on port 443.
+    hmr: process.env.CODESPACES ? { clientPort: 443 } : undefined,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

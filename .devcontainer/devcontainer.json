@@ -1,0 +1,20 @@
+{
+  "name": "TriagePulse",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "forwardPorts": [5174],
+  "portsAttributes": {
+    "5174": { "label": "TriagePulse app", "onAutoForward": "openBrowser" },
+    "3001": { "label": "TriagePulse API", "onAutoForward": "silent" },
+    "5432": { "label": "Postgres", "onAutoForward": "ignore" }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postAttachCommand": "npm run dev",
+  "customizations": {
+    "vscode": {
+      "extensions": ["Prisma.prisma", "dbaeumer.vscode-eslint"]
+    }
+  },
+  "hostRequirements": { "cpus": 2, "memory": "4gb" }
+}
