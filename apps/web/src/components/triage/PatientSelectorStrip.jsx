@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/client';
 import { ChevronDown, X, Plus } from 'lucide-react';
 
 function waitMins(iso) {
@@ -14,7 +14,7 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
   const [patients, setPatients] = useState([]);
 
   useEffect(() => {
-    base44.entities.PatientJourney.list('-arrival_time', 100).then(all => {
+    api.journeys.listActive().then(all => {
       const cutoff = Date.now() - 12 * 60 * 60 * 1000;
       setPatients(all.filter(p =>
         new Date(p.arrival_time).getTime() > cutoff &&

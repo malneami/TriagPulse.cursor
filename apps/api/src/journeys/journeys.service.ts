@@ -129,10 +129,16 @@ export class JourneysService {
   }
 
   async updateStatus(id: string, status: JourneyStatus, user: { id: string; role: string }) {
-    await this.findOne(id, user);
+    const journey = await this.findOne(id, user);
+    // Stamp the CTAS start once, with server time, the first time triage begins.
+    // Re-opening the patient must not restart the triage clock.
+    const startingCtas = status === JourneyStatus.ctas_in_progress && !journey.ctasStartedAt;
     return this.prisma.patientJourney.update({
       where: { id },
-      data: { currentStatus: status },
+      data: {
+        currentStatus: status,
+        ...(startingCtas ? { ctasStartedAt: new Date() } : {}),
+      },
     });
   }
 }

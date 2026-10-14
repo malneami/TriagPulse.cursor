@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/client';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
 import { Stethoscope, Lock, Plus } from 'lucide-react';
@@ -81,13 +81,6 @@ const scrollToSection = (id) => {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
-function normalizeLLMResponse(result) {
-  if (typeof result === 'string') {
-    try { return JSON.parse(result); } catch { return { questions: [] }; }
-  }
-  return result || {};
-}
-
 export default function Triage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -134,7 +127,7 @@ export default function Triage() {
   };
   const { data: journeyList } = useQuery({
     queryKey: ['journey-ctas', urlPid],
-    queryFn: () => urlPid ? base44.entities.PatientJourney.filter({ patient_id: urlPid }) : Promise.resolve([]),
+    queryFn: () => api.journeys.findByPatientId(urlPid).then((j) => (j ? [j] : [])),
     enabled: !!urlPid,
   });
   const activeJourney = journeyList?.[0] || null;
@@ -169,12 +162,14 @@ export default function Triage() {
   // Persist CTAS start on journey — UI Triage Time starts only when Record is pressed
   useEffect(() => {
     if (!activeJourney?.id || activeJourney.ctas_started_at) return;
-    const startedAt = new Date().toISOString();
-    base44.entities.PatientJourney.update(activeJourney.id, {
-      ctas_started_at: startedAt,
-      current_status: 'ctas_in_progress',
-    }).catch((err) => console.error('Failed to mark CTAS start', err));
-    setPatient((prev) => ({ ...prev, ctas_started_at: startedAt }));
+    // The server stamps ctas_started_at once (server time); use its value so
+    // re-opening this patient never restarts the triage clock.
+    api.journeys.startCtas(activeJourney.id)
+      .then((j) => setPatient((prev) => ({ ...prev, ctas_started_at: j?.ctas_started_at || prev.ctas_started_at })))
+      .catch((err) => {
+        console.error('Failed to mark CTAS start', err);
+        toast.error('تعذّر تسجيل بدء الفرز — Could not record triage start');
+      });
   }, [activeJourney?.id, activeJourney?.ctas_started_at]);
 
   /** Start Triage Time when voice recording begins (once per patient). */
@@ -391,60 +386,27 @@ export default function Triage() {
     setUrgentAlert(null);
   };
 
-  const generateClarifyingQuestions = async (complaint) => {
+  /**
+   * Fallback clarifying questions when the modifier engine has none.
+   * Uses the local, versioned question bank (deterministic, works offline, and
+   * sends no patient text to an external AI service).
+   */
+  const generateClarifyingQuestions = (complaint) => {
     if (!complaint) return;
     setLoadingQuestions(true);
     setClarifyingAnswers({});
     try {
-      const confirmedFields = REQUIRED_FIELDS.filter((f) => f.check(patient)).map((f) => f.label_en);
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are a senior bilingual triage nurse assistant in a Saudi ED. Generate ONLY the minimum targeted follow-up questions needed for CTAS/CEDIS scoring. Use Arabic and English.
-
-Chief Complaint: "${complaint}"
-Patient Age: ${patient.age || 'unknown'}
-Already confirmed data (DO NOT ask about these): ${confirmedFields.length ? confirmedFields.join(', ') : 'none yet'}
-Selected complaint modifier: ${selectedModifier?.modifier || selectedModifier?.label_en || 'not selected'}
-
-Rules:
-- Ask only clinically required missing questions for the complaint, vital instability, pain, fever, bleeding, trauma, frailty, respiratory status, and altered consciousness.
-- Maximum 4 questions.
-- Handle pediatric patients (age <14) with pediatric phrasing.
-- Do not invent CTAS rules; return questions to support clinician-confirmed scoring.
-
-Return fields: field, question_ar, question_en, answer_type (yes_no|numeric|duration|multiple_choice), answer_options, why_needed_ar, why_needed_en`,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            questions: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  field: { type: 'string' }, question_ar: { type: 'string' }, question_en: { type: 'string' },
-                  answer_type: { type: 'string' }, answer_options: { type: 'array', items: { type: 'string' } },
-                  why_needed_ar: { type: 'string' }, why_needed_en: { type: 'string' }
-                }
-              }
-            }
-          }
-        }
-      });
-      const normalized = normalizeLLMResponse(result);
-      const mapped = (normalized.questions || []).slice(0, 4).map((q) => ({
-        text_ar: q.question_ar,
-        text_en: q.question_en,
-        answer_type: q.answer_type === 'multiple_choice' ? 'options' : q.answer_type === 'numeric' ? 'numeric' : q.answer_type,
-        answer_options: q.answer_options,
-        clinical_relevance: q.why_needed_en,
-        field: q.field,
-        source: 'llm',
-      }));
-      setClarifyingQuestions(mapped);
-      setClarifyingSource(mapped.length ? 'llm' : 'empty');
-      setClarifyingLevel(selectedModifier?.ctas || liveResult?.level || null);
+      const level = selectedModifier?.ctas
+        || complaintMatch?.complaint?.default_ctas
+        || liveResult?.level
+        || 5;
+      const pathway = pathwayKey
+        || complaintMatch?.complaintKey
+        || liveResult?.assessment_trail?.step2_complaint?.pathway
+        || 'general';
+      applyBankQuestions(level, pathway, {});
     } catch (err) {
       console.error(err);
-      toast.error('فشل إنشاء أسئلة المتابعة — ' + (err?.message || 'Question generation failed'));
       setClarifyingQuestions([]);
       setClarifyingSource('empty');
     } finally {
@@ -854,31 +816,30 @@ Return fields: field, question_ar, question_en, answer_type (yes_no|numeric|dura
           || (conversationLog ? conversationLog.slice(0, 500) : ''),
       };
 
-      const journeyUpdate = activeJourney ? {
-        ctas_level: finalLevel,
-        rules_recommended_ctas: ctasResult?.rules_recommended_ctas || ctasResult?.ctas_level,
-        ai_recommended_ctas: ctasResult?.ai_recommended_ctas || ctasResult?.ctas_level,
-        clinician_final_ctas: finalLevel,
-        ctas_reviewed_at: reviewedAt,
-        chief_complaint: patient.chief_complaint,
-        ctas_started_at: startedAt,
-        ctas_completed_at: now,
-        alert_triggered_at: firstAlert?.at || null,
-        alert_acknowledged_at: firstAck?.at || null,
-        alert_acknowledged_by: firstAck?.by || null,
-        incomplete_data_flags: validation.missing.map((f) => f.label_en).join(', '),
-        audit_trail: serializeAuditTrail(auditTrail),
-        current_status: 'complete',
-      } : null;
+      // A triage needs a journey. If CTAS was opened directly (not from Visual
+      // Triage), create the journey now so the save cannot fail on a missing id.
+      let journeyId = activeJourney?.id || null;
+      if (!journeyId) {
+        const ageNum = toNum(patient.age);
+        const created = await api.journeys.create({
+          patientNameAr: patient.patient_name_ar || undefined,
+          patientNameEn: patient.patient_name_en || undefined,
+          age: ageNum != null ? Math.round(ageNum) : undefined,
+          gender: ['male', 'female'].includes(patient.gender) ? patient.gender : undefined,
+          phone: patient.phone || undefined,
+        });
+        journeyId = created.id;
+      }
 
-      await base44.functions.invoke('saveTriageRecord', {
-        triage_record: triageRecord,
-        journey_id: activeJourney?.id || null,
-        journey_update: journeyUpdate,
+      // The server derives every journey field (status, CTAS levels, timestamps)
+      // from this record; the client no longer sends journey columns directly.
+      await api.triage.save({
+        journey_id: journeyId,
+        triage_record: { ...triageRecord, alert_acknowledged_by: firstAck?.by || null },
       });
       toast.success('تم حفظ سجل الفرز');
 
-      const allJourneys = await base44.entities.PatientJourney.list('-arrival_time', 50);
+      const allJourneys = await api.journeys.listActive();
       const cutoff = Date.now() - 12 * 60 * 60 * 1000;
       const waiting = allJourneys.filter(p =>
         p.patient_id !== urlPid &&

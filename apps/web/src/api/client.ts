@@ -66,19 +66,6 @@ function snakeToCamel(obj) {
   return obj;
 }
 
-function camelToSnake(obj) {
-  if (Array.isArray(obj)) return obj.map(camelToSnake);
-  if (obj && typeof obj === 'object' && obj.constructor === Object) {
-    return Object.fromEntries(
-      Object.entries(obj).map(([k, v]) => [
-        k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`),
-        camelToSnake(v),
-      ]),
-    );
-  }
-  return obj;
-}
-
 function mapJourney(j) {
   if (!j) return j;
   const statusMap = {
@@ -142,8 +129,9 @@ export const api = {
     me: () => request('/auth/me'),
   },
   journeys: {
+    // The API DTOs are camelCase; sending snake_case made the whitelist strip every field.
     create: (data) =>
-      request('/journeys', { method: 'POST', body: JSON.stringify(camelToSnake(data)) }).then(mapJourney),
+      request('/journeys', { method: 'POST', body: JSON.stringify(data) }).then(mapJourney),
     listActive: () => request('/journeys?status=active').then((list) => list.map(mapJourney)),
     get: (id) => request(`/journeys/${id}`).then(mapJourney),
     visualTriage: (id, data) =>
@@ -151,32 +139,29 @@ export const api = {
         journey: mapJourney(r.journey),
         destination: r.destination,
       })),
-    update: async (id, data) => {
-      if (data.current_status === 'ctas_in_progress') {
-        return request(`/journeys/${id}/status`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'ctas_in_progress' }),
-        }).then(mapJourney);
-      }
-      return mapJourney(data);
-    },
-    filter: async ({ patient_id }) => {
+    /** Server enum values: visual_triage | awaiting_ctas | ctas_in_progress | completed */
+    setStatus: (id, status) =>
+      request(`/journeys/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }).then(mapJourney),
+    /** Marks CTAS as started. The server stamps ctas_started_at once, with server time. */
+    startCtas: (id) =>
+      request(`/journeys/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'ctas_in_progress' }),
+      }).then(mapJourney),
+    findByPatientId: async (patientId) => {
+      if (!patientId) return null;
       const all = await request('/journeys?status=active');
-      return all.filter((j) => j.patientId === patient_id).map(mapJourney);
+      return mapJourney(all.find((j) => j.patientId === patientId)) || null;
     },
-    list: async () => request('/journeys?status=active').then((list) => list.map(mapJourney)),
   },
   triage: {
     evaluate: (patient, answers = {}) =>
       request('/triage/evaluate', { method: 'POST', body: JSON.stringify({ patient, answers }) }),
-    save: (payload) =>
+    // The server derives every journey field it updates from the triage record.
+    save: ({ journey_id, triage_record }) =>
       request('/triage/save', {
         method: 'POST',
-        body: JSON.stringify({
-          journeyId: payload.journey_id,
-          triageRecord: payload.triage_record,
-          journeyUpdate: payload.journey_update,
-        }),
+        body: JSON.stringify({ journeyId: journey_id, triageRecord: triage_record }),
       }),
   },
   clinicalLibraries: {
@@ -219,42 +204,5 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ sessionId, fieldKey, value }),
       }),
-  },
-};
-
-export const legacyBase44 = {
-  auth: {
-    me: () => api.auth.me().then((u) => ({ ...u, full_name: u.full_name })),
-    logout: () => { setToken(null); window.location.href = appHref('/login'); },
-  },
-  entities: {
-    PatientJourney: {
-      create: (data) => api.journeys.create(data),
-      update: (id, data) => api.journeys.update(id, data),
-      filter: (query) => api.journeys.filter(query),
-      list: () => api.journeys.list(),
-      subscribe: (cb) => {
-        const interval = setInterval(async () => {
-          try { cb(await api.journeys.listActive()); } catch { /* ignore */ }
-        }, 15000);
-        return () => clearInterval(interval);
-      },
-    },
-    TriageRecord: {
-      list: () => Promise.resolve([]),
-      filter: () => Promise.resolve([]),
-    },
-  },
-  functions: {
-    invoke: (name, payload) => {
-      if (name === 'saveTriageRecord') return api.triage.save(payload);
-      throw new Error(`Unknown function: ${name}`);
-    },
-  },
-  integrations: {
-    Core: {
-      InvokeLLM: () => Promise.reject(new Error('AI extraction is not available')),
-      UploadFile: () => Promise.reject(new Error('File upload not available in MVP')),
-    },
   },
 };

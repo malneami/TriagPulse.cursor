@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/lib/AuthContext';
+import { useAuth, LOGOUT_REASON_KEY } from '@/lib/AuthContext';
 import { toast } from 'sonner';
 
 const API_BASE = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
@@ -25,6 +25,16 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [apiOnline, setApiOnline] = useState(null);
+
+  // Explain an automatic sign-out (idle lock) once, then forget it.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(LOGOUT_REASON_KEY) === 'idle') {
+        toast.info('تم تسجيل الخروج تلقائياً لعدم النشاط — You were signed out after a period of inactivity');
+      }
+      sessionStorage.removeItem(LOGOUT_REASON_KEY);
+    } catch { /* storage unavailable */ }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

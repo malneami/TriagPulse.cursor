@@ -12,7 +12,7 @@ export default function RoleGuard({ permission, children, fallback = null }) {
       <p className="font-black text-base">غير مصرح — Access denied</p>
       <p className="mt-1">Your current role is <span className="font-bold">{ROLE_LABELS[role] || role}</span>.</p>
       <p className="mt-1 text-red-600">This page requires permission: <span className="font-mono">{permission}</span>.</p>
-      <p className="mt-3 text-xs text-red-500">Ask an admin to update your clinical role in Base44 user settings if this access is required.</p>
+      <p className="mt-3 text-xs text-red-500">اطلب من مسؤول TriagePulse تحديث دورك — Ask a TriagePulse admin to update your role if you need this access.</p>
     </div>
   );
 }
