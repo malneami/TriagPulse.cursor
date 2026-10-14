@@ -26,7 +26,9 @@ export default defineConfig({
     },
   },
   server: {
-    host: '0.0.0.0',
+    // true = every address, IPv4 and IPv6. '0.0.0.0' was IPv4-only, which made
+    // GitHub Codespaces port forwarding (it connects over IPv6) return 502.
+    host: true,
     port: 5174,
     strictPort: true,
     // GitHub Codespaces serves the dev server at https://<name>-5174.app.github.dev.
