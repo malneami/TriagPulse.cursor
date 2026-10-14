@@ -6,17 +6,29 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Namespace, Server, Socket } from 'socket.io';
 import { SttService } from './stt.service';
 import { SttRealtimeService } from './stt-realtime.service';
+import { WsAuthService } from '../auth/ws-auth.service';
 
+/**
+ * Live speech-to-text channel.
+ *
+ * Security model:
+ * - Every connection must present a valid JWT (handshake `auth.token`) for a
+ *   user with `perform_triage`. The check runs as handshake middleware, so a
+ *   refused client never connects and never receives an event.
+ * - A socket may only join, stream to, or stop a session it created
+ *   (SttService.isOwner). Rooms are therefore private to the session owner.
+ */
 @WebSocketGateway({
-  cors: { origin: process.env.CORS_ORIGIN || 'http://localhost:5173' },
+  cors: { origin: process.env.CORS_ORIGIN || 'http://localhost:5174' },
   namespace: '/stt',
   maxHttpBufferSize: 5e6,
 })
-export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class SttGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
@@ -25,7 +37,12 @@ export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private sttService: SttService,
     private realtimeService: SttRealtimeService,
+    private wsAuth: WsAuthService,
   ) {}
+
+  afterInit(namespace: Namespace) {
+    namespace.use(this.wsAuth.middleware('perform_triage'));
+  }
 
   handleConnection(client: Socket) {
     client.emit('stt_ready', {
@@ -44,13 +61,24 @@ export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /** Returns true when the socket's user owns the session; emits an error otherwise. */
+  private ownsSession(client: Socket, sessionId: string | undefined): sessionId is string {
+    const user = this.wsAuth.userOf(client);
+    if (user && this.sttService.isOwner(sessionId, user.id)) return true;
+    client.emit('stt_error', { message: 'Session not found' });
+    return false;
+  }
+
+  private bind(client: Socket, sessionId: string) {
+    client.join(sessionId);
+    this.clientSessions.set(client.id, sessionId);
+  }
+
   @SubscribeMessage('join_session')
   handleJoin(@ConnectedSocket() client: Socket, @MessageBody() data: { sessionId: string }) {
-    if (data?.sessionId) {
-      client.join(data.sessionId);
-      this.clientSessions.set(client.id, data.sessionId);
-    }
-    client.emit('session_joined', { sessionId: data?.sessionId });
+    if (!this.ownsSession(client, data?.sessionId)) return;
+    this.bind(client, data.sessionId);
+    client.emit('session_joined', { sessionId: data.sessionId });
   }
 
   @SubscribeMessage('realtime_start')
@@ -58,21 +86,17 @@ export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string },
   ) {
-    if (!data?.sessionId) return;
-    client.join(data.sessionId);
-    this.clientSessions.set(client.id, data.sessionId);
+    if (!this.ownsSession(client, data?.sessionId)) return;
+    this.bind(client, data.sessionId);
     try {
       await this.realtimeService.startSession(data.sessionId, (event, payload) => {
         this.server.to(data.sessionId).emit(event, payload);
         if (event === 'stt_error') client.emit(event, payload);
       });
       client.emit('realtime_ack', { ok: true, sessionId: data.sessionId });
-    } catch (err) {
-      const message = (err as Error).message || 'Failed to start Realtime STT';
-      client.emit('stt_error', {
-        message,
-        realtime: true,
-      });
+    } catch {
+      const message = 'Failed to start live transcription';
+      client.emit('stt_error', { message, realtime: true });
       client.emit('realtime_ack', { ok: false, sessionId: data.sessionId, message });
     }
   }
@@ -83,7 +107,7 @@ export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: { sessionId: string; audioBase64?: string; audio?: string },
   ) {
     const audio = data?.audioBase64 || data?.audio;
-    if (!data?.sessionId || !audio) return;
+    if (!audio || !this.ownsSession(client, data?.sessionId)) return;
     this.realtimeService.appendPcm(data.sessionId, audio);
     client.emit('pcm_ack', { ok: true, bytes: audio.length });
   }
@@ -93,7 +117,7 @@ export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string },
   ) {
-    if (!data?.sessionId) return;
+    if (!this.ownsSession(client, data?.sessionId)) return;
     await this.realtimeService.stopSession(data.sessionId);
     client.emit('realtime_stopped', { sessionId: data.sessionId });
   }
@@ -103,7 +127,7 @@ export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string; text: string; isFinal?: boolean },
   ) {
-    if (!data?.sessionId || !data?.text) return;
+    if (!data?.text || !this.ownsSession(client, data?.sessionId)) return;
     const output = data.isFinal
       ? await this.sttService.appendTranscriptAsync(data.sessionId, data.text, true)
       : this.sttService.appendTranscript(data.sessionId, data.text, false);
@@ -121,7 +145,7 @@ export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
       languageHint?: 'en' | 'ar' | 'mixed';
     },
   ) {
-    if (!data?.sessionId || !data?.audioBase64) return;
+    if (!data?.audioBase64 || !this.ownsSession(client, data?.sessionId)) return;
     try {
       const result = await this.sttService.transcribeAudio(
         data.audioBase64,
@@ -134,8 +158,8 @@ export class SttGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(data.sessionId).emit('extraction_update', output);
       }
       client.emit('audio_ack', { ok: true });
-    } catch (err) {
-      client.emit('stt_error', { message: (err as Error).message || 'STT failed' });
+    } catch {
+      client.emit('stt_error', { message: 'Transcription failed' });
     }
   }
 }

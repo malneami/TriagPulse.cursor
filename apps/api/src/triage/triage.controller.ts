@@ -1,6 +1,6 @@
 import { Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsObject, IsOptional, IsUUID } from 'class-validator';
 import { TriageService } from './triage.service';
 import { RolesGuard, RequirePermission } from '../auth/roles.guard';
 
@@ -12,7 +12,6 @@ class EvaluateDto {
 class SaveTriageDto {
   @IsUUID() journeyId: string;
   @IsObject() triageRecord: Record<string, unknown>;
-  @IsOptional() @IsObject() journeyUpdate?: Record<string, unknown>;
 }
 
 @Controller('triage')

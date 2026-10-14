@@ -30,6 +30,10 @@ class VisualTriageDto {
   @IsOptional() @IsInt() vtDurationSec?: number;
 }
 
+class UpdateStatusDto {
+  @IsEnum(JourneyStatus) status: JourneyStatus;
+}
+
 @Controller('journeys')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class JourneysController {
@@ -68,9 +72,9 @@ export class JourneysController {
   @RequirePermission('perform_triage')
   updateStatus(
     @Param('id') id: string,
-    @Body('status') status: JourneyStatus,
+    @Body() dto: UpdateStatusDto,
     @Request() req: { user: { id: string; role: string } },
   ) {
-    return this.journeysService.updateStatus(id, status, req.user);
+    return this.journeysService.updateStatus(id, dto.status, req.user);
   }
 }

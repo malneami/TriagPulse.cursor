@@ -1,6 +1,6 @@
 import {
   Body, Controller, Get, Post, Request, UseGuards,
-  BadRequestException, ServiceUnavailableException,
+  BadRequestException, NotFoundException, ServiceUnavailableException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
@@ -41,6 +41,13 @@ export class SttController {
     private auditService: AuditService,
   ) {}
 
+  /** A clinician may only use STT sessions they created. Same 404 whether missing or foreign. */
+  private requireOwnSession(sessionId: string | undefined, userId: string) {
+    if (!this.sttService.isOwner(sessionId, userId)) {
+      throw new NotFoundException('STT session not found');
+    }
+  }
+
   @Get('status')
   @RequirePermission('perform_triage')
   status() {
@@ -63,7 +70,8 @@ export class SttController {
 
   @Post('extract')
   @RequirePermission('perform_triage')
-  async extract(@Body() dto: ExtractDto) {
+  async extract(@Body() dto: ExtractDto, @Request() req: { user: { id: string } }) {
+    this.requireOwnSession(dto.sessionId, req.user.id);
     if (dto.isFinal) {
       return this.sttService.extractFromTranscript(dto.sessionId, dto.transcript, true, !!dto.forceLlm);
     }
@@ -78,6 +86,7 @@ export class SttController {
   ) {
     // A missing server key is not a bad request. Returning 400 made a deployment
     // misconfiguration look like a client bug and hid it from the clinician.
+    if (dto.sessionId) this.requireOwnSession(dto.sessionId, req.user.id);
     if (!this.sttService.isConfigured()) {
       throw new ServiceUnavailableException(
         'Server-side STT is not configured (OPENAI_API_KEY missing) — using browser speech + manual entry',
@@ -98,14 +107,16 @@ export class SttController {
         return { ...result, session: sessionOutput };
       }
       return result;
-    } catch (err) {
-      throw new BadRequestException((err as Error).message || 'Transcription failed');
+    } catch {
+      // Do not echo upstream (OpenAI) error text to the client.
+      throw new BadRequestException('Transcription failed');
     }
   }
 
   @Post('field')
   @RequirePermission('perform_triage')
-  updateField(@Body() dto: UpdateFieldDto) {
+  updateField(@Body() dto: UpdateFieldDto, @Request() req: { user: { id: string } }) {
+    this.requireOwnSession(dto.sessionId, req.user.id);
     return this.sttService.updateField(dto.sessionId, dto.fieldKey as SttFieldKey, dto.value);
   }
 }

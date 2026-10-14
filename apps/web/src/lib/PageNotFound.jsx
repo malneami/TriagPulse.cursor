@@ -1,24 +1,15 @@
 import { useLocation } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/lib/AuthContext';
 
 
 export default function PageNotFound({}) {
     const location = useLocation();
     const pageName = location.pathname.substring(1);
 
-    const { data: authData, isFetched } = useQuery({
-        queryKey: ['user'],
-        queryFn: async () => {
-            try {
-                const user = await base44.auth.me();
-                return { user, isAuthenticated: true };
-            } catch (error) {
-                return { user: null, isAuthenticated: false };
-            }
-        }
-    });
-    
+    const { user, isAuthenticated, isLoadingAuth } = useAuth();
+    const authData = { user, isAuthenticated };
+    const isFetched = !isLoadingAuth;
+
     return (
         <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
             <div className="max-w-md w-full">

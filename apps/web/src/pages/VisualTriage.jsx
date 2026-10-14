@@ -20,6 +20,16 @@ const SECTION_A_LABELS = {
   mobility:     { red: 'لا يستطيع المشي / Cannot walk' },
 };
 
+/**
+ * The API stores age as whole years. Send completed years (floor), keep 0 for
+ * newborns (the old `|| undefined` dropped it), and omit blank or invalid input.
+ */
+function ageInCompletedYears(value) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.floor(n);
+}
+
 export default function VisualTriage() {
   const navigate = useNavigate();
   const startRef = useRef(Date.now());
@@ -92,7 +102,7 @@ export default function VisualTriage() {
       const created = await api.journeys.create({
         patientNameAr: patientNameAr || undefined,
         patientNameEn: patientNameEn || undefined,
-        age: parseFloat(patientAge) || undefined,
+        age: ageInCompletedYears(patientAge),
       });
 
       const { journey, destination: serverDest } = await api.journeys.visualTriage(created.id, {
@@ -101,7 +111,7 @@ export default function VisualTriage() {
         monkeypoxRisk: mpoxRisk,
         patientNameAr: patientNameAr || undefined,
         patientNameEn: patientNameEn || undefined,
-        age: parseFloat(patientAge) || undefined,
+        age: ageInCompletedYears(patientAge),
         vtDurationSec: elapsedSec,
         maskGiven: dest.infectious_protocol || infectiousScore >= 2,
         handHygieneDone: infectiousScore >= 2,

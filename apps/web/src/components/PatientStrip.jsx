@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/client';
 import { User, Hash } from 'lucide-react';
 
 export default function PatientStrip() {
@@ -11,8 +11,8 @@ export default function PatientStrip() {
 
   useEffect(() => {
     if (!pid) { setPatient(null); return; }
-    base44.entities.PatientJourney.filter({ patient_id: pid })
-      .then(list => setPatient(list?.[0] || null))
+    api.journeys.findByPatientId(pid)
+      .then((j) => setPatient(j || null))
       .catch(() => setPatient(null));
   }, [pid]);
 

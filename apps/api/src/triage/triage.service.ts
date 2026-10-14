@@ -22,7 +22,6 @@ export class TriageService {
     data: {
       journeyId: string;
       triageRecord: Record<string, unknown>;
-      journeyUpdate?: Record<string, unknown>;
     },
     user: { id: string; full_name?: string; email?: string },
   ) {
@@ -121,7 +120,10 @@ export class TriageService {
           chiefComplaint: record.chief_complaint as string | undefined,
           alertAcknowledgedAt: record.alert_acknowledged_at ? new Date(record.alert_acknowledged_at as string) : undefined,
           alertAcknowledgedBy: record.alert_acknowledged_by as string | undefined ?? clinicianName,
-          ...(data.journeyUpdate || {}),
+          ctasReviewedAt: new Date(),
+          incompleteDataFlags: (record.missing_fields as object | string | undefined) ?? undefined,
+          // Only these server-derived fields are written to the journey. The client can
+          // no longer send arbitrary journey columns (mass-assignment fix, review B3).
         },
       });
 

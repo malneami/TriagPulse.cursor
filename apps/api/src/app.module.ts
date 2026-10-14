@@ -9,6 +9,7 @@ import { SttModule } from './stt/stt.module';
 import { ClinicalLibrariesModule } from './clinical-libraries/clinical-libraries.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { HealthController } from './health.controller';
+import { validateEnv } from './auth/jwt-config';
 
 /**
  * Resolved relative to process.cwd() (apps/api under `nest start`).
@@ -21,6 +22,8 @@ export const ENV_FILE_PATHS = ['../../.env', '.env'];
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ENV_FILE_PATHS,
+      // Fail at boot on a missing/weak JWT_SECRET or missing production CORS_ORIGIN.
+      validate: validateEnv,
     }),
     PrismaModule,
     AuthModule,

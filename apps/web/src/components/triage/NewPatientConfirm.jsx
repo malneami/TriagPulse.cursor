@@ -1,16 +1,21 @@
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
+import { api } from '@/api/client';
 
 export default function NewPatientConfirm({ currentPid, currentName, onCancel }) {
   const navigate = useNavigate();
 
   const handleSaveAndNew = async () => {
     if (currentPid) {
-      // Find and update the journey status to in_progress so it stays on board
-      const list = await base44.entities.PatientJourney.filter({ patient_id: currentPid });
-      if (list?.[0]) {
-        await base44.entities.PatientJourney.update(list[0].id, { current_status: 'ctas_in_progress' });
+      // Keep the current patient on the board as "CTAS in progress".
+      try {
+        const journey = await api.journeys.findByPatientId(currentPid);
+        if (journey) await api.journeys.startCtas(journey.id);
+      } catch (err) {
+        console.error(err);
+        toast.error('تعذّر تحديث حالة المريض — Could not update patient status');
+        return;
       }
     }
     navigate('/visual-triage');
