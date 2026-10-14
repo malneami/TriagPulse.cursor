@@ -5,20 +5,26 @@ import { toast } from 'sonner';
 
 const API_BASE = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
+// Demo accounts exist only in local development databases (seed refuses
+// NODE_ENV=production). Never show or pre-fill them in a production build.
+const SHOW_DEMO = import.meta.env.DEV;
+const DEMO_PASSWORD = 'triage123';
+const DEMO_ACCOUNTS = SHOW_DEMO
+  ? [
+      { role: 'Nurse', email: 'nurse@triagepulse.local', note: 'Bedside triage' },
+      { role: 'Physician', email: 'physician@triagepulse.local', note: 'AI Eval + Stats' },
+      { role: 'Admin', email: 'admin@triagepulse.local', note: 'AI Eval + Libraries' },
+    ]
+  : [];
+
 export default function Login() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('nurse@triagepulse.local');
-  const [password, setPassword] = useState('triage123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [apiOnline, setApiOnline] = useState(null);
-
-  const DEMO_ACCOUNTS = [
-    { role: 'Nurse', email: 'nurse@triagepulse.local', note: 'Bedside triage' },
-    { role: 'Physician', email: 'physician@triagepulse.local', note: 'AI Eval + Stats' },
-    { role: 'Admin', email: 'admin@triagepulse.local', note: 'AI Eval + Libraries' },
-  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -132,14 +138,15 @@ export default function Login() {
         >
           {loading ? '...' : 'تسجيل الدخول / Login'}
         </button>
+        {SHOW_DEMO && (
         <div className="pt-1 space-y-2">
-          <p className="text-xs text-slate-500 text-center font-bold">Demo accounts (password: triage123)</p>
+          <p className="text-xs text-slate-500 text-center font-bold">Local demo accounts (development only)</p>
           <div className="grid grid-cols-3 gap-2">
             {DEMO_ACCOUNTS.map((a) => (
               <button
                 key={a.email}
                 type="button"
-                onClick={() => { setEmail(a.email); setPassword('triage123'); }}
+                onClick={() => { setEmail(a.email); setPassword(DEMO_PASSWORD); }}
                 className={`rounded-xl border px-2 py-2 text-[11px] text-center transition-colors ${
                   email === a.email
                     ? 'border-teal-500 bg-teal-50 text-teal-900'
@@ -155,6 +162,7 @@ export default function Login() {
             AI Evaluation nav appears for Physician / Admin only
           </p>
         </div>
+        )}
       </form>
     </div>
   );

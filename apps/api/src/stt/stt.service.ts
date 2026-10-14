@@ -75,6 +75,16 @@ export class SttService {
     return this.sessions.get(sessionId);
   }
 
+  /**
+   * True only when the session exists and was created by this user.
+   * Every REST and WebSocket entry point checks this before touching a session,
+   * so one clinician cannot read or write another clinician's transcript.
+   */
+  isOwner(sessionId: string | undefined, userId: string | undefined): boolean {
+    if (!sessionId || !userId) return false;
+    return this.sessions.get(sessionId)?.userId === userId;
+  }
+
   extractFieldsHybrid(
     sessionId: string,
     transcript: string,

@@ -10,7 +10,8 @@
     "db:migrate:deploy": "prisma migrate deploy --schema=../../prisma/schema.prisma",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio --schema=../../prisma/schema.prisma",
-    "db:generate": "prisma generate --schema=../../prisma/schema.prisma"
+    "db:generate": "prisma generate --schema=../../prisma/schema.prisma",
+    "admin:create": "tsx prisma/create-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.12",
