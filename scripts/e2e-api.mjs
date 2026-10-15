@@ -182,6 +182,8 @@ const saved = await call('/triage/save', {
     triageRecord: {
       ctas_level: 4, clinician_final_ctas: 4, chief_complaint: 'Back Pain', missing_fields: '',
       disposition: 'FM_IM | Family Medicine & Internal Medicine',
+      // Sex not captured and a vital typed as text must not fail the save.
+      gender: '', hr: '88',
     },
     // An attacker-style extra field: must be ignored, not written to the journey (review B3).
     journeyUpdate: { createdById: 'someone-else', arrivalTime: '2000-01-01T00:00:00.000Z' },

@@ -817,6 +817,7 @@ export default function Triage() {
       // server-side by the saveTriageRecord function — they are NOT sent from the client.
       const triageRecord = {
         ...patient, ...resultToSave,
+        gender: ['male', 'female'].includes(patient.gender) ? patient.gender : undefined,
         patient_id: urlPid || patient.patient_id || activeJourney?.patient_id,
         transcription: conversationLog || patient.transcription,
         age: toNum(patient.age), hr: toNum(patient.hr),
