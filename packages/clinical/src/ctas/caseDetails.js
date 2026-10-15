@@ -7,10 +7,11 @@
  * is merged in, but only items whose quoted evidence is actually in the transcript are
  * kept, so nothing can be invented. Missing information stays unknown.
  *
- * This module records information only. It does not change CTAS: the high-risk flags
- * below are shown to the nurse and await clinical sign-off before any rule uses them.
+ * This module records information only. CTAS effects of chronic illness live in
+ * comorbidityRules.js (approved rule table); `high_risk` marks illnesses a rule can use.
  */
 import { findComplaintMentions, matchComplaint } from './resolveChiefComplaint.js';
+import { extractBedsideTests } from './comorbidityRules.js';
 
 export const CASE_DETAILS_VERSION = '1.0.0';
 
@@ -19,7 +20,7 @@ export const CASE_DETAILS_VERSION = '1.0.0';
  * (pending sign-off); `peds` marks paediatric-specific entries.
  */
 export const CONDITION_VOCAB = [
-  { id: 'diabetes', en: 'Diabetes', ar: 'السكري', high_risk: false,
+  { id: 'diabetes', en: 'Diabetes', ar: 'السكري', high_risk: true,
     rx: /\bdiabet\w*|\bdm\b|\bt[12]dm\b|سكري|مرض\s*السكر|عنده\s*سكر|عندها\s*سكر/i },
   { id: 'hypertension', en: 'Hypertension', ar: 'ارتفاع ضغط الدم', high_risk: false,
     rx: /hypertensi\w*|high blood pressure|\bhtn\b|ارتفاع\s*(?:في\s*)?ضغط\s*الدم|مريض\s*ضغط|مريضة\s*ضغط|عنده\s*ضغط|عندها\s*ضغط/i },
@@ -304,5 +305,7 @@ export function buildCaseDetails(transcript, { medications = [], llm = null } = 
     no_known_history: noKnownHistory,
     history_asked: noKnownHistory || conditions.length > 0 || meds.length > 0 || HISTORY_ASKED_RX.test(text),
     llm_rejected: fromLlm.rejected,
+    // Capillary glucose / ketones said aloud (fills the bedside tiles when empty).
+    bedside: extractBedsideTests(text),
   };
 }

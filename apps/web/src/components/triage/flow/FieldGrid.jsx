@@ -4,10 +4,25 @@ import {
   interpretHR, interpretSBP, interpretSpO2, interpretRR, interpretTemp, interpretGCS,
 } from '@triagepulse/clinical';
 
+/**
+ * Expected weight for age (APLS: <1 y 0.5×months+4; 1–5 y 2×age+8; 6–12 y 3×age+7).
+ * Flags a value far outside it (often a mis-heard number); display only.
+ */
+function weightCheck(weight, age) {
+  const w = parseFloat(weight);
+  const a = parseFloat(age);
+  if (!Number.isFinite(w) || !Number.isFinite(a) || a < 0 || a > 12) return null;
+  const expected = a < 1 ? 0.5 * Math.round(a * 12) + 4 : a <= 5 ? 2 * a + 8 : 3 * a + 7;
+  if (w > expected * 1.75 || w < expected * 0.6) {
+    return { status: 'abnormal', label: `تحقق ~${Math.round(expected)}kg` };
+  }
+  return null;
+}
+
 const TILES = [
   { key: 'age', ar: 'العمر', en: 'Age', mode: 'decimal' },
   { key: 'gender', ar: 'الجنس', en: 'Sex', type: 'sex' },
-  { key: 'weight', ar: 'الوزن kg', en: 'Weight', mode: 'decimal' },
+  { key: 'weight', ar: 'الوزن kg', en: 'Weight', mode: 'decimal', interp: (p) => weightCheck(p.weight, p.age) },
   { key: 'chief_complaint', ar: 'الشكوى', en: 'Complaint', wide: true, text: true },
   { key: 'pain_score', ar: 'الألم /10', en: 'Pain', mode: 'numeric' },
   { key: 'hr', ar: 'النبض', en: 'HR', mode: 'numeric', interp: (p) => interpretHR(p.hr, p.age) },
@@ -27,6 +42,7 @@ const val = (v) => (v == null ? '' : String(v));
  */
 export default function FieldGrid({
   patient, onChange, missingKeys = [], total = 10, more = null, complaintSlot = null, historySlot = null,
+  bedside = null,
 }) {
   const done = total - missingKeys.length;
   const [showMore, setShowMore] = useState(false);
@@ -135,6 +151,8 @@ export default function FieldGrid({
         })}
       </div>
 
+      {bedside && <BedsideTiles patient={patient} onChange={onChange} required={bedside.required} />}
+
       {historySlot && <div className="border-t border-mist pt-2.5">{historySlot}</div>}
 
       {more && (
@@ -152,5 +170,53 @@ export default function FieldGrid({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Capillary glucose and ketones, shown when an illness rule needs them (e.g. a
+ * diabetic child with vomiting) or once a value has been recorded.
+ */
+function BedsideTiles({ patient, onChange, required = [] }) {
+  const g = parseFloat(patient.glucose);
+  const high = Number.isFinite(g) && g > 14;
+  const missing = (k) => required.includes(k) && (patient[k] === '' || patient[k] == null);
+  const tone = (k, crit) => (crit ? 'border-2 border-[#D3242C] bg-white'
+    : missing(k) ? 'border-[1.5px] border-dashed border-[#D3242C]/50 bg-white' : 'border border-transparent bg-paper');
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 md:gap-2.5" aria-label="فحوص سريرية مطلوبة / Bedside checks">
+      <div className={`rounded-2xl px-2.5 py-1.5 md:px-3 md:py-2 sm:col-span-2 focus-within:border-ink ${tone('glucose', high)}`}>
+        <label htmlFor="fg-glucose" className="flex items-center gap-1 text-xs text-graphite">
+          <span className="truncate">سكر الدم mmol/L · Glucose</span>
+          {high && <span className="ms-auto font-semibold text-[#D3242C]">&gt; 14</span>}
+        </label>
+        <input
+          id="fg-glucose"
+          dir="ltr"
+          inputMode="decimal"
+          value={patient.glucose ?? ''}
+          onChange={(e) => onChange({ glucose: e.target.value })}
+          placeholder="—"
+          className={`w-full h-8 bg-transparent text-[17px] md:text-lg font-semibold tabular-nums focus:outline-none text-start ${high ? 'text-[#D3242C]' : 'text-ink'}`}
+        />
+      </div>
+      <div className={`rounded-2xl px-2.5 py-1.5 md:px-3 md:py-2 sm:col-span-2 ${tone('ketones', patient.ketones === 'positive')}`}>
+        <p className="text-xs text-graphite">الكيتونات · Ketones</p>
+        <div role="radiogroup" aria-label="الكيتونات / Ketones" className="flex gap-1 mt-0.5">
+          {[['negative', 'سلبي · neg'], ['positive', 'إيجابي · pos']].map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              role="radio"
+              aria-checked={patient.ketones === k}
+              onClick={() => onChange({ ketones: patient.ketones === k ? '' : k })}
+              className={`flex-1 h-8 rounded-lg text-sm font-semibold ${patient.ketones === k ? (k === 'positive' ? 'bg-[#D3242C] text-white' : 'bg-ink text-white') : 'bg-white text-ink'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -86,6 +86,10 @@ export interface CaseDetails {
   no_known_history: boolean;
   history_asked: boolean;
   llm_rejected: number;
+  bedside?: {
+    glucose: { value: number; evidence: string; converted_from_mgdl: boolean } | null;
+    ketones: { value: 'positive' | 'negative'; evidence: string } | null;
+  };
 }
 
 export interface SttFieldDefinition {

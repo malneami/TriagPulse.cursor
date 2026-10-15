@@ -31,6 +31,7 @@ import {
   clampConfidence as sttClampConfidence,
   CTAS_REQUIRED_FIELDS,
   CTAS_CONFIG,
+  evaluateComorbidityRules,
 } from '@triagepulse/clinical';
 
 import UrgentAlert from '@/components/triage/UrgentAlert';
@@ -64,6 +65,8 @@ const emptyPatient = () => ({
   onset_duration: '', relevant_history: '', current_medications: '', allergies: '',
   // Case details from the dictation, plus the nurse's corrections.
   case_details: null, primary_complaint: null, dismissed_complaints: [], dismissed_conditions: [],
+  // Bedside checks some illness rules require (capillary glucose mmol/L; ketones positive/negative).
+  glucose: '', ketones: '',
 });
 
 /** Fields that can change CTAS; if any is missing a low level is never shown as a result. */
@@ -301,10 +304,22 @@ export default function Triage() {
   // primary never lowers CTAS by itself (only «Change» with a reason can).
   const complaintFloor = cc.complaints.length >= 2 ? (cc.mostUrgent?.level ?? null) : null;
 
+  // Chronic illness + presenting problem (approved rule table): escalate-only floor,
+  // plus bedside checks some rules need. Only stated (or nurse-confirmed) illnesses count.
+  const comorb = evaluateComorbidityRules({
+    patient,
+    caseDetails: { complaints: cc.complaints, conditions: cc.conditions, medications: cc.medications, drug_classes: cc.medications.flatMap((m) => m.classes || []) },
+    answers: clarifyingAnswers,
+    transcript: sttSessionOutput?.full_transcript || patient.transcription || '',
+  });
+
   // Most-urgent wins: live vitals/pain must move the badge even if clarifying evaluation is stale
-  const liveLevel = [liveResult?.level, complaintFloor].some((n) => n != null)
-    ? Math.min(...[liveResult?.level, complaintFloor].filter((n) => n != null))
-    : null;
+  const levelInputs = [liveResult?.level, complaintFloor, comorb.floor].filter((n) => n != null);
+  const liveLevel = levelInputs.length ? Math.min(...levelInputs) : null;
+  // The illness rule is what set the level when it is more urgent than everything else.
+  const otherLevels = [liveResult?.level, complaintFloor, modifierEvaluation?.updated_ctas].filter((n) => n != null);
+  const ruleSetsLevel = comorb.floor != null && (!otherLevels.length || comorb.floor < Math.min(...otherLevels));
+  const leadRule = ruleSetsLevel ? comorb.applied.find((r) => r.floor === comorb.floor) : null;
   const evalLevel = modifierEvaluation?.updated_ctas ?? null;
   const ccPrimaryText = cc.complaints.length >= 2 ? cc.primary?.text : null;
   useEffect(() => {
@@ -618,7 +633,13 @@ export default function Triage() {
     const multiComplaint = (sessionOutput.case_details?.complaints?.length || 0) >= 2;
     update((prev) => {
       const next = { ...prev };
-      if (sessionOutput.case_details) next.case_details = sessionOutput.case_details;
+      if (sessionOutput.case_details) {
+        next.case_details = sessionOutput.case_details;
+        // Glucose / ketones said aloud fill empty tiles; a typed value is never overwritten.
+        const bed = sessionOutput.case_details.bedside || {};
+        if (bed.glucose && (prev.glucose === '' || prev.glucose == null)) next.glucose = String(bed.glucose.value);
+        if (bed.ketones && !prev.ketones) next.ketones = bed.ketones.value;
+      }
       for (const [key, value] of Object.entries(updates)) {
         if (key === 'chief_complaint' && multiComplaint) continue;
         const prevVal = prev[key];
@@ -914,6 +935,14 @@ export default function Triage() {
           },
           outstanding_missing: outstanding,
           case_details: casePayload(cc),
+          comorbidity_rules: {
+            version: comorb.version,
+            applied: comorb.applied,
+            required_checks: comorb.required,
+            pending_checks: comorb.pendingChecks,
+            set_level: !!leadRule,
+          },
+          bedside: { glucose_mmol: (patient.glucose ?? '') === '' ? null : Number(patient.glucose), ketones: patient.ketones || null },
         },
         disposition: finalDirection ? `${finalDirection.destination} | ${finalDirection.destination_en}` : null,
         audit_trail: serializeAuditTrail(auditTrail),
@@ -1005,11 +1034,15 @@ export default function Triage() {
   const answeredAny = answeredLog.length > 0;
   const ctasBox = {
     level: nurseValidation?.nurseLevel ?? shownLevel,
-    atLeast: !nurseValidation && a.atLeast,
+    // "At least" also while a check an illness rule needs (glucose, ketones…) is missing.
+    // (Rules raise to CTAS 2 at most, so this only matters above that.)
+    atLeast: !nurseValidation && (a.atLeast || (comorb.applied.length > 0 && comorb.pendingChecks.length > 0 && (shownLevel ?? 5) > 2)),
     status: decidedStatus || (a.pending ? 'incomplete' : (answeredAny ? 'updated' : 'preliminary')),
     changedFrom: initialSnapshot?.level ?? null,
     note: null,
-    drivenBy: cc.complaints.length >= 2 && cc.primary ? { ar: cc.primary.label_ar, en: cc.primary.label_en } : null,
+    drivenBy: leadRule
+      ? { ar: `${leadRule.label_ar} + ${leadRule.trigger_ar} (تاريخ مرضي عالي الخطورة)`, en: `${leadRule.label_en} + ${leadRule.trigger_en} (high-risk history)` }
+      : cc.complaints.length >= 2 && cc.primary ? { ar: cc.primary.label_ar, en: cc.primary.label_en } : null,
   };
   const directionBox = {
     status: decidedStatus || (directionAi ? (answeredAny ? 'updated' : 'preliminary') : 'pending'),
@@ -1035,7 +1068,8 @@ export default function Triage() {
       return { value: v, label: same ? (o.label_ar || v) : `${o.label_ar} · ${o.label_en}` };
     });
   };
-  const openQuestions = clarifyingQuestions
+  // A chronic illness known only from a medicine is confirmed first (one yes/no question).
+  const openQuestions = [...comorb.confirmQuestions, ...clarifyingQuestions]
     .filter((q) => {
       if (!q.field) return true;
       if (unknownAnswers[q.field]) return false;
@@ -1069,11 +1103,13 @@ export default function Triage() {
     modifierEvaluation?.team_leader_review && 'يُوصى بمراجعة قائد الفريق · Team leader review recommended',
     ...redFlagText.map((t) => `علامة خطر: ${t}`),
   ].filter(Boolean);
+  const ruleWhy = comorb.applied.map((r) => `تاريخ مرضي عالي الخطورة · High-risk history: ${r.label_ar} + ${r.trigger_ar} → CTAS ≤ ${r.floor} · ${r.label_en} + ${r.trigger_en} [${r.id}]${r.note_en ? ` — ${r.note_en}` : ''}`);
   const complaintWhy = cc.complaints.length >= 2 && cc.primary ? [
     `الشكوى المحددة للمستوى · Set by: ${cc.primary.label_ar} · ${cc.primary.label_en}${cc.chosenByNurse ? ' (اختيار الممرض · nurse choice)' : ''}`,
     `الشكاوى · Complaints: ${cc.complaints.map((c) => `${c.label_en}${c.level ? ` (CTAS ${c.level})` : ''}`).join('، ')}`,
   ] : [];
   const why = [
+    ...ruleWhy,
     ...complaintWhy,
     ...justification,
     ...findings.slice(0, 6).map((f) => `+ ${f}`),
@@ -1096,7 +1132,12 @@ export default function Triage() {
     answers: answeredLog,
     outstanding: missingFields.map((f) => f.label_en),
     safetyAlerts,
-    caseLines: caseSummaryLines(cc),
+    caseLines: [
+      ...caseSummaryLines(cc),
+      ...((patient.glucose ?? '') !== '' || patient.ketones ? [`Capillary glucose: ${(patient.glucose ?? '') !== '' ? `${patient.glucose} mmol/L` : '—'}    Ketones: ${patient.ketones || '—'}`] : []),
+      ...comorb.applied.map((r) => `High-risk history rule ${r.id}: ${r.label_en} + ${r.trigger_en} → CTAS ≤ ${r.floor}`),
+      ...(comorb.pendingChecks.length ? [`Outstanding check: ${comorb.pendingChecks.map((c) => c.en).join(', ')}`] : []),
+    ],
     nurse: user?.full_name || user?.email,
   };
 
@@ -1262,7 +1303,14 @@ export default function Triage() {
   const historyPrompt = recording && transcript.length > 60 && !cc.historyAsked
     ? { ar: 'اسأل عن الأمراض المزمنة والأدوية المنتظمة', en: 'Ask about chronic illnesses and regular medicines' }
     : null;
-  const prompt = recording ? (nextPrompt(a.missingKeys, patient) || historyPrompt) : null;
+  // A check an illness rule needs is prompted until it is recorded (also after recording).
+  const checkPrompt = comorb.pendingChecks.length && comorb.applied.length ? {
+    ar: `افحص: ${comorb.pendingChecks.map((c) => c.ar).join(' و')}`,
+    en: `Check: ${comorb.pendingChecks.map((c) => c.en).join(' and ')}`,
+  } : null;
+  const prompt = recording
+    ? (nextPrompt(a.missingKeys, patient) || checkPrompt || historyPrompt)
+    : checkPrompt;
   const promptQuestion = recording && !prompt ? openQuestions[0] : null;
 
   // The large CTAS/direction cards (tablet and desktop) and the compact strip in the
@@ -1408,6 +1456,9 @@ export default function Triage() {
               ? <ComplaintChips cc={cc} onMakePrimary={makePrimaryComplaint} onRemove={removeComplaint} />
               : null}
             historySlot={hasData ? <HistoryChips cc={cc} onRemoveCondition={removeCondition} /> : null}
+            bedside={comorb.required.some((r) => r.key === 'glucose' || r.key === 'ketones') || (patient.glucose ?? '') !== '' || !!patient.ketones
+              ? { required: comorb.pendingChecks.map((c) => c.key) }
+              : null}
           />
         </>
       )}

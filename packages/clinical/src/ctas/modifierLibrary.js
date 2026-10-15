@@ -595,6 +595,37 @@ export const CTAS_MODIFIER_LIBRARY = [
     review_date: '2026-08-05',
   },
 
+  // ── Hydration (child with vomiting or diarrhoea) ──────────────────────────
+  {
+    id: 'mod_peds_hydration',
+    name: 'Hydration status (vomiting / diarrhoea)',
+    name_ar: 'درجة الجفاف (قيء / إسهال)',
+    pathways: ['vomiting_nausea', 'diarrhea', 'abdominal_pain', 'abdominal_pain_unspecified', 'fever', 'general'],
+    age_applicability: 'pediatric',
+    field: 'hydration_status',
+    detect_patterns: [],
+    // Asked only when vomiting or diarrhoea is part of the story.
+    ask_when_patterns: [/vomit\w*|diarrh\w*|diarrhoea|loose stools?|gastroenteritis/i, /قيء|استفراغ|ترجيع|إسهال|اسهال|إسهال/i],
+    question_ar: 'ما درجة الجفاف؟ (الفم، الدموع، البول، الوعي، الرسملة)',
+    question_en: 'Hydration status? (mucosa, tears, urine output, alertness, capillary refill)',
+    answer_type: 'options',
+    options: [
+      { value: 'جفاف شديد / Severe', label_ar: 'جفاف شديد', label_en: 'Severe dehydration', ctas_effect: 1, destination_hint: 'RESUSCITATION' },
+      { value: 'جفاف متوسط / Moderate', label_ar: 'جفاف متوسط', label_en: 'Moderate dehydration', ctas_effect: 2 },
+      { value: 'جفاف خفيف / Mild', label_ar: 'جفاف خفيف', label_en: 'Mild dehydration', ctas_effect: 3 },
+      { value: 'لا جفاف مع استمرار الفقد / Potential', label_ar: 'لا علامات جفاف مع استمرار الفقد', label_en: 'No signs, ongoing losses (potential)', ctas_effect: 4 },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    question_category: 'ctas_modifier',
+    clinical_explanation_ar: 'الجفاف: شديد → CTAS 1، متوسط → 2، خفيف → 3، محتمل → 4',
+    clinical_explanation_en: 'Dehydration: severe → CTAS 1, moderate → 2, mild → 3, potential → 4',
+    priority: 9,
+    active: true,
+    protocol_source: 'CTAS 2025 GI (dehydration modifiers)',
+    version: '1.0.0',
+    review_date: '2026-10-15',
+  },
+
   // ── Seizure / altered LOC ─────────────────────────────────────────────────
   {
     id: 'mod_sz_ongoing',
@@ -689,8 +720,10 @@ export function applyModifierLibraryEffects(answers = {}, levelIn = 5) {
       (o) => o.value === value || o.label_ar === value || o.label_en === value,
     );
     const category = mod.question_category || 'ctas_modifier';
-    const destinationHint = opt?.destination_hint || mod.destination_effect || null;
     const isYes = YES_RE.test(String(value).trim());
+    // Only the chosen answer can move the patient: "No" / "Unknown" never falls back
+    // to the question's own destination.
+    const destinationHint = opt?.destination_hint || (isYes ? mod.destination_effect : null) || null;
 
     if (category === 'patient_direction') {
       if (isYes || destinationHint) {

@@ -124,7 +124,7 @@ export function HistoryChips({ cc, onRemoveCondition }) {
       {present.some((c) => c.high_risk) && (
         <p className="text-xs text-graphite flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-[#D3242C]" aria-hidden="true" />
-          عالي الخطورة (للاطلاع، لا يغيّر CTAS حالياً) · High-risk history (for awareness; does not change CTAS yet)
+          عالي الخطورة: قد يرفع CTAS مع الشكوى الحالية · High-risk history: can raise CTAS with the presenting problem
         </p>
       )}
     </div>

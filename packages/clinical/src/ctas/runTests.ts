@@ -16,6 +16,7 @@ import {
   resolveCtasDestination,
 } from './modifierEngine.js';
 import { CTAS_MODIFIER_LIBRARY } from './modifierLibrary.js';
+import { runComorbidityTests } from './runComorbidityTests.js';
 import { runSttTests } from '../stt/runSttTests.js';
 import { runFeverValidationSuite } from './ctasFeverValidation.js';
 import { runClarifyingQuestionPipeline } from './questionPipeline.js';
@@ -973,6 +974,9 @@ runFeverValidationSuite(assert);
 
 // ── STT code-switching (Arabic/English) ─────────────────────────────────────
 runSttTests(assert);
+
+// ── Chronic illness rules, bedside tests, hydration, direction answers ─────
+runComorbidityTests(assert);
 
 console.log(`\nCTAS tests: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

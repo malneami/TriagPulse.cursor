@@ -37,6 +37,13 @@ export {
   CASE_DETAILS_VERSION,
 } from './ctas/caseDetails.js';
 export {
+  evaluateComorbidityRules,
+  extractBedsideTests,
+  COMORBIDITY_RULES,
+  COMORBIDITY_RULES_VERSION,
+  GLUCOSE_HIGH_MMOL,
+} from './ctas/comorbidityRules.js';
+export {
   CLARIFYING_QUESTION_BANK,
   getClarifyingQuestions,
   resolveVisibleQuestions,

@@ -95,6 +95,20 @@ const SCENARIOS = [
     patient: { ...base, age: '30', gender: 'female', pain_score: 5, hr: '92', bp_systolic: '118', spo2: '99', rr: '16', temperature: '37.4', weight: '60' },
     expect: { maxLevel: 3, primary: /^abdominal_pain$/, noKnownHistory: true },
     knownIssue: 'Same as A9: moderate (4-7) acute central/visceral pain should be CTAS 3; the engine gives 4.' },
+
+  // ── Chronic illness rules (approved table, escalate-only) ─────────
+  { id: 'C1', name: 'Child 4 y, known diabetic, abdominal pain + vomiting (glucose not yet checked)',
+    transcript: 'Patient four years old came with abdominal pain and vomiting, known case of diabetic, pain score three',
+    patient: { ...base, age: '4', pain_score: 3, hr: '120', bp_systolic: '110', spo2: '99', rr: '20', temperature: '36', weight: '16' },
+    expect: { maxLevel: 3, rule: 'CR-DM-PED', pendingChecks: ['glucose', 'ketones'] } },
+  { id: 'C2', name: 'Same child, glucose 21 mmol/L',
+    transcript: 'Patient four years old came with abdominal pain and vomiting, known case of diabetic, pain score three',
+    patient: { ...base, age: '4', pain_score: 3, hr: '120', bp_systolic: '110', spo2: '99', rr: '20', temperature: '36', weight: '16', glucose: '21' },
+    expect: { maxLevel: 2, rule: 'CR-DM-PED', pendingChecks: ['ketones'] } },
+  { id: 'C3', name: 'Adult on warfarin with head injury, normal vitals',
+    transcript: '72 year old fell and has a head injury, takes warfarin',
+    patient: { ...base, age: '72', gender: 'female', pain_score: 2, hr: '80', bp_systolic: '140', spo2: '97', rr: '16', temperature: '36.8' },
+    expect: { maxLevel: 2, rule: 'CR-ANTICOAG' } },
 ];
 
 const rows = [];
@@ -104,6 +118,7 @@ for (const s of SCENARIOS) {
   const patient = { ...s.patient };
   let cc = null;
   let floor = null;
+  let rules = null;
   if (s.transcript) {
     // Same path as the screen: case details from the dictation, every complaint scored,
     // the most urgent becomes the chief complaint and a floor for the level.
@@ -111,6 +126,13 @@ for (const s of SCENARIOS) {
     cc = deriveCase(patient, { computeLiveCTAS: clinical.computeLiveCTAS, answers: {} });
     if (cc.primary) patient.chief_complaint = cc.primary.text;
     floor = cc.complaints.length >= 2 ? cc.mostUrgent?.level ?? null : null;
+    rules = clinical.evaluateComorbidityRules({
+      patient,
+      caseDetails: { complaints: cc.complaints, conditions: cc.conditions, medications: cc.medications, drug_classes: cc.medications.flatMap((m) => m.classes || []) },
+      answers: {},
+      transcript: s.transcript,
+    });
+    if (rules.floor != null) floor = floor == null ? rules.floor : Math.min(floor, rules.floor);
   }
   const transcript = s.transcript || patient.chief_complaint || '';
   const liveRaw = clinical.computeLiveCTAS(patient, {});
@@ -145,6 +167,10 @@ for (const s of SCENARIOS) {
     if (!patient.case_details?.drug_classes?.includes(id)) problems.push(`medicine class ${id} not captured`);
   }
   if (e.noKnownHistory && !cc?.noKnownHistory) problems.push('"no chronic illness" not recorded');
+  if (e.rule && !rules?.applied.some((r) => r.id === e.rule)) problems.push(`illness rule ${e.rule} not applied`);
+  if (e.pendingChecks && (rules?.pendingChecks || []).map((c) => c.key).join(',') !== e.pendingChecks.join(',')) {
+    problems.push(`pending checks ${(rules?.pendingChecks || []).map((c) => c.key).join(',') || 'none'}, expected ${e.pendingChecks.join(',')}`);
+  }
 
   const issueText = [...problems, ...warnings].join('; ');
   let status = 'PASS';

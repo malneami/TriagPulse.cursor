@@ -65,6 +65,14 @@ function ageMatches(modifier, patient = {}) {
   return true;
 }
 
+/** Optional cue gate: ask only when the conversation mentions one of `ask_when_patterns`. */
+function askWhenMatches(modifier, patient = {}, transcript = '') {
+  const pats = modifier.ask_when_patterns;
+  if (!Array.isArray(pats) || !pats.length) return true;
+  const text = [transcript, patient.transcription, patient.chief_complaint].filter(Boolean).join(' \n ');
+  return pats.some((rx) => rx.test(text));
+}
+
 function ctasLevelMatches(modifier, level) {
   const allowed = modifier.shown_when_ctas;
   if (!Array.isArray(allowed) || !allowed.length) return true;
@@ -181,6 +189,7 @@ export function selectMissingModifiers({
   const candidates = modifiers
     .filter((m) => pathwayMatches(m, pathway))
     .filter((m) => ageMatches(m, patient))
+    .filter((m) => askWhenMatches(m, patient, transcript))
     .filter((m) => ctasLevelMatches(m, level))
     .map((m) => {
       const detected = detectKnownModifier(m, { patient, answers, transcript });
