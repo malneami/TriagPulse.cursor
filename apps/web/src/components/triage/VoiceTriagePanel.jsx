@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mic, Square, Loader2, AlertTriangle, Keyboard } from 'lucide-react';
 import {
   detectTranscriptLanguage,
@@ -74,6 +74,7 @@ export default function VoiceTriagePanel({
   onRecordingStart,
   onRecordingChange,
   onContinue,
+  liveFields = null,
 }) {
   const [sessionId, setSessionId] = useState(null);
   const [sessionOutput, setSessionOutput] = useState(null);
@@ -829,21 +830,27 @@ export default function VoiceTriagePanel({
           <span className="text-lg font-semibold text-ink">جارٍ التسجيل · Recording</span>
           <span dir="ltr" className="text-lg font-semibold tabular-nums text-ink">{recClock}</span>
         </div>
-        <div
-          dir="auto"
-          className="w-full min-h-[140px] max-h-[40vh] overflow-y-auto rounded-xl bg-paper px-4 py-3 text-lg leading-relaxed text-ink"
-          aria-live="polite"
-        >
-          {liveTranscript || <span className="text-graphite">تحدث الآن بالعربية أو الإنجليزية… · Speak now in Arabic or English…</span>}
+        <div className={`w-full grid gap-4 ${liveFields ? 'lg:grid-cols-2' : ''}`}>
+          <div
+            dir="auto"
+            className="w-full min-h-[96px] sm:min-h-[140px] max-h-[30vh] lg:max-h-[52vh] overflow-y-auto rounded-xl bg-paper px-4 py-3 text-lg leading-relaxed text-ink"
+            aria-live="polite"
+          >
+            {liveTranscript || <span className="text-graphite">تحدث الآن بالعربية أو الإنجليزية… · Speak now in Arabic or English…</span>}
+          </div>
+          {isValidElement(liveFields) ? cloneElement(liveFields, { live: true }) : liveFields}
         </div>
         {notices}
-        <button
-          type="button"
-          onClick={handleToggleRecord}
-          className="w-full max-w-sm min-h-[64px] rounded-2xl bg-ink text-white text-lg font-semibold flex items-center justify-center gap-3"
-        >
-          <Square className="w-6 h-6" aria-hidden="true" /> إيقاف ومراجعة · Stop & review
-        </button>
+        {/* Stays reachable on small screens while the fields list grows */}
+        <div className="sticky bottom-3 z-10 w-full flex justify-center">
+          <button
+            type="button"
+            onClick={handleToggleRecord}
+            className="w-full max-w-sm min-h-[64px] rounded-2xl bg-ink text-white text-lg font-semibold flex items-center justify-center gap-3 shadow-lg"
+          >
+            <Square className="w-6 h-6" aria-hidden="true" /> إيقاف ومراجعة · Stop & review
+          </button>
+        </div>
       </section>
     );
   }
@@ -865,6 +872,7 @@ export default function VoiceTriagePanel({
           className="w-full rounded-xl border border-mist p-3 text-base leading-relaxed text-ink focus:outline-none focus:border-ink"
         />
         <p className="text-sm text-graphite -mt-2">صحّح أي خطأ ثم أعد الاستخراج. · Correct any error, then re-extract.</p>
+        {liveFields}
         {notices}
         {import.meta.env.DEV && (
           <div className="flex flex-wrap gap-2">

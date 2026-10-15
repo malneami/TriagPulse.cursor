@@ -43,6 +43,7 @@ import ResultBoxes from '@/components/triage/flow/ResultBoxes';
 import ClarifyStep, { ANSWER_UNKNOWN, answerLabel } from '@/components/triage/flow/ClarifyStep';
 import ReviewConfirm from '@/components/triage/flow/ReviewConfirm';
 import CompletedScreen from '@/components/triage/flow/CompletedScreen';
+import LiveFields from '@/components/triage/flow/LiveFields';
 import { buildTriageDocument } from '@/lib/triageDocument';
 import { useQuery } from '@tanstack/react-query';
 
@@ -1255,6 +1256,7 @@ export default function Triage() {
           onRecordingStart={handleRecordingStart}
           onRecordingChange={handleRecordingChange}
           onContinue={() => { handleRecordingStart(); goToStep('assessment'); }}
+          liveFields={<LiveFields patient={patient} missing={missingFields} total={REQUIRED_FIELDS.length} />}
         />
       )}
 
