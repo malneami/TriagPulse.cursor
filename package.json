@@ -21,7 +21,7 @@
     "db:studio": "npm run db:studio --workspace=@triagepulse/api",
     "db:migrate:deploy": "npm run db:migrate:deploy --workspace=@triagepulse/api",
     "admin:create": "npm run admin:create --workspace=@triagepulse/api",
-    "codespace:app": "npm run build --workspace=@triagepulse/web && SERVE_WEB_DIR=../web/dist npm run dev:api",
+    "codespace:app": "npm run build --workspace=@triagepulse/clinical && npm run build --workspace=@triagepulse/web && SERVE_WEB_DIR=../web/dist npm run dev:api",
     "validate:scenarios": "node scripts/validate-triage-scenarios.mjs"
   },
   "devDependencies": {
