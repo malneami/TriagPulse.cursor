@@ -365,6 +365,7 @@ function buildChangeExplanation(initialLevel, finalLevel, applied = [], directio
  *   destination_changed: boolean,
  *   team_leader_review: boolean,
  *   critical_alert: boolean,
+ *   critical_question_pending: boolean,
  *   provider_confirmation_required: boolean,
  *   pathway: string,
  * }}
@@ -470,9 +471,11 @@ export function evaluateModifierEngine({
   const needsTeamLeader = libEffects.applied.some((a) => a.team_leader_review)
     || directionApplied.some((a) => a.team_leader_review)
     || selection.questions.some((q) => q.team_leader_review);
+  // Critical only from answers / findings. A critical question that is merely being
+  // asked is not an alert (it blocks Confirm until answered instead).
   const critical = libEffects.applied.some((a) => a.critical_alert)
-    || safetyApplied.some((a) => a.critical_alert || a.safety_alert)
-    || selection.questions.some((q) => q.critical_alert);
+    || safetyApplied.some((a) => a.critical_alert || a.safety_alert);
+  const criticalQuestionPending = selection.questions.some((q) => q.critical_alert);
 
   return {
     initial_ctas: startLevel,
@@ -503,6 +506,7 @@ export function evaluateModifierEngine({
     destination_changed: !!explanation.destination_changed || !!directionApplied.length,
     team_leader_review: needsTeamLeader,
     critical_alert: critical,
+    critical_question_pending: criticalQuestionPending,
     provider_confirmation_required: true,
     pathway: path,
   };

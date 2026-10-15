@@ -44,6 +44,7 @@ import LivePrompt from '@/components/triage/flow/LivePrompt';
 import QuestionCard, { ANSWER_UNKNOWN, answerLabel } from '@/components/triage/flow/QuestionCard';
 import DecisionBar from '@/components/triage/flow/DecisionBar';
 import HeroResult from '@/components/triage/flow/HeroResult';
+import VitalConfirmCard, { vitalLabel } from '@/components/triage/flow/VitalConfirmCard';
 import ChangeSheet from '@/components/triage/flow/ChangeSheet';
 import QuickComplaints from '@/components/triage/QuickComplaints';
 import ChiefComplaintConfirm from '@/components/triage/ChiefComplaintConfirm';
@@ -67,6 +68,8 @@ const emptyPatient = () => ({
   case_details: null, primary_complaint: null, dismissed_complaints: [], dismissed_conditions: [],
   // Bedside checks some illness rules require (capillary glucose mmol/L; ketones positive/negative).
   glucose: '', ketones: '',
+  // Vitals dictated with two different values, confirmed by the nurse: { spo2: '97' }.
+  vital_confirmed: {},
 });
 
 /** Fields that can change CTAS; if any is missing a low level is never shown as a result. */
@@ -313,8 +316,23 @@ export default function Triage() {
     transcript: sttSessionOutput?.full_transcript || patient.transcription || '',
   });
 
+  // Two different readings dictated for one vital: until the nurse confirms, CTAS uses
+  // the more urgent of them (never the more reassuring one).
+  const vitalFields = (f) => (f === 'bp' ? ['bp_systolic', 'bp_diastolic'] : [f]);
+  const withReading = (p, c, v) => (c.field === 'bp'
+    ? { ...p, bp_systolic: v.split('/')[0], bp_diastolic: v.split('/')[1] }
+    : { ...p, [c.field]: v });
+  // A confirmation holds for the readings it was made on; a new, different reading asks again.
+  const confirmedFor = (c) => patient.vital_confirmed?.[c.field]?.sig === c.values.join('|');
+  const openConflicts = (patient.case_details?.vital_conflicts || []).filter((c) => !confirmedFor(c)
+    && !vitalFields(c.field).some((k) => manualEditedFieldsRef.current.has(k)));
+  const conflictLevels = openConflicts.flatMap((c) => c.values.map((v) => {
+    try { return computeLiveCTAS(withReading(patient, c, v), answersWithModifier)?.level ?? null; } catch { return null; }
+  })).filter((n) => n != null);
+  const conflictFloor = conflictLevels.length ? Math.min(...conflictLevels) : null;
+
   // Most-urgent wins: live vitals/pain must move the badge even if clarifying evaluation is stale
-  const levelInputs = [liveResult?.level, complaintFloor, comorb.floor].filter((n) => n != null);
+  const levelInputs = [liveResult?.level, complaintFloor, comorb.floor, conflictFloor].filter((n) => n != null);
   const liveLevel = levelInputs.length ? Math.min(...levelInputs) : null;
   // The illness rule is what set the level when it is more urgent than everything else.
   const otherLevels = [liveResult?.level, complaintFloor, modifierEvaluation?.updated_ctas].filter((n) => n != null);
@@ -952,6 +970,10 @@ export default function Triage() {
             pending_checks: comorb.pendingChecks,
             set_level: !!leadRule,
           },
+          vital_confirmations: (patient.case_details?.vital_conflicts || []).map((c) => ({
+            field: c.field, dictated: c.values, chosen: patient.vital_confirmed?.[c.field]?.v ?? null,
+            resolved_by: patient.vital_confirmed?.[c.field] ? 'nurse_pick' : 'nurse_edit',
+          })),
           bedside: { glucose_mmol: (patient.glucose ?? '') === '' ? null : Number(patient.glucose), ketones: patient.ketones || null },
         },
         disposition: finalDirection ? `${finalDirection.destination} | ${finalDirection.destination_en}` : null,
@@ -1238,6 +1260,22 @@ export default function Triage() {
     handleClarifyingAnswer(field, undefined);
   };
 
+  // ── Conflicting vital readings: the nurse picks the right one ───────
+  const pickVitalReading = (c, v) => {
+    // The picked value is the nurse's: later dictation does not overwrite it.
+    vitalFields(c.field).forEach((k) => manualEditedFieldsRef.current.add(k));
+    setPatient((prev) => ({
+      ...withReading(prev, c, v),
+      vital_confirmed: { ...(prev.vital_confirmed || {}), [c.field]: { v, sig: c.values.join('|') } },
+    }));
+    setAuditLog((log) => [...log, {
+      time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+      msg: `Vital reading confirmed: ${c.field} = ${v} (dictated: ${c.values.join(' / ')})`,
+      action: 'vital_reading_confirmed',
+      details: { field: c.field, chosen: v, values: c.values },
+    }]);
+  };
+
   // ── Complaints and history: the nurse's corrections ─────────────────
   const logCase = (msg, action, details) => setAuditLog((log) => [...log, {
     time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
@@ -1270,7 +1308,8 @@ export default function Triage() {
       : a.pending ? 'CTAS معلّق: أكمل البيانات أو استخدم «تغيير» · Pending: complete data or Change'
         : urgentAlert ? 'أقرّ بالتنبيه الحرج أولاً · Acknowledge the critical alert first'
           : openSafety.length ? 'أجب عن سؤال السلامة أولاً · Answer the safety question first'
-            : null;
+            : openConflicts.length ? `أكّد القراءة: ${openConflicts.map((c) => vitalLabel(c.field).ar).join('، ')} · Confirm the reading: ${openConflicts.map((c) => vitalLabel(c.field).en).join(', ')}`
+              : null;
 
   const finalize = async (decision) => {
     if (savingRef.current || savedRecord) return;
@@ -1445,6 +1484,8 @@ export default function Triage() {
             />
           )}
 
+          {!recording && <VitalConfirmCard conflicts={openConflicts} onPick={pickVitalReading} />}
+
           {!recording && hasData && (openQuestions.length > 0 || answeredLog.length > 0) && (
             <QuestionCard
               question={openQuestions[0]}
@@ -1466,6 +1507,7 @@ export default function Triage() {
               ? <ComplaintChips cc={cc} onMakePrimary={makePrimaryComplaint} onRemove={removeComplaint} />
               : null}
             historySlot={hasData ? <HistoryChips cc={cc} onRemoveCondition={removeCondition} /> : null}
+            confirmKeys={openConflicts.flatMap((c) => vitalFields(c.field))}
             bedside={comorb.required.some((r) => r.key === 'glucose' || r.key === 'ketones') || (patient.glucose ?? '') !== '' || !!patient.ketones
               ? { required: comorb.pendingChecks.map((c) => c.key) }
               : null}

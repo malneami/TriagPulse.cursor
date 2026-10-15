@@ -6,7 +6,8 @@ import { buildCaseDetails } from './caseDetails.js';
 import { evaluateComorbidityRules, extractBedsideTests } from './comorbidityRules.js';
 import { applyModifierLibraryEffects } from './modifierLibrary.js';
 import { selectMissingModifiers } from './modifierEngine.js';
-import { extractFieldsFromTranscript, mapSttSessionToPatientUpdates } from '../stt/extractFields.js';
+import { extractFieldsFromTranscript, mapSttSessionToPatientUpdates, findVitalConflicts, normalizeSpokenNumbers } from '../stt/extractFields.js';
+import { evaluateModifierEngine } from './modifierEngine.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -135,5 +136,43 @@ export function runComorbidityTests(assert: Assert) {
       'CR-23', 'English onset, medicines and history are copied to the form', JSON.stringify(e));
     const a = mapSttSessionToPatientUpdates(extractFieldsFromTranscript('عمره خمس سنوات، حرارة من البارحة')).updates as Record<string, string>;
     assert(!/سنوات/.test(String(a.onset_duration || '')), 'CR-24', 'age ("five years") is not taken as onset', JSON.stringify(a.onset_duration));
+  }
+
+  // Arabic numbers said one after another are separate numbers.
+  {
+    const n = (t: string) => normalizeSpokenNumbers(t);
+    assert(n('الأكسجين أربعة وتسعين سبعة وتسعين') === 'الأكسجين 94 97' && n('الوعي خمسة عشر') === 'الوعي 15'
+      && n('مئة وأربعين على تسعين') === '140 على 90' && n('الوعي خمسة عشر، الألم صفر') === 'الوعي 15، الألم 0' && n('الوزن سبعتعشر') === 'الوزن 17' && n('ثلاث مية') === '300',
+      'CR-25', 'Arabic: 94 then 97 (not 191); teens, hundreds and colloquial teens', JSON.stringify([n('الأكسجين أربعة وتسعين سبعة وتسعين'), n('الوزن سبعتعشر')]));
+  }
+  // Two different readings for one vital are flagged for the nurse to confirm.
+  {
+    const a = findVitalConflicts('الأكسجين أربعة وتسعين سبعة وتسعين. الأكسجين سبعة وتسعين تنفس ثلاثين');
+    const b = findVitalConflicts('HR 110, BP 120/80, later pulse 128 and BP 100/60');
+    const c = findVitalConflicts('HR 110, SpO2 98, RR 20, BP 120/80, then heart rate 110 again');
+    assert(a.length === 1 && a[0].field === 'spo2' && a[0].values.join() === '94,97'
+      && b.map((x) => x.field).sort().join() === 'bp,hr' && c.length === 0,
+      'CR-26', 'conflicting readings are detected (repeat of the same value is not a conflict)', JSON.stringify({ a, b, c }));
+  }
+  // Child with a breathing complaint: respiratory distress grade is asked and graded.
+  {
+    const q = selectMissingModifiers({ pathway: 'shortness_of_breath', level: 4, patient: { age: '3', chief_complaint: 'SOB' }, answers: {}, transcript: 'cough and shortness of breath', maxQuestions: 4 })
+      .questions.map((x: { field: string }) => x.field);
+    const adult = selectMissingModifiers({ pathway: 'shortness_of_breath', level: 4, patient: { age: '30', chief_complaint: 'SOB' }, answers: {}, transcript: 'shortness of breath', maxQuestions: 6 })
+      .questions.map((x: { field: string }) => x.field);
+    assert(q.includes('resp_distress_grade') && !adult.includes('resp_distress_grade'), 'CR-27', 'distress grade asked for a child with SOB, not an adult', JSON.stringify({ q, adult }));
+    const lvl = (v: string) => applyModifierLibraryEffects({ resp_distress_grade: v }, 4).level;
+    assert(lvl('شديدة / Severe') === 1 && lvl('متوسطة / Moderate') === 2 && lvl('خفيفة / Mild') === 3 && lvl('لا توجد / None') === 4,
+      'CR-28', 'distress grades: severe 1, moderate 2, mild 3, none unchanged');
+  }
+  // A critical question that is only being asked does not raise the critical banner.
+  {
+    const e = evaluateModifierEngine({ patient: { age: '4', chief_complaint: 'abdominal pain', pain_score: 3, hr: '120', bp_systolic: '110', spo2: '99', rr: '20', temperature: '36', gcs: '15' },
+      answers: {}, transcript: 'abdominal pain and vomiting', pathway: 'abdominal_pain', initialLevel: 5, maxQuestions: 3 }) as unknown as { critical_alert: boolean, critical_question_pending: boolean };
+    const yes = evaluateModifierEngine({ patient: { age: '4', chief_complaint: 'abdominal pain', pain_score: 3, hr: '120', bp_systolic: '110', spo2: '99', rr: '20', temperature: '36', gcs: '15' },
+      answers: { rigidity_guarding: 'نعم' }, transcript: 'abdominal pain and vomiting', pathway: 'abdominal_pain', initialLevel: 5, maxQuestions: 3 }) as unknown as { updated_ctas: number };
+    // After "Yes" the level rises to CTAS 2, which shows the red banner on the screen.
+    assert(!e.critical_alert && e.critical_question_pending && yes.updated_ctas <= 2, 'CR-29', 'no critical banner while the question is pending; "Yes" escalates to CTAS 2',
+      JSON.stringify({ pending: e.critical_alert, flag: e.critical_question_pending, yes: yes.updated_ctas }));
   }
 }

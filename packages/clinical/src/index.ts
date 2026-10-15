@@ -122,6 +122,7 @@ export type {
 export {
   createEmptySttFields,
   extractFieldsFromTranscript,
+  findVitalConflicts,
   mergeFieldSlot,
   mergeVitalSignEntries,
   mergeLlmExtractIntoFields,

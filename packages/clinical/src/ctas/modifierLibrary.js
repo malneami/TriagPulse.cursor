@@ -595,6 +595,35 @@ export const CTAS_MODIFIER_LIBRARY = [
     review_date: '2026-08-05',
   },
 
+  // ── Respiratory distress grade (child with a breathing complaint) ─────────
+  {
+    id: 'mod_peds_resp_distress',
+    name: 'Respiratory distress severity (child)',
+    name_ar: 'درجة الضائقة التنفسية (طفل)',
+    pathways: ['shortness_of_breath', 'wheezing', 'stridor_resp', 'urti_complaints', 'asthma', 'respiratory_distress', 'dyspnea', 'cough'],
+    age_applicability: 'pediatric',
+    field: 'resp_distress_grade',
+    detect_patterns: [],
+    question_ar: 'ما درجة الضائقة التنفسية؟ (السحب، رفرفة الأنف، الشخير، الكلام/الرضاعة، اللون، الوعي)',
+    question_en: 'Respiratory distress? (retractions, nasal flaring, grunting, speech/feeding, colour, alertness)',
+    answer_type: 'options',
+    options: [
+      { value: 'شديدة / Severe', label_ar: 'شديدة: جهد تنفسي مفرط، ازرقاق، خمول، لا يتكلم/يرضع', label_en: 'Severe: excessive effort, cyanosis, lethargy, cannot speak/feed', ctas_effect: 1, destination_hint: 'RESUSCITATION' },
+      { value: 'متوسطة / Moderate', label_ar: 'متوسطة: زيادة الجهد، تململ، يتكلم بعبارات', label_en: 'Moderate: increased effort, restless, speaks in phrases', ctas_effect: 2 },
+      { value: 'خفيفة / Mild', label_ar: 'خفيفة: ضيق أو تنفس سريع بلا جهد واضح، يتكلم بجمل', label_en: 'Mild: dyspnoea or fast breathing, no obvious effort, full sentences', ctas_effect: 3 },
+      { value: 'لا توجد / None', label_ar: 'لا توجد ضائقة', label_en: 'No distress' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    question_category: 'ctas_modifier',
+    clinical_explanation_ar: 'الضائقة التنفسية: شديدة → CTAS 1، متوسطة → 2، خفيفة → 3',
+    clinical_explanation_en: 'Respiratory distress: severe → CTAS 1, moderate → 2, mild → 3',
+    priority: 4,
+    active: true,
+    protocol_source: 'CTAS 2025 Respiratory (Paeds CTAS distress modifiers)',
+    version: '1.0.0',
+    review_date: '2026-10-15',
+  },
+
   // ── Hydration (child with vomiting or diarrhoea) ──────────────────────────
   {
     id: 'mod_peds_hydration',

@@ -42,7 +42,7 @@ const val = (v) => (v == null ? '' : String(v));
  */
 export default function FieldGrid({
   patient, onChange, missingKeys = [], total = 10, more = null, complaintSlot = null, historySlot = null,
-  bedside = null,
+  bedside = null, confirmKeys = [],
 }) {
   const done = total - missingKeys.length;
   const [showMore, setShowMore] = useState(false);
@@ -84,14 +84,17 @@ export default function FieldGrid({
           const interp = v && t.interp ? t.interp(patient) : null;
           const critical = interp?.status === 'critical';
           const abnormal = interp?.status === 'abnormal';
-          const tone = critical ? 'border-2 border-[#D3242C] bg-white'
+          const toConfirm = confirmKeys.includes(t.key);
+          const tone = toConfirm ? 'border-2 border-dashed border-[#F2C230] bg-white'
+            : critical ? 'border-2 border-[#D3242C] bg-white'
             : missing ? 'border-[1.5px] border-dashed border-[#D3242C]/50 bg-white'
               : `border border-transparent ${flash[t.key] ? 'bg-mist' : 'bg-paper'}`;
           return (
             <div key={t.key} className={`rounded-2xl px-2.5 py-1.5 md:px-3 md:py-2 transition-colors duration-700 focus-within:border-ink focus-within:bg-white ${tone} ${t.wide ? 'col-span-3 sm:col-span-6' : ''}`}>
               <label htmlFor={`fg-${t.key}`} className="flex items-center gap-1 text-xs text-graphite">
                 <span className="truncate">{t.ar} · {t.en}</span>
-                {(critical || abnormal) && (
+                {toConfirm && <span className="ms-auto font-semibold text-ink">أكّد · confirm</span>}
+                {!toConfirm && (critical || abnormal) && (
                   <span className={`ms-auto font-semibold truncate ${critical ? 'text-[#D3242C]' : 'text-ink'}`}>{interp.label}</span>
                 )}
               </label>
