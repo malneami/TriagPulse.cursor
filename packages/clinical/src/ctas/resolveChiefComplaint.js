@@ -51,6 +51,7 @@ const EXTRA_SYNONYMS = {
     'cough', 'cold symptoms', 'uri', 'urti', 'upper respiratory', 'sore throat',
     'سعال', 'كحة', 'زكام', 'التهاب تنفسي علوي', 'ألم حلق',
   ],
+  stridor_resp: ['stridor', 'صرير', 'سترايدر', 'استرايدر', 'سترايدور'],
   tinnitus: ['tinnitus', 'ringing in ear', 'ringing ears', 'طنين', 'طنين الأذن'],
   altered_loc: [
     'altered loc', 'altered consciousness', 'altered level of consciousness',

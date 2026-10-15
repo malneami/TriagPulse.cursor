@@ -7,7 +7,9 @@ import { evaluateComorbidityRules, extractBedsideTests } from './comorbidityRule
 import { applyModifierLibraryEffects } from './modifierLibrary.js';
 import { selectMissingModifiers } from './modifierEngine.js';
 import { extractFieldsFromTranscript, mapSttSessionToPatientUpdates, findVitalConflicts, normalizeSpokenNumbers } from '../stt/extractFields.js';
-import { evaluateModifierEngine } from './modifierEngine.js';
+import { evaluateModifierEngine, detectKnownModifier } from './modifierEngine.js';
+import { buildKnownFacts } from './knownFactsEngine.js';
+import { getActiveModifiers } from './modifierLibrary.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -174,5 +176,37 @@ export function runComorbidityTests(assert: Assert) {
     // After "Yes" the level rises to CTAS 2, which shows the red banner on the screen.
     assert(!e.critical_alert && e.critical_question_pending && yes.updated_ctas <= 2, 'CR-29', 'no critical banner while the question is pending; "Yes" escalates to CTAS 2',
       JSON.stringify({ pending: e.critical_alert, flag: e.critical_question_pending, yes: yes.updated_ctas }));
+  }
+
+  // Negation must be a whole word close to the finding ("known" is not "no").
+  {
+    const mod = getActiveModifiers().find((m: { field: string }) => m.field === 'stridor');
+    const st = (t: string) => (buildKnownFacts({ patient: {}, answers: {}, transcript: t, modifiers: [mod] }) as Record<string, { value?: string }>).stridor?.value ?? null;
+    const det = (t: string) => detectKnownModifier(mod, { patient: {}, answers: {}, transcript: t }).value ?? null;
+    const cases: Array<[string, string | null]> = [
+      ['known asthmatic, has stridor', 'نعم'],
+      ['no stridor', 'لا'],
+      ['denies any stridor', 'لا'],
+      ['الاسهال مع صرير', 'نعم'],
+      ['لا يوجد استرايدر', 'لا'],
+      ['عنده سترايدر', 'نعم'],
+      ['no fever. stridor present', 'نعم'],
+      ['noisy breathing', 'نعم'],
+    ];
+    const bad = cases.filter(([t, want]) => st(t) !== want || det(t) !== want).map(([t, want]) => `${t}: want ${want}, got ${st(t)}/${det(t)}`);
+    assert(bad.length === 0, 'CR-30', 'stridor stated vs denied is read correctly (no "no" inside "known", no «لا» inside words)', bad.join('; '));
+  }
+  // Age phrasing without "old" / «عمر».
+  {
+    const age = (t: string) => (mapSttSessionToPatientUpdates(extractFieldsFromTranscript(t)).updates as Record<string, string>).age;
+    assert(age('child 3 years with cough') === '3' && age('girl aged 5 yrs') === '5' && age('طفل 4 سنوات عنده حرارة') === '4',
+      'CR-31', 'age from "child 3 years", "aged 5 yrs", «طفل 4 سنوات»', JSON.stringify([age('child 3 years with cough'), age('girl aged 5 yrs'), age('طفل 4 سنوات عنده حرارة')]));
+  }
+
+  {
+    const mod = getActiveModifiers().find((m: { field: string }) => m.field === 'prior_cardiac_history');
+    const v = (t: string) => (mod ? detectKnownModifier(mod, { patient: {}, answers: {}, transcript: t }).value ?? null : 'missing');
+    assert(v('chest pain non cardiac') === 'لا' && v('non-cardiac chest pain') === 'لا',
+      'CR-32', '"non cardiac" / "non-cardiac" negate a cardiac finding', JSON.stringify([v('chest pain non cardiac'), v('non-cardiac chest pain')]));
   }
 }

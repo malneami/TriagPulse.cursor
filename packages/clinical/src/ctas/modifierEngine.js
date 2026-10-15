@@ -9,6 +9,7 @@ import {
 } from './clarifyingQuestionBank.js';
 import { applyModifierLibraryEffects, getActiveModifiers } from './modifierLibrary.js';
 import { computeLiveCTAS } from './vitalRanges.js';
+import { negatedFindingRegex } from './negation.js';
 import {
   buildKnownFacts,
   shouldSuppressQuestion,
@@ -128,7 +129,7 @@ export function detectKnownModifier(modifier, { patient = {}, answers = {}, tran
 
   for (const re of modifier.detect_patterns || []) {
     if (re.test(ctx)) {
-      const negated = new RegExp(`(?:no|not|denies|بدون|لا\\s*(?:يوجد)?|ينفي).{0,24}(?:${re.source})`, 'i');
+      const negated = negatedFindingRegex(re.source);
       if (negated.test(ctx)) {
         return { known: true, value: 'لا', source: 'transcript_negated', status: 'known_negative', confidence: 0.9 };
       }

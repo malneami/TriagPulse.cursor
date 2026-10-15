@@ -244,7 +244,7 @@ export const CTAS_MODIFIER_LIBRARY = [
     ],
     age_applicability: 'both',
     field: 'stridor',
-    detect_patterns: [/stridor|noisy\s+breathing|airway\s+(?:threat|compromise)/i, /صرير|تنفس\s*مزعج|انسداد\s*مجرى/i],
+    detect_patterns: [/stridor|noisy\s+breathing|airway\s+(?:threat|compromise)/i, /صرير|سترايدر|استرايدر|سترايدور|ستريدور|تنفس\s*مزعج|انسداد\s*مجرى/i],
     question_ar: 'هل يوجد صرير (صوت تنفس عالي النبرة)؟',
     question_en: 'Is there stridor (high-pitched breathing noise)?',
     answer_type: 'yes_no',

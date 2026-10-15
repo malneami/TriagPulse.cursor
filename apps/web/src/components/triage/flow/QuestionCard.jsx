@@ -27,9 +27,11 @@ function options(question) {
  * One clarifying question at a time, highest impact first. Answering moves straight
  * to the next one; the CTAS and direction cards update after every answer.
  */
-export default function QuestionCard({ question, position, total, onAnswer, answered = [], onChangeAnswer }) {
+export default function QuestionCard({
+  question, position, total, onAnswer, answered = [], onChangeAnswer, detected = [], onCorrectDetected,
+}) {
   const [showAnswered, setShowAnswered] = useState(false);
-  if (!question && !answered.length) return null;
+  if (!question && !answered.length && !detected.length) return null;
   const all = question ? options(question) : [];
   const safety = question && (question.question_category || question.category) === 'safety_escalation';
 
@@ -66,6 +68,29 @@ export default function QuestionCard({ question, position, total, onAnswer, answ
             ))}
           </div>
         </>
+      )}
+
+      {detected.length > 0 && (
+        <div className="rounded-xl bg-paper px-3 py-2 flex flex-col gap-1.5" aria-label="مأخوذ من الإملاء / From dictation">
+          <p className="text-xs font-semibold text-graphite">مأخوذ من الإملاء — صحّح إن لزم · From dictation — correct if needed</p>
+          {detected.map((d) => (
+            <div key={d.field} className="flex flex-wrap items-center gap-2">
+              <span className="flex-1 min-w-0 text-sm text-ink">{d.text_ar}</span>
+              <span className="text-sm font-semibold shrink-0">{d.label}</span>
+              {d.yesNo && [ANSWER_YES, ANSWER_NO].filter((v) => v !== d.value).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => onCorrectDetected?.(d, v)}
+                  className="min-h-[40px] px-3 rounded-lg border border-ink bg-white text-ink text-sm font-semibold"
+                  aria-label={`تغيير إلى ${answerLabel(v)} / Change to ${answerLabel(v)}: ${d.text_en}`}
+                >
+                  {answerLabel(v)}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
       )}
 
       {answered.length > 0 && (

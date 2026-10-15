@@ -55,6 +55,9 @@ export default function ResultBoxes({ ctas, direction, critical = false }) {
           <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
           {direction?.destination_ar ? `${direction.destination_ar} · ${direction.destination_en}` : 'التوجيه بانتظار التقييم · Direction pending'}
         </p>
+        {ctas?.drivenBy && (
+          <p className="text-xs text-graphite truncate">حسب: {ctas.drivenBy.ar} · set by {ctas.drivenBy.en}</p>
+        )}
       </div>
     </div>
   );

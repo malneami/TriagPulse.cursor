@@ -266,6 +266,9 @@ function parseSpokenAge(text: string): { value: number; span: string; confidence
   }
 
   const yearsOld = t.match(/(?:^|[,\s])(\d{1,3})\s*(?:years?\s*old|year\s*old|years?\s+of\s+age|y\/o|yo|سن[ةها])/i)
+    // "child 3 years", "girl aged 5 yrs", «طفل 3 سنوات», «بنت ٥ سنين»
+    || t.match(/\b(?:child|boy|girl|baby|infant|toddler|kid|patient|male|female|man|woman|aged?)\s+(?:of\s+|is\s+)?(\d{1,3})\s*(?:years?|yrs?|y)\b/i)
+    || t.match(/(?:طفل|طفلة|ولد|بنت|مريض|مريضة|رضيع|رضيعة)\s+(?:عمره|عمرها)?\s*(\d{1,3})\s*(?:سنوات|سنين|سنة|سنه)/i)
     || t.match(/(?:حوالي|تقريباً?|نحو)\s*(\d{1,3})\s*سن[ةها]?/i)
     || t.match(/سن[ةها]\s*(\d{1,3})/i);
   if (yearsOld) {

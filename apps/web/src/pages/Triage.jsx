@@ -32,6 +32,7 @@ import {
   CTAS_REQUIRED_FIELDS,
   CTAS_CONFIG,
   evaluateComorbidityRules,
+  applyModifierLibraryEffects,
 } from '@triagepulse/clinical';
 
 import UrgentAlert from '@/components/triage/UrgentAlert';
@@ -1064,6 +1065,38 @@ export default function Triage() {
   const finalDirection = nurseValidation?.direction || directionAi;
   const decidedStatus = nurseValidation ? (nurseValidation.agreed ? 'confirmed' : 'overridden') : null;
   const answeredAny = answeredLog.length > 0;
+  /**
+   * What actually holds the shown level, so the nurse can see why it does not change:
+   * an unconfirmed reading, an illness rule, an answer, a vital sign or the complaint.
+   */
+  function levelReason() {
+    const L = nurseValidation?.nurseLevel ?? shownLevel;
+    if (L == null || nurseValidation) return null;
+    if (conflictFloor === L) {
+      const c = openConflicts.find((x) => x.values.some((v) => {
+        try { return computeLiveCTAS(withReading(patient, x, v), answersWithModifier)?.level === L; } catch { return false; }
+      }));
+      if (c) return { ar: `قراءة غير مؤكدة: ${vitalLabel(c.field).ar} (${c.values.join(' / ')})`, en: `unconfirmed reading: ${vitalLabel(c.field).en} (${c.values.join(' / ')})` };
+    }
+    if (leadRule && leadRule.floor === L) {
+      return { ar: `${leadRule.label_ar} + ${leadRule.trigger_ar} (تاريخ مرضي عالي الخطورة)`, en: `${leadRule.label_en} + ${leadRule.trigger_en} (high-risk history)` };
+    }
+    for (const ans of [...answeredLog, ...dictatedFindings]) {
+      let lvl = null;
+      try { lvl = applyModifierLibraryEffects({ [ans.field]: ans.value }, 5).level; } catch { lvl = null; }
+      if (lvl === L && L < 5) {
+        const short = (t) => String(t || '').replace(/\s*\(.*?\)\s*/g, ' ').replace(/[؟?]\s*$/, '').trim();
+        const opt = (t) => String(t || '').split(' · ')[0].split(':')[0].trim();
+        return { ar: `${short(ans.text_ar) || ans.field}: ${opt(ans.label)}`, en: `${short(ans.text_en) || ans.field}: ${opt(ans.value_en || ans.label)}` };
+      }
+    }
+    const vital = (liveResult?.assessment_trail?.step4_final?.candidates || [])
+      .find((x) => x.level === L && !/baseline|خط أساس/i.test(`${x.label_en} ${x.label_ar}`));
+    if (vital) return { ar: vital.label_ar || vital.label_en, en: vital.label_en };
+    if (cc.complaints.length >= 2 && cc.primary) return { ar: cc.primary.label_ar, en: cc.primary.label_en };
+    return null;
+  }
+
   const ctasBox = {
     level: nurseValidation?.nurseLevel ?? shownLevel,
     // "At least" also while a check an illness rule needs (glucose, ketones…) is missing.
@@ -1072,9 +1105,7 @@ export default function Triage() {
     status: decidedStatus || (a.pending ? 'incomplete' : (answeredAny ? 'updated' : 'preliminary')),
     changedFrom: initialSnapshot?.level ?? null,
     note: null,
-    drivenBy: leadRule
-      ? { ar: `${leadRule.label_ar} + ${leadRule.trigger_ar} (تاريخ مرضي عالي الخطورة)`, en: `${leadRule.label_en} + ${leadRule.trigger_en} (high-risk history)` }
-      : cc.complaints.length >= 2 && cc.primary ? { ar: cc.primary.label_ar, en: cc.primary.label_en } : null,
+    drivenBy: levelReason(),
   };
   const directionBox = {
     status: decidedStatus || (directionAi ? (answeredAny ? 'updated' : 'preliminary') : 'pending'),
@@ -1110,6 +1141,25 @@ export default function Triage() {
       return questionFitsPatient(q, patient);
     })
     .map((q) => ({ ...q, _options: optionLabels(q) }));
+  // Findings the engine took from the dictation (e.g. "has stridor" → Yes). Shown with
+  // the answers so the nurse can see and correct them; an explicit answer always wins.
+  const answeredFields = new Set(answeredLog.map((x) => x.field));
+  const dictatedFindings = Object.entries(clarifyingAnswers)
+    .filter(([f, v]) => !f.startsWith('_') && !answeredFields.has(f) && v != null && v !== '')
+    .map(([f, v]) => {
+      const m = (getActiveModifiers?.() || []).find((x) => x.field === f);
+      if (!m || !m.question_ar) return null;
+      const opt = (m.options || []).find((o) => o.value === v);
+      return {
+        field: f, value: v, auto: true,
+        text_ar: m.question_ar, text_en: m.question_en,
+        label: opt ? `${opt.label_ar} · ${opt.label_en}` : answerLabel(v),
+        value_en: opt?.label_en || String(answerLabel(v)).split(' · ').pop(),
+        category: m.question_category || 'ctas_modifier',
+        yesNo: m.answer_type === 'yes_no',
+      };
+    })
+    .filter(Boolean);
   const openSafety = openQuestions.filter((q) => (q.question_category || q.category) === 'safety_escalation');
 
   const redFlagText = (liveResult?.red_flags || []).map((f) => (typeof f === 'string' ? f : (f.ar || f.en || ''))).filter(Boolean);
@@ -1486,7 +1536,7 @@ export default function Triage() {
 
           {!recording && <VitalConfirmCard conflicts={openConflicts} onPick={pickVitalReading} />}
 
-          {!recording && hasData && (openQuestions.length > 0 || answeredLog.length > 0) && (
+          {!recording && hasData && (openQuestions.length > 0 || answeredLog.length > 0 || dictatedFindings.length > 0) && (
             <QuestionCard
               question={openQuestions[0]}
               position={answeredLog.length + 1}
@@ -1494,6 +1544,8 @@ export default function Triage() {
               onAnswer={handleFlowAnswer}
               answered={answeredLog}
               onChangeAnswer={handleChangeAnswer}
+              detected={dictatedFindings}
+              onCorrectDetected={(f, v) => handleFlowAnswer({ field: f.field, text_ar: f.text_ar, text_en: f.text_en, question_category: f.category }, v)}
             />
           )}
 

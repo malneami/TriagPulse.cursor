@@ -16,6 +16,8 @@
  * }} KnownFact
  */
 
+import { negatedFindingRegex } from './negation.js';
+
 const YES = 'نعم';
 const NO = 'لا';
 
@@ -167,7 +169,7 @@ export function buildKnownFacts({
     let hit = null;
     for (const re of mod.detect_patterns || []) {
       if (re.test(ctx)) {
-        const negated = new RegExp(`(?:no|not|denies|بدون|لا\\s*(?:يوجد)?|ينفي).{0,24}(?:${re.source})`, 'i');
+        const negated = negatedFindingRegex(re.source);
         if (negated.test(ctx)) {
           hit = { known: true, value: NO, source: 'transcript_negated' };
         } else {
