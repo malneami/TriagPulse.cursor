@@ -25,7 +25,7 @@ function StatusChip({ status }) {
  * The two persistent result boxes: CTAS and patient direction, calculated separately.
  * When data is insufficient the CTAS box says so instead of showing a default level.
  */
-export default function ResultBoxes({ ctas, direction, critical = false }) {
+export default function ResultBoxes({ ctas, direction, critical = false, compact = false }) {
   const level = ctas?.level ?? null;
   const cfg = level ? CTAS_CONFIG[level] : null;
 
@@ -34,20 +34,22 @@ export default function ResultBoxes({ ctas, direction, critical = false }) {
     <>
     {/* Phones: one compact strip so the form keeps most of the screen */}
     <div
-      className={`sm:hidden bg-white rounded-2xl overflow-hidden flex items-stretch ${critical ? 'border-2 border-[#D3242C]' : 'border border-mist'}`}
+      className={`${compact ? '' : 'sm:hidden'} bg-white rounded-2xl overflow-hidden flex items-stretch ${critical ? 'border-2 border-[#D3242C]' : 'border border-mist'}`}
       aria-live="polite"
+      aria-label="CTAS الحالي / Live CTAS"
     >
       <div
         className="w-16 shrink-0 flex flex-col items-center justify-center py-1"
         style={cfg ? ctasFill(level) : { backgroundColor: '#EEF2F5', color: '#4B5765' }}
       >
         <span className="text-[10px] font-semibold">CTAS</span>
-        <span className="text-2xl font-bold leading-none">{level ?? '?'}</span>
+        <span key={level ?? 'x'} className="text-2xl font-bold leading-none motion-safe:animate-[pulse_0.6s_ease-out_1]">{level ?? '?'}</span>
       </div>
       <div className="flex-1 min-w-0 px-3 py-1.5">
         <p className="text-[15px] font-semibold text-ink truncate">
           {cfg ? `${cfg.ar} · ${cfg.en}` : 'غير مكتمل · Incomplete'}
-          <span className="font-normal text-graphite"> · {statusAr}</span>
+          {ctas?.atLeast && <span className="font-normal text-graphite"> · على الأقل</span>}
+          {cfg && <span className="font-normal text-graphite"> · {statusAr}</span>}
         </p>
         <p className="text-sm text-ink truncate flex items-center gap-1">
           <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
@@ -56,7 +58,7 @@ export default function ResultBoxes({ ctas, direction, critical = false }) {
       </div>
     </div>
 
-    <div className="hidden sm:grid grid-cols-2 gap-3" aria-live="polite">
+    {!compact && <div className="hidden sm:grid grid-cols-2 gap-3" aria-live="polite">
       {/* Box 1 — CTAS */}
       <section
         aria-label="تقييم CTAS / CTAS assessment"
@@ -123,7 +125,7 @@ export default function ResultBoxes({ ctas, direction, critical = false }) {
           {direction?.reason && <p className="text-sm text-ink line-clamp-2">{direction.reason}</p>}
         </div>
       </section>
-    </div>
+    </div>}
     </>
   );
 }

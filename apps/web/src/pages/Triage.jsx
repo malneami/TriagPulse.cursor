@@ -1256,7 +1256,14 @@ export default function Triage() {
           onRecordingStart={handleRecordingStart}
           onRecordingChange={handleRecordingChange}
           onContinue={() => { handleRecordingStart(); goToStep('assessment'); }}
-          liveFields={<LiveFields patient={patient} missing={missingFields} total={REQUIRED_FIELDS.length} />}
+          liveFields={(
+            <LiveFields
+              patient={patient}
+              missing={missingFields}
+              total={REQUIRED_FIELDS.length}
+              summary={<ResultBoxes compact ctas={ctasBox} direction={directionBox} critical={critical} />}
+            />
+          )}
         />
       )}
 

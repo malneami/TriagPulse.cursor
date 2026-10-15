@@ -22,7 +22,7 @@ const FIELDS = [
  * dictation is understood; empty mandatory fields are listed as "still needed" so the
  * nurse knows what to say next. Read-only here; corrections happen in the next step.
  */
-export default function LiveFields({ patient, missing = [], total = 10, live = false }) {
+export default function LiveFields({ patient, missing = [], total = 10, live = false, summary = null }) {
   const done = total - missing.length;
   const prev = useRef({});
   const [flash, setFlash] = useState({});
@@ -45,6 +45,7 @@ export default function LiveFields({ patient, missing = [], total = 10, live = f
 
   return (
     <section aria-label="الحقول المستخرجة / Extracted fields" className="flex flex-col gap-3">
+      {summary}
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-[15px] font-semibold text-ink">
           {live ? 'تُعبّأ أثناء الإملاء · Filling as you dictate' : 'البيانات المستخرجة · Extracted data'}
