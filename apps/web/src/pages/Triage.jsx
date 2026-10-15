@@ -340,15 +340,21 @@ export default function Triage() {
   const ruleSetsLevel = comorb.floor != null && (!otherLevels.length || comorb.floor < Math.min(...otherLevels));
   const leadRule = ruleSetsLevel ? comorb.applied.find((r) => r.floor === comorb.floor) : null;
   const evalLevel = modifierEvaluation?.updated_ctas ?? null;
-  const ccPrimaryText = cc.complaints.length >= 2 ? cc.primary?.text : null;
+  // The chief complaint follows the primary complaint while several are listed, and
+  // always when the current one was removed by the nurse (even if one or none is left).
+  const normC = (t) => String(t || '').trim().toLowerCase();
+  const chiefWasRemoved = (patient.case_details?.complaints || [])
+    .filter((c) => (patient.dismissed_complaints || []).includes(c.key || c.text))
+    .some((c) => [c.text, c.label_en, c.label_ar].map(normC).includes(normC(patient.chief_complaint)));
+  const ccPrimaryText = cc.complaints.length >= 2 || chiefWasRemoved ? (cc.primary?.text ?? '') : null;
   useEffect(() => {
-    if (!ccPrimaryText) return;
-    // A complaint typed by the nurse is kept unless she picks one of the chips.
-    if (manualEditedFieldsRef.current.has('chief_complaint') && !patient.primary_complaint) return;
+    if (ccPrimaryText == null) return;
+    // A complaint typed by the nurse is kept unless she picks one of the chips (or removed it).
+    if (manualEditedFieldsRef.current.has('chief_complaint') && !patient.primary_complaint && !chiefWasRemoved) return;
     setPatient((prev) => (prev.chief_complaint === ccPrimaryText
       ? prev
       : { ...prev, chief_complaint: ccPrimaryText, confirmed_complaint_key: null }));
-  }, [ccPrimaryText, patient.primary_complaint]);
+  }, [ccPrimaryText, patient.primary_complaint, chiefWasRemoved]);
   const displayCtasLevel = [liveLevel, evalLevel].every((n) => n == null)
     ? null
     : Math.min(...[liveLevel, evalLevel].filter((n) => n != null));
@@ -413,6 +419,10 @@ export default function Triage() {
     patient.rr,
     patient.temperature,
     patient.gcs,
+    // A corrected complaint or age must re-score as well (same question set or not).
+    patient.chief_complaint,
+    patient.confirmed_complaint_key,
+    patient.age,
     visualTriage?.destination,
   ]);
 
@@ -1065,6 +1075,25 @@ export default function Triage() {
   const finalDirection = nurseValidation?.direction || directionAi;
   const decidedStatus = nurseValidation ? (nurseValidation.agreed ? 'confirmed' : 'overridden') : null;
   const answeredAny = answeredLog.length > 0;
+  // Findings the engine took from the dictation (e.g. "has stridor" → Yes). Shown with
+  // the answers so the nurse can see and correct them; an explicit answer always wins.
+  const answeredFields = new Set(answeredLog.map((x) => x.field));
+  const dictatedFindings = Object.entries(clarifyingAnswers)
+    .filter(([f, v]) => !f.startsWith('_') && !answeredFields.has(f) && v != null && v !== '')
+    .map(([f, v]) => {
+      const m = (getActiveModifiers?.() || []).find((x) => x.field === f);
+      if (!m || !m.question_ar) return null;
+      const opt = (m.options || []).find((o) => o.value === v);
+      return {
+        field: f, value: v, auto: true,
+        text_ar: m.question_ar, text_en: m.question_en,
+        label: opt ? `${opt.label_ar} · ${opt.label_en}` : answerLabel(v),
+        value_en: opt?.label_en || String(answerLabel(v)).split(' · ').pop(),
+        category: m.question_category || 'ctas_modifier',
+        yesNo: m.answer_type === 'yes_no',
+      };
+    })
+    .filter(Boolean);
   /**
    * What actually holds the shown level, so the nurse can see why it does not change:
    * an unconfirmed reading, an illness rule, an answer, a vital sign or the complaint.
@@ -1141,25 +1170,6 @@ export default function Triage() {
       return questionFitsPatient(q, patient);
     })
     .map((q) => ({ ...q, _options: optionLabels(q) }));
-  // Findings the engine took from the dictation (e.g. "has stridor" → Yes). Shown with
-  // the answers so the nurse can see and correct them; an explicit answer always wins.
-  const answeredFields = new Set(answeredLog.map((x) => x.field));
-  const dictatedFindings = Object.entries(clarifyingAnswers)
-    .filter(([f, v]) => !f.startsWith('_') && !answeredFields.has(f) && v != null && v !== '')
-    .map(([f, v]) => {
-      const m = (getActiveModifiers?.() || []).find((x) => x.field === f);
-      if (!m || !m.question_ar) return null;
-      const opt = (m.options || []).find((o) => o.value === v);
-      return {
-        field: f, value: v, auto: true,
-        text_ar: m.question_ar, text_en: m.question_en,
-        label: opt ? `${opt.label_ar} · ${opt.label_en}` : answerLabel(v),
-        value_en: opt?.label_en || String(answerLabel(v)).split(' · ').pop(),
-        category: m.question_category || 'ctas_modifier',
-        yesNo: m.answer_type === 'yes_no',
-      };
-    })
-    .filter(Boolean);
   const openSafety = openQuestions.filter((q) => (q.question_category || q.category) === 'safety_escalation');
 
   const redFlagText = (liveResult?.red_flags || []).map((f) => (typeof f === 'string' ? f : (f.ar || f.en || ''))).filter(Boolean);
