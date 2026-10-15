@@ -12,9 +12,12 @@ web, API and its own empty Postgres database with test users.
 2. Click **Code → Codespaces → Create codespace on &lt;branch&gt;**.
 3. Wait for the first-time setup (about 3–5 minutes). It installs everything,
    builds, creates the database and adds the test users.
-4. The app opens in a new tab. If it does not, open the **Ports** tab and
-   click the globe icon next to **TriagePulse app (5174)**.
-5. Sign in with a test account:
+4. The app opens in a new tab. If it does not (pop-up blockers often stop
+   it), open the **Ports** tab in the bottom panel and click the globe icon
+   next to **TriagePulse app (3001)**. The address looks like
+   `https://<codespace-name>-3001.app.github.dev`.
+5. Sign in with a test account (type it in; the login page does not list
+   demo accounts in this build):
 
 | Role | Email | Password |
 |------|-------|----------|
@@ -28,7 +31,11 @@ patients only.
 - **Stop it** when you finish (GitHub → Codespaces → ⋯ → Stop) to save your
   free monthly hours. **Delete it** when the branch is merged.
 - Testing another branch: create a new codespace on that branch.
-- The app restarts with `npm run dev` in the terminal if you closed it.
+- If you closed the app's terminal, start it again with `npm run codespace:app`.
+  It builds the web app and serves it, with the API, on port 3001.
+- For live code editing with hot reload use `npm run dev` instead (web on
+  port 5174, API on 3001). Codespaces forwarding of port 5174 has proved
+  unreliable, so port 3001 is the default.
 - Voice transcription uses browser speech only (no OpenAI key is set).
 
 ## 2. Automatic checks on every pull request

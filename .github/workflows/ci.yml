@@ -70,8 +70,8 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      - name: Build API
-        run: npm run build:api
+      - name: Build API and web app
+        run: npm run build:api && npm run build --workspace=@triagepulse/web
       - name: Apply migrations and seed demo users
         run: npm run db:migrate:deploy && npm run db:seed
       - name: API refuses to start with a weak JWT secret
@@ -88,6 +88,8 @@ jobs:
       - name: Start API
         run: |
           export JWT_SECRET="$(openssl rand -base64 48)"
+          # Single-port mode, as in Codespaces: the API also serves the web app.
+          export SERVE_WEB_DIR=../web/dist
           nohup npm run start:api > api.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -sf http://localhost:3001/api/health > /dev/null; then echo "API up"; exit 0; fi
@@ -95,7 +97,7 @@ jobs:
           done
           echo "API did not start"; cat api.log; exit 1
       - name: End-to-end checks
-        run: node scripts/e2e-api.mjs
+        run: EXPECT_WEB=1 node scripts/e2e-api.mjs
       - name: API log
         if: always()
         run: tail -100 api.log || true

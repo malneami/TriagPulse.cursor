@@ -49,5 +49,6 @@ else
 fi
 
 echo ""
-echo "TriagePulse is ready. The app starts automatically (npm run dev)."
-echo "Demo login: nurse@triagepulse.local / triage123 (also physician@ and admin@)."
+echo "TriagePulse is ready. The app starts automatically (npm run codespace:app)"
+echo "and opens on port 3001. Demo login: nurse@triagepulse.local / triage123"
+echo "(also physician@ and admin@)."

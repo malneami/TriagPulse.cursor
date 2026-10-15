@@ -196,4 +196,19 @@ check(!String(after.json.arrivalTime).startsWith('2000'), 'client-sent journey f
 const board = await call('/tracking/board', { token: nurse });
 check(board.status === 200 && Array.isArray(board.json), 'tracking board loads');
 
+// ── Single-port mode (SERVE_WEB_DIR): the API also serves the web app ─
+if (process.env.EXPECT_WEB === '1') {
+  for (const path of ['/', '/login', '/tracking']) {
+    const res = await fetch(`${BASE}${path}`, { headers: { Accept: 'text/html' } });
+    const html = await res.text();
+    check(
+      res.status === 200 && html.includes('id="root"'),
+      `web app page served at ${path}`,
+      `status ${res.status}`,
+    );
+  }
+  const apiStill = await call('/health');
+  check(apiStill.json?.status === 'ok', 'API still answers alongside the web app');
+}
+
 console.log(`\nAll ${passed} checks passed.`);
