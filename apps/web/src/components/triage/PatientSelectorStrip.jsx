@@ -38,7 +38,7 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
         onClick={() => setOpen(v => !v)}
         type="button"
         aria-expanded={open}
-        className="w-full h-11 bg-white border border-mist text-ink rounded-xl px-4 flex items-center justify-between gap-2 hover:border-ink"
+        className="w-full h-11 bg-white border border-mist text-ink rounded-2xl shadow-sm px-4 flex items-center justify-between gap-2 hover:border-ink"
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-graphite text-sm shrink-0">المريض:</span>

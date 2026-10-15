@@ -26,7 +26,7 @@ export default function TriageTimer({ startedAt, status, stoppedAt }) {
 
   return (
     <div
-      className={`h-11 px-3 rounded-xl border flex items-center gap-2 shrink-0 ${
+      className={`h-11 px-3 rounded-2xl shadow-sm border flex items-center gap-2 shrink-0 ${
         over ? 'border-[#D3242C] text-[#D3242C]' : 'border-mist text-ink'
       } bg-white`}
       title="وقت الفرز / Triage time"

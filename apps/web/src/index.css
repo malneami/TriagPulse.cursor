@@ -114,6 +114,21 @@
   }
 }
 
+/* "Clinical calm" surfaces: soft white cards on the paper background. */
+@layer components {
+  .tp-card {
+    @apply bg-white rounded-[20px] border border-mist/70;
+    box-shadow: 0 1px 2px rgba(20, 32, 43, 0.04), 0 12px 32px -20px rgba(20, 32, 43, 0.22);
+  }
+}
+
+/* Recording halo around the red dot (decorative). */
+@keyframes tpHalo {
+  0% { box-shadow: 0 0 0 0 rgba(211, 36, 44, 0.45); }
+  100% { box-shadow: 0 0 0 12px rgba(211, 36, 44, 0); }
+}
+.tp-halo { animation: tpHalo 1.4s ease-out infinite; }
+
 /* Print only the triage record when one is shown. */
 @media print {
   body:has(.print-area) * { visibility: hidden; }

@@ -42,6 +42,7 @@ import FieldGrid from '@/components/triage/flow/FieldGrid';
 import LivePrompt from '@/components/triage/flow/LivePrompt';
 import QuestionCard, { ANSWER_UNKNOWN, answerLabel } from '@/components/triage/flow/QuestionCard';
 import DecisionBar from '@/components/triage/flow/DecisionBar';
+import HeroResult from '@/components/triage/flow/HeroResult';
 import ChangeSheet from '@/components/triage/flow/ChangeSheet';
 import QuickComplaints from '@/components/triage/QuickComplaints';
 import ChiefComplaintConfirm from '@/components/triage/ChiefComplaintConfirm';
@@ -1200,6 +1201,18 @@ export default function Triage() {
   const prompt = recording ? nextPrompt(a.missingKeys, patient) : null;
   const promptQuestion = recording && !prompt ? openQuestions[0] : null;
 
+  // The large CTAS/direction cards (tablet and desktop) and the compact strip in the
+  // bottom bar are never shown together: the strip appears only when the cards are
+  // off screen (always on phones, where the cards are hidden).
+  const [heroEl, setHeroEl] = useState(null);
+  const [heroVisible, setHeroVisible] = useState(false);
+  useEffect(() => {
+    if (!heroEl || typeof IntersectionObserver === 'undefined') { setHeroVisible(false); return undefined; }
+    const io = new IntersectionObserver(([entry]) => setHeroVisible(entry.isIntersecting), { threshold: 0.35 });
+    io.observe(heroEl);
+    return () => io.disconnect();
+  }, [heroEl]);
+
   const more = (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1261,14 +1274,14 @@ export default function Triage() {
           type="button"
           onClick={startNewPatient}
           aria-label="مريض جديد / New patient"
-          className="h-11 px-3 flex items-center gap-2 border border-mist bg-white text-ink rounded-xl text-[15px] font-medium hover:border-ink shrink-0"
+          className="h-11 px-3 flex items-center gap-2 border border-mist bg-white text-ink rounded-2xl text-[15px] font-medium hover:border-ink shrink-0 shadow-sm"
         >
           <Plus className="w-4 h-4" aria-hidden="true" /> <span className="hidden sm:inline">مريض جديد</span>
         </button>
       </div>
 
       {critical && !done && (
-        <div role="alert" className="rounded-2xl bg-[#D3242C] text-white px-3 py-2 flex items-center gap-2">
+        <div role="alert" className="rounded-[20px] bg-[#D3242C] text-white px-4 py-2.5 flex items-center gap-2 shadow-sm">
           <ShieldAlert className="w-5 h-5 shrink-0" aria-hidden="true" />
           <p className="text-[15px] font-semibold leading-snug">
             {criticalText.ar} <span className="font-normal text-white/90">· {criticalText.en}</span>
@@ -1285,14 +1298,20 @@ export default function Triage() {
         />
       ) : (
         <>
-          <VoiceTriagePanel
-            journeyId={activeJourney?.id}
-            patient={patient}
-            onSessionUpdate={applySttSessionToPatient}
-            onResync={(output) => applySttSessionToPatient(output, { force: true })}
-            onRecordingStart={handleRecordingStart}
-            onRecordingChange={handleRecordingChange}
-          />
+          {/* Voice capture beside the live CTAS and direction (tablet/desktop); voice only on phones */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+            <div className="min-w-0 flex flex-col [&>section]:flex-1">
+              <VoiceTriagePanel
+                journeyId={activeJourney?.id}
+                patient={patient}
+                onSessionUpdate={applySttSessionToPatient}
+                onResync={(output) => applySttSessionToPatient(output, { force: true })}
+                onRecordingStart={handleRecordingStart}
+                onRecordingChange={handleRecordingChange}
+              />
+            </div>
+            <HeroResult ref={setHeroEl} ctas={ctasBox} direction={directionBox} critical={critical} />
+          </div>
 
           <LivePrompt prompt={prompt} question={promptQuestion} />
 
@@ -1336,6 +1355,7 @@ export default function Triage() {
         saving={saving}
         done={done}
         why={why}
+        showResult={!heroVisible}
       />
     </div>
   );

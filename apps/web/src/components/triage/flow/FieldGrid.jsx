@@ -46,27 +46,31 @@ export default function FieldGrid({ patient, onChange, missingKeys = [], total =
   }, [patient]);
 
   return (
-    <section aria-labelledby="fg-title" className="bg-white rounded-2xl border border-mist p-3 flex flex-col gap-2">
+    <section aria-labelledby="fg-title" className="tp-card p-3 md:p-4 flex flex-col gap-3">
       <div className="flex items-center gap-3">
-        <h2 id="fg-title" className="text-[15px] font-semibold text-ink">بيانات المريض · Patient data</h2>
-        <div className="flex-1 h-1.5 rounded-full bg-mist overflow-hidden" aria-hidden="true">
-          <div className="h-full bg-ink transition-all duration-500" style={{ width: `${(done / total) * 100}%` }} />
+        <h2 id="fg-title" className="text-[15px] font-semibold text-ink whitespace-nowrap">
+          بيانات المريض <span className="hidden sm:inline text-graphite font-normal">· Patient data</span>
+        </h2>
+        <div className="flex-1 h-2 rounded-full bg-paper overflow-hidden" aria-hidden="true">
+          <div className="h-full rounded-full bg-ink transition-all duration-500" style={{ width: `${(done / total) * 100}%` }} />
         </div>
-        <span className="text-sm font-semibold text-ink tabular-nums" aria-live="polite"><span dir="ltr">{done}/{total}</span></span>
+        <span className="text-sm font-semibold text-ink tabular-nums whitespace-nowrap" aria-live="polite">
+          <span dir="ltr">{done}/{total}</span> <span className="hidden sm:inline font-normal text-graphite">مكتمل · captured</span>
+        </span>
       </div>
 
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 md:gap-2.5">
         {TILES.map((t) => {
           const v = val(patient[t.key]);
           const missing = missingKeys.includes(t.key === 'gender' ? '__none' : t.key);
           const interp = v && t.interp ? t.interp(patient) : null;
           const critical = interp?.status === 'critical';
           const abnormal = interp?.status === 'abnormal';
-          const tone = critical ? 'border-2 border-[#D3242C]'
-            : missing ? 'border border-dashed border-[#D3242C]/60 bg-paper'
-              : `border border-mist ${flash[t.key] ? 'bg-mist' : 'bg-white'}`;
+          const tone = critical ? 'border-2 border-[#D3242C] bg-white'
+            : missing ? 'border-[1.5px] border-dashed border-[#D3242C]/50 bg-white'
+              : `border border-transparent ${flash[t.key] ? 'bg-mist' : 'bg-paper'}`;
           return (
-            <div key={t.key} className={`rounded-xl px-2.5 py-1.5 transition-colors duration-700 ${tone} ${t.wide ? 'col-span-3 sm:col-span-6' : ''}`}>
+            <div key={t.key} className={`rounded-2xl px-2.5 py-1.5 md:px-3 md:py-2 transition-colors duration-700 focus-within:border-ink focus-within:bg-white ${tone} ${t.wide ? 'col-span-3 sm:col-span-6' : ''}`}>
               <label htmlFor={`fg-${t.key}`} className="flex items-center gap-1 text-xs text-graphite">
                 <span className="truncate">{t.ar} · {t.en}</span>
                 {(critical || abnormal) && (
@@ -82,7 +86,7 @@ export default function FieldGrid({ patient, onChange, missingKeys = [], total =
                       role="radio"
                       aria-checked={patient.gender === k}
                       onClick={() => onChange({ gender: patient.gender === k ? '' : k })}
-                      className={`flex-1 h-8 rounded-lg text-sm font-semibold ${patient.gender === k ? 'bg-ink text-white' : 'bg-paper text-ink'}`}
+                      className={`flex-1 h-8 rounded-lg text-sm font-semibold ${patient.gender === k ? 'bg-ink text-white' : 'bg-white text-ink'}`}
                     >
                       {ar}
                     </button>
@@ -96,7 +100,7 @@ export default function FieldGrid({ patient, onChange, missingKeys = [], total =
                     inputMode="numeric"
                     value={v}
                     onChange={(e) => onChange({ bp_systolic: e.target.value })}
-                    className={`w-full min-w-0 h-8 bg-transparent text-[17px] font-semibold tabular-nums focus:outline-none ${critical ? 'text-[#D3242C]' : 'text-ink'}`}
+                    className={`w-full min-w-0 h-8 bg-transparent text-[17px] md:text-lg font-semibold tabular-nums focus:outline-none ${critical ? 'text-[#D3242C]' : 'text-ink'}`}
                     placeholder="—"
                   />
                   <span className="text-graphite">/</span>
@@ -105,7 +109,7 @@ export default function FieldGrid({ patient, onChange, missingKeys = [], total =
                     inputMode="numeric"
                     value={val(patient.bp_diastolic)}
                     onChange={(e) => onChange({ bp_diastolic: e.target.value })}
-                    className="w-full min-w-0 h-8 bg-transparent text-[17px] font-semibold tabular-nums text-ink focus:outline-none"
+                    className="w-full min-w-0 h-8 bg-transparent text-[17px] md:text-lg font-semibold tabular-nums text-ink focus:outline-none"
                     placeholder="—"
                   />
                 </div>
@@ -119,7 +123,7 @@ export default function FieldGrid({ patient, onChange, missingKeys = [], total =
                     ? { chief_complaint: e.target.value, confirmed_complaint_key: null }
                     : { [t.key]: e.target.value })}
                   placeholder="—"
-                  className={`w-full h-8 bg-transparent text-[17px] font-semibold tabular-nums focus:outline-none ${t.text ? '' : 'text-start'} ${critical ? 'text-[#D3242C]' : 'text-ink'}`}
+                  className={`w-full h-8 bg-transparent text-[17px] md:text-lg font-semibold tabular-nums focus:outline-none ${t.text ? '' : 'text-start'} ${critical ? 'text-[#D3242C]' : 'text-ink'}`}
                 />
               )}
             </div>

@@ -23,7 +23,7 @@ export default function CompletedScreen({ level, direction, document, onNewPatie
 
   return (
     <section aria-labelledby="done-title" className="flex flex-col gap-4">
-      <div className="bg-white rounded-2xl border border-mist px-5 py-8 flex flex-col items-center text-center gap-3">
+      <div className="tp-card px-5 py-8 flex flex-col items-center text-center gap-3">
         <CheckCircle2 className="w-14 h-14 text-ink" aria-hidden="true" />
         <h2 id="done-title" className="text-2xl font-semibold text-ink">تم إكمال الفرز بنجاح</h2>
         <p className="text-lg text-graphite">Triage Successfully Completed</p>

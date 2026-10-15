@@ -823,20 +823,21 @@ export default function VoiceTriagePanel({
   // ── Recording: one compact row (status, clock, Stop) and the live text ──
   if (recording) {
     return (
-      <section aria-label="التسجيل جارٍ / Recording" className="bg-white rounded-2xl border border-mist p-3 flex flex-col gap-2">
+      <section aria-label="التسجيل جارٍ / Recording" className="tp-card p-3 md:p-4 flex flex-col gap-2 md:gap-3">
         <div className="flex items-center gap-3">
-          <span aria-hidden="true" className="w-3 h-3 rounded-full bg-[#D3242C] motion-safe:animate-pulse shrink-0" />
-          <span className="text-[15px] font-semibold text-ink" aria-live="polite">جارٍ التسجيل · Recording</span>
-          <span dir="ltr" className="text-[15px] font-semibold tabular-nums text-ink">{recClock}</span>
+          <span aria-hidden="true" className="w-3 h-3 rounded-full bg-[#D3242C] tp-halo shrink-0" />
+          <span className="text-[15px] font-semibold text-ink whitespace-nowrap" aria-live="polite">جارٍ التسجيل <span className="hidden sm:inline text-graphite font-normal">· Recording</span></span>
+          <span dir="ltr" className="text-[15px] font-semibold tabular-nums text-ink bg-paper rounded-full px-2.5 py-0.5">{recClock}</span>
           <button
             type="button"
             onClick={handleToggleRecord}
-            className="ms-auto h-12 px-5 rounded-xl bg-ink text-white font-semibold flex items-center gap-2"
+            aria-label="إيقاف التسجيل / Stop recording"
+            className="ms-auto h-12 px-5 rounded-xl bg-ink text-white font-semibold flex items-center gap-2 shrink-0"
           >
-            <Square className="w-5 h-5" aria-hidden="true" /> إيقاف · Stop
+            <Square className="w-5 h-5" aria-hidden="true" /> إيقاف<span className="hidden sm:inline"> · Stop</span>
           </button>
         </div>
-        <div dir="auto" aria-live="polite" className="max-h-24 overflow-y-auto rounded-xl bg-paper px-3 py-2 text-[15px] leading-relaxed text-ink">
+        <div dir="auto" aria-live="polite" className="max-h-24 md:max-h-56 md:min-h-[7rem] md:flex-1 overflow-y-auto rounded-2xl bg-paper px-3 py-2 md:px-4 md:py-3 text-[15px] md:text-base leading-relaxed text-ink">
           {liveTranscript || <span className="text-graphite">تحدث بالعربية أو الإنجليزية… · Speak in Arabic or English…</span>}
         </div>
         {notices}
@@ -847,7 +848,7 @@ export default function VoiceTriagePanel({
   // ── After recording / typing: one row, transcript on demand ──
   if (hasTranscript || manualFallback) {
     return (
-      <section aria-label="التسجيل / Recording" className="bg-white rounded-2xl border border-mist p-3 flex flex-col gap-2">
+      <section aria-label="التسجيل / Recording" className="tp-card p-3 md:p-4 flex flex-col gap-2 md:gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -868,6 +869,11 @@ export default function VoiceTriagePanel({
           </button>
           <span className="ms-auto text-xs text-graphite">{modeLabel}</span>
         </div>
+        {!showText && hasTranscript && (
+          <p dir="auto" className="hidden md:block flex-1 rounded-2xl bg-paper px-4 py-3 text-[15px] leading-relaxed text-ink line-clamp-5">
+            {transcriptText}
+          </p>
+        )}
         {showText && (
           <div className="flex flex-col gap-2">
             <textarea
@@ -905,13 +911,13 @@ export default function VoiceTriagePanel({
 
   // ── Start: one prominent action ──
   return (
-    <section aria-label="التقييم الصوتي / Voice assessment" className="bg-white rounded-2xl border border-mist px-4 py-6 flex flex-col items-center gap-3 text-center">
+    <section aria-label="التقييم الصوتي / Voice assessment" className="tp-card px-4 py-6 md:py-8 flex flex-col items-center justify-center gap-3 text-center">
       <button
         type="button"
         onClick={handleToggleRecord}
         disabled={busy}
         aria-label="بدء التقييم الصوتي / Start voice assessment"
-        className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-ink text-white flex items-center justify-center shadow-lg hover:bg-ink-deep disabled:opacity-70 focus-visible:outline-offset-4"
+        className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-ink text-white flex items-center justify-center ring-8 ring-paper shadow-[0_16px_32px_-12px_rgba(20,32,43,0.55)] hover:bg-ink-deep disabled:opacity-70 focus-visible:outline-offset-4"
       >
         {busy ? <Loader2 className="w-12 h-12 animate-spin" aria-hidden="true" /> : <Mic className="w-14 h-14" aria-hidden="true" />}
       </button>

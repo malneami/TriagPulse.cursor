@@ -34,7 +34,10 @@ export default function QuestionCard({ question, position, total, onAnswer, answ
   const safety = question && (question.question_category || question.category) === 'safety_escalation';
 
   return (
-    <section aria-labelledby="q-title" className="bg-white rounded-2xl border-2 border-ink p-3 flex flex-col gap-3">
+    <section
+      aria-labelledby="q-title"
+      className={`tp-card p-3 md:p-4 flex flex-col gap-3 border-s-4 ${safety ? 'border-s-[#D3242C]' : 'border-s-ink'}`}
+    >
       {question && (
         <>
           <div className="flex items-start gap-2">
@@ -54,9 +57,9 @@ export default function QuestionCard({ question, position, total, onAnswer, answ
                 key={o.value}
                 type="button"
                 onClick={() => onAnswer(question, o.value, o.label)}
-                className={`min-h-[52px] px-2 rounded-xl border-2 text-[15px] font-semibold leading-tight ${
-                  o.value === ANSWER_UNKNOWN ? 'border-dashed border-mist text-graphite' : 'border-mist text-ink hover:border-ink'
-                } bg-white`}
+                className={`min-h-[52px] px-2 rounded-2xl border-2 text-[15px] font-semibold leading-tight transition-colors ${
+                  o.value === ANSWER_UNKNOWN ? 'border-dashed border-mist text-graphite bg-white' : 'border-transparent bg-paper text-ink hover:border-ink'
+                }`}
               >
                 {o.label}
               </button>
