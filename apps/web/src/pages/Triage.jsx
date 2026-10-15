@@ -36,14 +36,16 @@ import {
 import UrgentAlert from '@/components/triage/UrgentAlert';
 import ComplaintModifierSelector from '@/components/triage/ComplaintModifierSelector';
 import VoiceTriagePanel from '@/components/triage/VoiceTriagePanel';
-import WorkflowProgress from '@/components/triage/flow/WorkflowProgress';
 import TriageTimer from '@/components/triage/flow/TriageTimer';
-import AssessmentCard from '@/components/triage/flow/AssessmentCard';
-import ResultBoxes from '@/components/triage/flow/ResultBoxes';
-import ClarifyStep, { ANSWER_UNKNOWN, answerLabel } from '@/components/triage/flow/ClarifyStep';
-import ReviewConfirm from '@/components/triage/flow/ReviewConfirm';
 import CompletedScreen from '@/components/triage/flow/CompletedScreen';
-import LiveFields from '@/components/triage/flow/LiveFields';
+import FieldGrid from '@/components/triage/flow/FieldGrid';
+import LivePrompt from '@/components/triage/flow/LivePrompt';
+import QuestionCard, { ANSWER_UNKNOWN, answerLabel } from '@/components/triage/flow/QuestionCard';
+import DecisionBar from '@/components/triage/flow/DecisionBar';
+import ChangeSheet from '@/components/triage/flow/ChangeSheet';
+import QuickComplaints from '@/components/triage/QuickComplaints';
+import ChiefComplaintConfirm from '@/components/triage/ChiefComplaintConfirm';
+import { deriveAssessment, nextPrompt } from '@/lib/triageAssessment';
 import { buildTriageDocument } from '@/lib/triageDocument';
 import { useQuery } from '@tanstack/react-query';
 
@@ -110,7 +112,8 @@ export default function Triage() {
   const [clarifyingSource, setClarifyingSource] = useState('empty'); // modifier_engine | bank | llm | empty
   const [clarifyingLevel, setClarifyingLevel] = useState(null);
   const [modifierEvaluation, setModifierEvaluation] = useState(null);
-  const [step, setStep] = useState('capture'); // capture | assessment | clarify | review | done
+  const [recording, setRecording] = useState(false);
+  const [showChange, setShowChange] = useState(false);
   const [initialSnapshot, setInitialSnapshot] = useState(null);
   const [answeredLog, setAnsweredLog] = useState([]);
   const [unknownAnswers, setUnknownAnswers] = useState({});
@@ -681,7 +684,7 @@ export default function Triage() {
       destinationEn: modifierEvaluation?.suggested_destination?.destination_en,
       modifierNotes: modifierEvaluation?.explanation?.en || null,
     });
-    setCtasResult({
+    const built = {
       ...displayLiveResult,
       clinical_summary_ar: narrative.clinical_summary_ar,
       clinical_summary_en: narrative.clinical_summary_en,
@@ -746,14 +749,26 @@ export default function Triage() {
       safety_note: aiExtractionMeta?.safety_note || sttSafetyDisclaimer(),
       clinician_review_required: true,
       assessed_at: now,
-    });
+    };
+    setCtasResult(built);
     setAuditLog((a) => [...a, { time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }), msg: `CTAS recommendation generated: C${displayCtasLevel || liveResult?.ctas_level || liveResult?.level}` }]);
-    return true;
+    return built;
   };
 
   const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
 
-  const handleSave = async () => {
+  const nurseValidationState = nurseValidation;
+  const ctasResultState = ctasResult;
+  const handleSave = async (decisionArg = null, resultArg = null) => {
+    // Confirm passes the decision and the freshly built result directly, so saving does
+    // not wait for React state to update.
+    const nurseValidation = decisionArg || nurseValidationState;
+    const ctasResult = resultArg || ctasResultState;
+    const finalDirection = nurseValidation?.direction || directionAi;
+    let savedOk = false;
+    // The recommendation of record is what the nurse saw. When CTAS was pending, none was
+    // made: store null (the engine's provisional value goes to validated_payload only).
+    const aiShownLevel = shownLevel ?? null;
     // One record per triage: a synchronous lock stops double taps before React re-renders.
     if (savingRef.current || savedRecord) return;
     if (!nurseValidation) { toast.error('أكّد الفرز أو عدّله أولاً · Confirm or override first'); return; }
@@ -790,7 +805,7 @@ export default function Triage() {
           || 'uncertain',
       }),
       createAuditEvent('clinician_review_saved', user, {
-        rules_recommended_ctas: ctasResult?.rules_recommended_ctas || ctasResult?.ctas_level,
+        rules_recommended_ctas: aiShownLevel,
         clinician_final_ctas: finalLevel,
         agreement: nurseValidation?.agreed ?? true,
         override_reason: nurseValidation?.overrideReason || null,
@@ -810,10 +825,10 @@ export default function Triage() {
         temperature: toNum(patient.temperature), gcs: toNum(patient.gcs),
         weight: toNum(patient.weight),
         pain_score: toNum(patient.pain_score),
-        ai_ctas: ctasResult?.ai_recommended_ctas || ctasResult?.ctas_level,
+        ai_ctas: aiShownLevel,
         nurse_ctas: finalLevel,
-        rules_recommended_ctas: ctasResult?.rules_recommended_ctas || ctasResult?.ctas_level,
-        ai_recommended_ctas: ctasResult?.ai_recommended_ctas || ctasResult?.ctas_level,
+        rules_recommended_ctas: aiShownLevel,
+        ai_recommended_ctas: aiShownLevel,
         clinician_final_ctas: finalLevel,
         clinician_reviewed_at: reviewedAt,
         agreement: nurseValidation?.agreed ?? true,
@@ -836,8 +851,8 @@ export default function Triage() {
         library_versions: ctasResult?.library_versions || getLibraryVersions(),
         clinical_summary_en: resultToSave.clinical_summary_en || null,
         validated_payload: {
-          rules_recommended_ctas: ctasResult?.rules_recommended_ctas || ctasResult?.ctas_level,
-          ai_recommended_ctas: ctasResult?.ai_recommended_ctas || ctasResult?.ctas_level,
+          rules_recommended_ctas: aiShownLevel,
+          ai_recommended_ctas: aiShownLevel,
           clinician_final_ctas: finalLevel,
           agreement: nurseValidation?.agreed ?? true,
           override_reason: nurseValidation?.overrideReason || null,
@@ -852,6 +867,7 @@ export default function Triage() {
           summary_ar: resultToSave.clinical_summary_ar || null,
           summary_en: resultToSave.clinical_summary_en || null,
           ai_assessment_status: ctasBox.status,
+          engine_provisional_level: a.engineLevel,
           initial_assessment: initialSnapshot,
           patient_direction: {
             ai: directionAi ? { destination: directionAi.destination, destination_en: directionAi.destination_en, reason: directionReason } : null,
@@ -897,8 +913,18 @@ export default function Triage() {
         journey_id: journeyId,
         triage_record: { ...triageRecord, alert_acknowledged_by: firstAck?.by || null },
       });
-      setSavedRecord({ at: now, document: buildTriageDocument({ ...documentInput, completedAt: now }) });
-      setStep('done');
+      setSavedRecord({
+        at: now,
+        document: buildTriageDocument({
+          ...documentInput,
+          finalLevel: nurseValidation?.nurseLevel,
+          direction: finalDirection,
+          overridden: !nurseValidation?.agreed,
+          overrideReason: nurseValidation?.overrideReason,
+          completedAt: now,
+        }),
+      });
+      savedOk = true;
       toast.success('تم حفظ سجل الفرز · Triage saved');
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -920,38 +946,170 @@ export default function Triage() {
     } finally {
       setSaving(false);
     }
+    return savedOk;
   };
 
-  // ── Nurse decision (confirm / override) ─────────────────────────────
-  const handleDecision = ({ agreed, nurseLevel, overrideReason, direction }) => {
-    const reviewedAt = new Date().toISOString();
-    setNurseValidation({
-      agreed, nurseLevel, overrideReason, direction, reviewedAt,
-      reviewedBy: user?.full_name || user?.email,
+  // ── Derived assessment (display rules shared with the scenario validator) ──
+  const a = deriveAssessment({
+    patient,
+    liveLevel,
+    evalLevel,
+    modifierEvaluation,
+    answers: clarifyingAnswers,
+    visualTriage,
+  }, { CTAS_REQUIRED_FIELDS: REQUIRED_FIELDS, resolveCtasDestination });
+  const shownLevel = a.level;
+  const directionAi = a.direction;
+  const directionReason = a.directionReason;
+  const missingFields = a.missingFields;
+  const critical = a.critical;
+  const criticalText = shownLevel === 1
+    ? { ar: 'إنعاش: تدخل فوري الآن', en: 'Resuscitation: immediate intervention' }
+    : shownLevel === 2
+      ? { ar: 'طارئ: تقييم الطبيب خلال ١٥ دقيقة', en: 'Emergent: physician assessment within 15 minutes' }
+      : { ar: 'تنبيه سلامة حرج: مراجعة سريرية فورية', en: 'Critical safety alert: immediate clinical review' };
+
+  const complaintInfo = liveResult?.assessment_trail?.step1_chief_complaint?.complaint;
+  const pathwayLabel = complaintInfo ? `${complaintInfo.name_ar} · ${complaintInfo.name_en}` : null;
+  const finalDirection = nurseValidation?.direction || directionAi;
+  const decidedStatus = nurseValidation ? (nurseValidation.agreed ? 'confirmed' : 'overridden') : null;
+  const answeredAny = answeredLog.length > 0;
+  const ctasBox = {
+    level: nurseValidation?.nurseLevel ?? shownLevel,
+    atLeast: !nurseValidation && a.atLeast,
+    status: decidedStatus || (a.pending ? 'incomplete' : (answeredAny ? 'updated' : 'preliminary')),
+    changedFrom: initialSnapshot?.level ?? null,
+    note: null,
+  };
+  const directionBox = {
+    status: decidedStatus || (directionAi ? (answeredAny ? 'updated' : 'preliminary') : 'pending'),
+    destination_ar: finalDirection?.destination_ar,
+    destination_en: finalDirection?.destination_en,
+    pathway: pathwayLabel,
+    reason: nurseValidation && !nurseValidation.agreed ? nurseValidation.overrideReason : directionReason,
+    changedFrom: initialSnapshot?.direction && directionAi && initialSnapshot.direction !== directionAi.destination
+      ? initialSnapshot.direction_label : null,
+  };
+
+  // ── Clarifying questions: highest impact first, one at a time ───────
+  const optionLabels = (q) => {
+    if (q.answer_type !== 'options') return null;
+    const src = getBankQuestionById?.(q.id)?.options
+      || getActiveModifiers?.().find((m) => m.id === q.id)?.options
+      || null;
+    if (!src) return null;
+    return (q.answer_options || []).map((v) => {
+      const o = src.find((x) => x.value === v);
+      if (!o) return { value: v, label: v };
+      const same = !o.label_en || o.label_en === o.label_ar;
+      return { value: v, label: same ? (o.label_ar || v) : `${o.label_ar} · ${o.label_en}` };
     });
-    setConfirmedTime(reviewedAt);
-    setTimerStatus('confirmed');
-    setAuditLog((a) => [...a, {
-      time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
-      msg: agreed
-        ? `Nurse confirmed CTAS ${nurseLevel}, direction ${direction?.destination}`
-        : `Nurse override: CTAS ${nurseLevel}, direction ${direction?.destination}. Reason: ${overrideReason}`,
-      action: agreed ? 'nurse_confirmed' : 'nurse_override',
-      details: {
-        ai_ctas: shownLevel, final_ctas: nurseLevel,
-        ai_direction: directionAi?.destination || null, final_direction: direction?.destination || null,
-        override_reason: overrideReason || null,
-      },
-    }]);
+  };
+  const openQuestions = clarifyingQuestions
+    .filter((q) => {
+      if (!q.field) return true;
+      if (unknownAnswers[q.field]) return false;
+      const v = clarifyingAnswers[q.field];
+      if (v != null && v !== '') return false;
+      return questionFitsPatient(q, patient);
+    })
+    .map((q) => ({ ...q, _options: optionLabels(q) }));
+  const openSafety = openQuestions.filter((q) => (q.question_category || q.category) === 'safety_escalation');
+
+  const redFlagText = (liveResult?.red_flags || []).map((f) => (typeof f === 'string' ? f : (f.ar || f.en || ''))).filter(Boolean);
+  const findings = [
+    ...redFlagText,
+    ...(modifierEvaluation?.known_facts || [])
+      .filter((f) => f.status === 'known_positive' && f.field !== 'chief_complaint')
+      .map((f) => f.label_ar || f.label_en || f.field),
+  ].filter((v, i, arr) => v && arr.indexOf(v) === i);
+  const justification = shownLevel == null ? [] : [
+    liveResult?.primary_determinant_ar && `${liveResult.primary_determinant_ar} · ${liveResult.primary_determinant_en || ''}`,
+    ...(liveResult?.modifiers || []).slice(0, 3).map((m) => m.label_ar || m.label_en),
+    modifierEvaluation?.explanation?.changed && modifierEvaluation.explanation.ar,
+    directionReason && `التوجيه: ${directionReason}`,
+  ].filter(Boolean);
+  const outstanding = [
+    ...missingFields.map((f) => `${f.label_ar} · ${f.label_en}`),
+    ...answeredLog.filter((x) => x.value === ANSWER_UNKNOWN).map((x) => `${x.text_ar || x.text_en} (غير معروف)`),
+  ];
+  const safetyAlerts = [
+    critical && `${criticalText.ar} · ${criticalText.en}`,
+    modifierEvaluation?.critical_alert && 'تنبيه سلامة حرج من محرك المعدّلات · Critical safety alert',
+    modifierEvaluation?.team_leader_review && 'يُوصى بمراجعة قائد الفريق · Team leader review recommended',
+    ...redFlagText.map((t) => `علامة خطر: ${t}`),
+  ].filter(Boolean);
+  const why = [
+    ...justification,
+    ...findings.slice(0, 6).map((f) => `+ ${f}`),
+    ...(outstanding.length ? [`ناقص · Missing: ${outstanding.join('، ')}`] : []),
+  ];
+
+  const directionOptions = (a.pediatric ? PEDIATRIC_DIRECTIONS : ADULT_DIRECTIONS).map((k) => CTAS_DESTINATIONS[k]);
+  const documentInput = {
+    patient,
+    patientId: urlPid || patient.patient_id || activeJourney?.patient_id,
+    finalLevel: nurseValidation?.nurseLevel,
+    aiLevel: shownLevel,
+    initialLevel: initialSnapshot?.level ?? null,
+    direction: finalDirection,
+    aiDirection: directionAi,
+    overridden: nurseValidation ? !nurseValidation.agreed : false,
+    overrideReason: nurseValidation?.overrideReason,
+    justification,
+    positives: findings,
+    answers: answeredLog,
+    outstanding: missingFields.map((f) => f.label_en),
+    safetyAlerts,
+    nurse: user?.full_name || user?.email,
   };
 
-  const clearDecision = () => {
-    setNurseValidation(null);
-    setTimerStatus(timerStartTime ? 'running' : 'idle');
-    setConfirmedTime(null);
-  };
+  const transcript = sttSessionOutput?.full_transcript || patient.transcription || '';
+  const hasData = !!(transcript || CORE_KEYS.some((k) => patient[k] !== '' && patient[k] != null));
+  const done = !!savedRecord;
 
-  // ── Clarifying answers (Yes / No / Unknown) ─────────────────────────
+  // ── Session effects ──────────────────────────────────────────────────
+  const handleRecordingChange = useCallback((rec) => setRecording(rec), []);
+
+  // The first time recording stops: remember the initial recommendation (to explain
+  // later changes) and make sure the clarifying questions are ready.
+  const wasRecordingRef = useRef(false);
+  useEffect(() => {
+    const stopped = wasRecordingRef.current && !recording;
+    wasRecordingRef.current = recording;
+    if (!stopped) return;
+    setInitialSnapshot((snap) => snap || {
+      level: shownLevel,
+      direction: directionAi?.destination || null,
+      direction_label: directionAi ? `${directionAi.destination_ar} · ${directionAi.destination_en}` : null,
+      at: new Date().toISOString(),
+    });
+    if (!questionsGeneratedRef.current && patient.chief_complaint) {
+      const level = selectedModifier?.ctas || complaintMatch?.complaint?.default_ctas || liveResult?.level || 5;
+      runModifierEngine(level, pathwayKey, clarifyingAnswers, selectedModifier);
+      questionsGeneratedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording]);
+
+  // Things said later in the dictation answer questions already selected: re-run the
+  // question pipeline (debounced) so they drop out instead of being asked.
+  useEffect(() => {
+    if (!questionsGeneratedRef.current || clarifyingSource === 'bank' || !patient.chief_complaint) return undefined;
+    const id = setTimeout(() => {
+      const level = clarifyingLevel || selectedModifier?.ctas || liveResult?.level || 5;
+      runModifierEngine(level, pathwayKey, clarifyingAnswers, selectedModifier);
+    }, 1500);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.transcription]);
+
+  // Manual entry also starts the triage clock.
+  useEffect(() => {
+    if (hasData && !timerStartTime) handleRecordingStart();
+  }, [hasData, timerStartTime, handleRecordingStart]);
+
+  // ── Answers (Yes / No / Unknown), advancing immediately ─────────────
   const handleFlowAnswer = (q, value, label) => {
     const entry = {
       field: q.field, text_ar: q.text_ar, text_en: q.text_en, value,
@@ -959,8 +1117,8 @@ export default function Triage() {
       value_en: String(label || answerLabel(value)).split(' · ').pop(),
       category: q.question_category || q.category || null,
     };
-    setAnsweredLog((prev) => [...prev.filter((a) => a.field !== q.field), entry]);
-    setAuditLog((a) => [...a, {
+    setAnsweredLog((prev) => [...prev.filter((x) => x.field !== q.field), entry]);
+    setAuditLog((log) => [...log, {
       time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
       msg: `Clarifying answer: ${q.field} = ${value}`,
       action: 'clarifying_answer',
@@ -984,7 +1142,7 @@ export default function Triage() {
   };
 
   const handleChangeAnswer = (field) => {
-    setAnsweredLog((prev) => prev.filter((a) => a.field !== field));
+    setAnsweredLog((prev) => prev.filter((x) => x.field !== field));
     if (unknownRef.current[field]) {
       const { [field]: _drop, ...rest } = unknownRef.current;
       unknownRef.current = rest;
@@ -993,219 +1151,86 @@ export default function Triage() {
     handleClarifyingAnswer(field, undefined);
   };
 
-  // ── Step transitions ────────────────────────────────────────────────
-  const goToStep = (key) => {
-    if (step === 'done') return;
-    if (key !== 'review') clearDecision();
-    setStep(key);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  // ── Confirm / Change = save ─────────────────────────────────────────
+  const blocked = recording ? 'أوقف التسجيل أولاً · Stop recording first'
+    : !patient.chief_complaint ? 'أدخل الشكوى الرئيسية · Enter the chief complaint'
+      : a.pending ? 'CTAS معلّق: أكمل البيانات أو استخدم «تغيير» · Pending: complete data or Change'
+        : urgentAlert ? 'أقرّ بالتنبيه الحرج أولاً · Acknowledge the critical alert first'
+          : openSafety.length ? 'أجب عن سؤال السلامة أولاً · Answer the safety question first'
+            : null;
 
-  const goClarify = () => {
+  const finalize = async (decision) => {
+    if (savingRef.current || savedRecord) return;
     const validation = validateTriageReady(patient);
     if (!validation.ok) {
       toast.error(validation.errors[0] || 'أدخل الشكوى الرئيسية · Enter the chief complaint');
       return;
     }
-    setInitialSnapshot((snap) => snap || {
-      level: shownLevel,
-      status: ctasBoxStatusBase,
-      direction: directionAi?.destination || null,
-      direction_label: directionAi ? `${directionAi.destination_ar} · ${directionAi.destination_en}` : null,
-      at: new Date().toISOString(),
-    });
-    if (!questionsGeneratedRef.current) {
-      const level = selectedModifier?.ctas || complaintMatch?.complaint?.default_ctas || liveResult?.level || 5;
-      runModifierEngine(level, pathwayKey, clarifyingAnswers, selectedModifier);
-      questionsGeneratedRef.current = true;
+    const result = handleAssess();
+    if (!result) return;
+    const reviewedAt = new Date().toISOString();
+    const full = { ...decision, reviewedAt, reviewedBy: user?.full_name || user?.email };
+    setNurseValidation(full);
+    setConfirmedTime(reviewedAt);
+    setTimerStatus('confirmed');
+    const ok = await handleSave(full, result);
+    if (ok) {
+      setShowChange(false);
+    } else {
+      // Not saved: the decision is not final, so the cards go back to the recommendation.
+      setNurseValidation(null);
+      setTimerStatus('running');
+      setConfirmedTime(null);
     }
-    goToStep('clarify');
   };
 
-  const goReview = () => {
-    if (!handleAssess()) return;
-    goToStep('review');
+  const confirm = () => {
+    if (blocked) return;
+    finalize({ agreed: true, nurseLevel: shownLevel, direction: directionAi, overrideReason: null });
   };
 
   const startNewPatient = () => {
     const hasWork = !!(patient.chief_complaint || patient.transcription || urlPid);
-    if (step === 'done' || !hasWork) navigate('/visual-triage');
+    if (done || !hasWork) navigate('/visual-triage');
     else setShowNewPatientConfirm(true);
   };
 
-  // ── Derived: CTAS box (never a default low level on missing data) ───
-  const missingFields = REQUIRED_FIELDS.filter((f) => !f.check(patient));
-  const missingKeys = missingFields.map((f) => f.key);
-  const coreMissing = CORE_KEYS.filter((k) => missingKeys.includes(k));
-  let shownLevel = null;
-  let atLeast = false;
-  if (displayCtasLevel != null) {
-    if (patient.chief_complaint && coreMissing.length === 0) shownLevel = displayCtasLevel;
-    else if (displayCtasLevel <= 3) { shownLevel = displayCtasLevel; atLeast = coreMissing.length > 0; }
-  }
-  const ctasBoxStatusBase = shownLevel == null ? 'incomplete' : 'preliminary';
-  const answeredAny = answeredLog.length > 0;
-  const finalLevel = nurseValidation?.nurseLevel ?? null;
+  // During recording: ask for the most useful missing item, then the top question.
+  const prompt = recording ? nextPrompt(a.missingKeys, patient) : null;
+  const promptQuestion = recording && !prompt ? openQuestions[0] : null;
 
-  const isPediatric = Number.isFinite(parseFloat(patient.age)) && parseFloat(patient.age) < 14;
-  const directionAi = shownLevel != null
-    ? resolveCtasDestination({
-        level: shownLevel,
-        age: patient.age,
-        answers: clarifyingAnswers,
-        visualDestination: visualTriage,
-        applied: modifierEvaluation?.applied_modifiers || [],
-        directionApplied: modifierEvaluation?.direction_applied || [],
-      })
-    : null;
-  const directionRule = (modifierEvaluation?.direction_applied || []).find((d) => d.destination_hint);
-  const directionReason = !directionAi ? null
-    : directionAi.from_isolation_hold ? 'عزل تنفسي من الفرز البصري · Respiratory isolation from visual triage'
-      : directionAi.from_direction_rule && directionRule ? (directionRule.label_ar || directionRule.label_en)
-        : `CTAS ${shownLevel} · ${isPediatric ? 'مسار الأطفال · pediatric routing' : 'مسار البالغين · adult routing'}`;
-  const complaintInfo = liveResult?.assessment_trail?.step1_chief_complaint?.complaint;
-  const pathwayLabel = complaintInfo ? `${complaintInfo.name_ar} · ${complaintInfo.name_en}` : null;
-  const finalDirection = nurseValidation?.direction || directionAi;
-
-  const decidedStatus = nurseValidation ? (nurseValidation.agreed ? 'confirmed' : 'overridden') : null;
-  const ctasBox = {
-    level: finalLevel ?? shownLevel,
-    atLeast: !nurseValidation && atLeast,
-    status: decidedStatus || (shownLevel == null ? 'incomplete' : (answeredAny ? 'updated' : 'preliminary')),
-    changedFrom: initialSnapshot?.level ?? null,
-    // Only explain what is missing, and only on the questions step: the assessment card
-    // and the review already list the missing items.
-    note: step !== 'clarify' ? null : shownLevel == null
-      ? (coreMissing.length
-        ? `ناقص: ${missingFields.filter((f) => CORE_KEYS.includes(f.key)).map((f) => f.label_ar).join('، ')}`
-        : 'أدخل الشكوى الرئيسية · Enter the chief complaint')
-      : (atLeast ? `ناقص: ${missingFields.filter((f) => CORE_KEYS.includes(f.key)).map((f) => f.label_ar).join('، ')}` : null),
-  };
-  const directionBox = {
-    status: decidedStatus || (directionAi ? (answeredAny ? 'updated' : 'preliminary') : 'pending'),
-    destination_ar: finalDirection?.destination_ar,
-    destination_en: finalDirection?.destination_en,
-    pathway: pathwayLabel,
-    reason: nurseValidation && !nurseValidation.agreed ? nurseValidation.overrideReason : directionReason,
-    changedFrom: initialSnapshot?.direction && directionAi && initialSnapshot.direction !== directionAi.destination
-      ? initialSnapshot.direction_label : null,
-  };
-  const critical = (shownLevel != null && shownLevel <= 2) || !!modifierEvaluation?.critical_alert;
-  const criticalText = shownLevel === 1
-    ? { ar: 'إنعاش: تدخل فوري الآن', en: 'Resuscitation: immediate intervention' }
-    : shownLevel === 2
-      ? { ar: 'طارئ: تقييم الطبيب خلال ١٥ دقيقة', en: 'Emergent: physician assessment within 15 minutes' }
-      : { ar: 'تنبيه سلامة حرج: مراجعة سريرية فورية', en: 'Critical safety alert: immediate clinical review' };
-
-  // ── Derived: questions, findings, review content ────────────────────
-  const optionLabels = (q) => {
-    if (q.answer_type !== 'options') return null;
-    const src = getBankQuestionById?.(q.id)?.options
-      || getActiveModifiers?.().find((m) => m.id === q.id)?.options
-      || null;
-    if (!src) return null;
-    return (q.answer_options || []).map((v) => {
-      const o = src.find((x) => x.value === v);
-      if (!o) return { value: v, label: v };
-      const same = !o.label_en || o.label_en === o.label_ar;
-      return { value: v, label: same ? (o.label_ar || v) : `${o.label_ar} · ${o.label_en}` };
-    });
-  };
-  const openQuestions = clarifyingQuestions
-    .filter((q) => {
-      if (!q.field) return true;
-      if (unknownAnswers[q.field]) return false;
-      const v = clarifyingAnswers[q.field];
-      if (v != null && v !== '') return false;
-      return questionFitsPatient(q, patient);
-    })
-    .map((q) => ({ ...q, _options: optionLabels(q) }));
-  const clarifyChange = initialSnapshot && (
-    (shownLevel != null && initialSnapshot.level != null && shownLevel !== initialSnapshot.level)
-    || (directionAi && initialSnapshot.direction && directionAi.destination !== initialSnapshot.direction)
-  ) ? {
-      from: initialSnapshot.level,
-      to: shownLevel,
-      reason_ar: modifierEvaluation?.explanation?.ar || null,
-      reason_en: modifierEvaluation?.explanation?.en || null,
-    } : null;
-
-  const redFlagText = (liveResult?.red_flags || []).map((f) => (typeof f === 'string' ? f : (f.ar || f.en || ''))).filter(Boolean);
-  const findings = [
-    ...redFlagText.map((t) => ({ key: `rf-${t}`, label: t, critical: true })),
-    ...(modifierEvaluation?.known_facts || [])
-      .filter((f) => f.status === 'known_positive' && f.field !== 'chief_complaint')
-      .map((f) => ({ key: `kf-${f.field}`, label: f.label_ar || f.label_en || f.field })),
-  ].filter((f, i, arr) => arr.findIndex((x) => x.label === f.label) === i).slice(0, 12);
-
-  // Answered "yes" items become engine facts, so the findings list already holds them.
-  const positives = findings.map((f) => f.label);
-  // With no level shown, the engine's provisional text (often "CTAS 5") is not a justification.
-  const justification = shownLevel == null ? [] : [
-    liveResult?.primary_determinant_ar && `${liveResult.primary_determinant_ar} · ${liveResult.primary_determinant_en || ''}`,
-    ...(liveResult?.modifiers || []).slice(0, 3).map((m) => m.label_ar || m.label_en),
-    modifierEvaluation?.explanation?.changed && modifierEvaluation.explanation.ar,
-    directionReason && `التوجيه: ${directionReason}`,
-  ].filter(Boolean);
-  const outstanding = [
-    ...missingFields.map((f) => `${f.label_ar} · ${f.label_en}`),
-    ...answeredLog.filter((a) => a.value === ANSWER_UNKNOWN).map((a) => `${a.text_ar || a.text_en} (غير معروف)`),
-  ];
-  const safetyAlerts = [
-    critical && `${criticalText.ar} · ${criticalText.en}`,
-    modifierEvaluation?.critical_alert && 'تنبيه سلامة حرج من محرك المعدّلات · Critical safety alert',
-    modifierEvaluation?.team_leader_review && 'يُوصى بمراجعة قائد الفريق · Team leader review recommended',
-    ...redFlagText.map((t) => `علامة خطر: ${t}`),
-  ].filter(Boolean);
-
-  const summaryRows = [
-    {
-      label: 'العمر / الجنس · Age / Sex',
-      value: [patient.age ? `${patient.age} سنة` : null, patient.gender === 'male' ? 'ذكر' : patient.gender === 'female' ? 'أنثى' : null]
-        .filter(Boolean).join(' · ') || '—',
-    },
-    { label: 'الوزن · Weight', value: patient.weight ? `${patient.weight} kg` : '—' },
-    { label: 'الشكوى · Complaint', value: patient.chief_complaint || '—' },
-    { label: 'البداية · Onset', value: patient.onset_duration || '—' },
-    { label: 'الألم · Pain', value: patient.pain_score != null && patient.pain_score !== '' ? `${patient.pain_score}/10` : '—' },
-    { label: 'النبض · HR', value: patient.hr || '—' },
-    { label: 'الضغط · BP', value: patient.bp_systolic ? `${patient.bp_systolic}/${patient.bp_diastolic || '—'}` : '—' },
-    { label: 'الأكسجين · SpO₂', value: patient.spo2 ? `${patient.spo2}%` : '—' },
-    { label: 'التنفس · RR', value: patient.rr || '—' },
-    { label: 'الحرارة · Temp', value: patient.temperature ? `${patient.temperature} °C` : '—' },
-    { label: 'الوعي · GCS', value: patient.gcs || '—' },
-    ...(patient.relevant_history ? [{ label: 'التاريخ · History', value: patient.relevant_history }] : []),
-    ...(patient.current_medications ? [{ label: 'الأدوية · Meds', value: patient.current_medications }] : []),
-    ...(patient.allergies ? [{ label: 'الحساسية · Allergies', value: patient.allergies }] : []),
-  ].filter((r) => r.value && !/^—/.test(r.value)); // missing items are listed once, under "missing"
-
-  const directionOptions = (isPediatric ? PEDIATRIC_DIRECTIONS : ADULT_DIRECTIONS).map((k) => CTAS_DESTINATIONS[k]);
-  const documentInput = {
-    patient,
-    patientId: urlPid || patient.patient_id || activeJourney?.patient_id,
-    finalLevel: nurseValidation?.nurseLevel,
-    aiLevel: shownLevel,
-    initialLevel: initialSnapshot?.level ?? null,
-    direction: finalDirection,
-    aiDirection: directionAi,
-    overridden: nurseValidation ? !nurseValidation.agreed : false,
-    overrideReason: nurseValidation?.overrideReason,
-    justification,
-    positives,
-    answers: answeredLog,
-    // Unknown answers are already listed with the questions; only missing fields here.
-    outstanding: missingFields.map((f) => f.label_en),
-    safetyAlerts,
-    nurse: user?.full_name || user?.email,
-  };
-
-  const transcript = sttSessionOutput?.full_transcript || patient.transcription || '';
-  const showResults = step !== 'capture' && step !== 'done';
-
-  const handleRecordingChange = useCallback(() => {}, []);
+  const more = (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {[
+          ['onset_duration', 'بداية الأعراض · Onset'],
+          ['relevant_history', 'التاريخ المرضي · History'],
+          ['current_medications', 'الأدوية · Medications'],
+          ['allergies', 'الحساسية · Allergies'],
+        ].map(([k, label]) => (
+          <label key={k} className="text-sm text-graphite">
+            {label}
+            <input
+              dir="auto"
+              value={patient[k] ?? ''}
+              onChange={(e) => update({ [k]: e.target.value })}
+              className="mt-1 w-full h-11 bg-white border border-mist rounded-xl px-3 text-[15px] text-ink focus:outline-none focus:border-ink"
+            />
+          </label>
+        ))}
+      </div>
+      <div>
+        <p className="text-sm text-graphite mb-1">اختيار الشكوى · Pick a complaint</p>
+        <QuickComplaints compact selected={patient.chief_complaint} onSelect={(v) => update({ chief_complaint: v, confirmed_complaint_key: null })} />
+      </div>
+      {complaintMatch && !complaintResolution.needs_confirmation && (
+        <ComplaintModifierSelector match={complaintMatch} selectedModifier={selectedModifier} onSelect={handleModifierSelect} />
+      )}
+    </>
+  );
 
   return (
-    <div dir="rtl" className="flex flex-col gap-4 pb-4">
+    <div dir="rtl" className="flex flex-col gap-3">
       {showNewPatientConfirm && (
         <NewPatientConfirm
           currentPid={urlPid}
@@ -1214,136 +1239,103 @@ export default function Triage() {
         />
       )}
       <UrgentAlert alert={urgentAlert} onDismiss={acknowledgeUrgentAlert} />
-
-      {/* Header: identification, timer, new patient, progress */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex-1 min-w-[220px]">
-            <PatientSelectorStrip currentPid={urlPid} onSwitch={handleSwitchPatient} />
-          </div>
-          <TriageTimer startedAt={timerStartTime} status={timerStatus} stoppedAt={confirmedTime} />
-          <button
-            type="button"
-            onClick={startNewPatient}
-            className="h-11 px-4 flex items-center gap-2 border border-mist bg-white text-ink rounded-xl text-[15px] font-medium hover:border-ink"
-          >
-            <Plus className="w-4 h-4" aria-hidden="true" /> مريض جديد
-          </button>
-        </div>
-        <div className="bg-white border border-mist rounded-2xl px-3 py-1 overflow-x-auto">
-          <WorkflowProgress step={step} onStepClick={goToStep} locked={step === 'done'} />
-        </div>
-      </div>
-
-      {/* Critical escalation is shown at once, in any step */}
-      {critical && step !== 'done' && step !== 'review' && (
-        <div role="alert" className="rounded-2xl bg-[#D3242C] text-white px-4 py-3 flex items-start gap-3">
-          <ShieldAlert className="w-6 h-6 shrink-0" aria-hidden="true" />
-          <div>
-            <p className="font-semibold text-[17px]">{criticalText.ar}</p>
-            <p className="text-sm text-white/90">{criticalText.en}{directionAi ? ` · ${directionAi.destination_en}` : ''}</p>
-          </div>
-        </div>
-      )}
-
-      {/* ── Step content ── */}
-      {step === 'capture' && (
-        <VoiceTriagePanel
-          journeyId={activeJourney?.id}
-          patient={patient}
-          onSessionUpdate={applySttSessionToPatient}
-          onResync={(output) => applySttSessionToPatient(output, { force: true })}
-          onRecordingStart={handleRecordingStart}
-          onRecordingChange={handleRecordingChange}
-          onContinue={() => { handleRecordingStart(); goToStep('assessment'); }}
-          liveFields={(
-            <LiveFields
-              patient={patient}
-              missing={missingFields}
-              total={REQUIRED_FIELDS.length}
-              summary={<ResultBoxes compact ctas={ctasBox} direction={directionBox} critical={critical} />}
-            />
-          )}
-        />
-      )}
-
-      {step === 'assessment' && (
-        <>
-          <AssessmentCard
-            patient={patient}
-            onChange={(fields) => update(fields)}
-            missingKeys={missingKeys}
-            complaintResolution={complaintResolution}
-            onComplaintConfirm={handleComplaintConfirm}
-            findings={findings}
-            transcript={transcript}
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-2">
-            <button type="button" onClick={() => goToStep('capture')} className="min-h-[56px] px-5 rounded-xl border border-mist bg-white text-ink font-semibold">
-              العودة للتسجيل · Back to voice
-            </button>
-            <button
-              type="button"
-              onClick={goClarify}
-              disabled={!patient.chief_complaint}
-              className="min-h-[56px] rounded-xl bg-ink text-white text-lg font-semibold hover:bg-ink-deep disabled:bg-mist disabled:text-graphite"
-            >
-              {patient.chief_complaint ? 'متابعة إلى الأسئلة · Continue' : 'أدخل الشكوى للمتابعة · Enter the complaint'}
-            </button>
-          </div>
-        </>
-      )}
-
-      {step === 'clarify' && (
-        <ClarifyStep
-          questions={openQuestions}
-          answered={answeredLog}
-          onAnswer={handleFlowAnswer}
-          onChangeAnswer={handleChangeAnswer}
-          change={clarifyChange}
-          loading={loadingQuestions}
-          onContinue={goReview}
-          modifierSelector={complaintMatch && !complaintResolution.needs_confirmation ? (
-            <ComplaintModifierSelector match={complaintMatch} selectedModifier={selectedModifier} onSelect={handleModifierSelect} />
-          ) : null}
-        />
-      )}
-
-      {step === 'review' && (
-        <ReviewConfirm
+      {showChange && (
+        <ChangeSheet
           aiLevel={shownLevel}
           aiDirection={directionAi}
           directionOptions={directionOptions}
-          summary={summaryRows}
-          positives={positives}
-          justification={justification}
-          outstanding={outstanding}
-          safetyAlerts={safetyAlerts}
-          decision={nurseValidation}
-          onDecide={handleDecision}
-          onClearDecision={clearDecision}
-          onSave={handleSave}
           saving={saving}
+          onClose={() => setShowChange(false)}
+          onSave={finalize}
         />
       )}
 
-      {step === 'done' && savedRecord && (
+      {/* Header: identification, triage clock, new patient */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <PatientSelectorStrip currentPid={urlPid} onSwitch={handleSwitchPatient} />
+        </div>
+        <TriageTimer startedAt={timerStartTime} status={timerStatus} stoppedAt={confirmedTime} />
+        <button
+          type="button"
+          onClick={startNewPatient}
+          aria-label="مريض جديد / New patient"
+          className="h-11 px-3 flex items-center gap-2 border border-mist bg-white text-ink rounded-xl text-[15px] font-medium hover:border-ink shrink-0"
+        >
+          <Plus className="w-4 h-4" aria-hidden="true" /> <span className="hidden sm:inline">مريض جديد</span>
+        </button>
+      </div>
+
+      {critical && !done && (
+        <div role="alert" className="rounded-2xl bg-[#D3242C] text-white px-3 py-2 flex items-center gap-2">
+          <ShieldAlert className="w-5 h-5 shrink-0" aria-hidden="true" />
+          <p className="text-[15px] font-semibold leading-snug">
+            {criticalText.ar} <span className="font-normal text-white/90">· {criticalText.en}</span>
+          </p>
+        </div>
+      )}
+
+      {done ? (
         <CompletedScreen
-          level={nurseValidation?.nurseLevel}
-          direction={finalDirection}
           document={savedRecord.document}
           onNewPatient={startNewPatient}
           nextPatient={nextPatient}
           onOpenNext={() => nextPatient && handleSwitchPatient(nextPatient.patient_id)}
         />
+      ) : (
+        <>
+          <VoiceTriagePanel
+            journeyId={activeJourney?.id}
+            patient={patient}
+            onSessionUpdate={applySttSessionToPatient}
+            onResync={(output) => applySttSessionToPatient(output, { force: true })}
+            onRecordingStart={handleRecordingStart}
+            onRecordingChange={handleRecordingChange}
+          />
+
+          <LivePrompt prompt={prompt} question={promptQuestion} />
+
+          {!recording && patient.chief_complaint && complaintResolution.needs_confirmation && (
+            <ChiefComplaintConfirm
+              resolution={complaintResolution}
+              confirmedKey={patient.confirmed_complaint_key}
+              onConfirm={handleComplaintConfirm}
+            />
+          )}
+
+          {!recording && hasData && (openQuestions.length > 0 || answeredLog.length > 0) && (
+            <QuestionCard
+              question={openQuestions[0]}
+              position={answeredLog.length + 1}
+              total={answeredLog.length + openQuestions.length}
+              onAnswer={handleFlowAnswer}
+              answered={answeredLog}
+              onChangeAnswer={handleChangeAnswer}
+            />
+          )}
+
+          <FieldGrid
+            patient={patient}
+            onChange={(fields) => update(fields)}
+            missingKeys={a.missingKeys}
+            total={REQUIRED_FIELDS.length}
+            more={more}
+          />
+        </>
       )}
 
-      {/* The two result boxes stay in view from the first assessment onwards */}
-      {showResults && (
-        <div className="sticky bottom-2 z-20 -mx-1 px-1 pt-2 bg-gradient-to-t from-paper via-paper to-transparent">
-          <ResultBoxes ctas={ctasBox} direction={directionBox} critical={critical} />
-        </div>
-      )}
+      {/* CTAS and direction stay in view for the whole session, with the only actions */}
+      <DecisionBar
+        ctas={ctasBox}
+        direction={directionBox}
+        critical={critical}
+        onConfirm={confirm}
+        onChange={() => setShowChange(true)}
+        blocked={blocked}
+        saving={saving}
+        done={done}
+        why={why}
+      />
     </div>
   );
 }

@@ -31,6 +31,8 @@ jobs:
       - run: npm ci
       - name: Clinical engine tests (CTAS + speech extraction)
         run: npm run build --workspace=@triagepulse/clinical && npm test
+      - name: Clinical scenarios (live triage display rules, under-triage checks)
+        run: npm run validate:scenarios
       - name: Build web app
         run: npm run build --workspace=@triagepulse/web
       - name: Production bundle has no demo credentials

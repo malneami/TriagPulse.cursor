@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mic, Square, Loader2, AlertTriangle, Keyboard } from 'lucide-react';
 import {
   detectTranscriptLanguage,
@@ -73,8 +73,6 @@ export default function VoiceTriagePanel({
   onResync,
   onRecordingStart,
   onRecordingChange,
-  onContinue,
-  liveFields = null,
 }) {
   const [sessionId, setSessionId] = useState(null);
   const [sessionOutput, setSessionOutput] = useState(null);
@@ -786,6 +784,7 @@ export default function VoiceTriagePanel({
   const busy = loading || extracting;
   const transcriptText = (manualText || liveTranscript || '').trim();
   const hasTranscript = transcriptText.length > 0;
+  const [showText, setShowText] = useState(false);
 
   // Recording clock (independent of the triage timer in the header)
   const [recordStartedAt, setRecordStartedAt] = useState(null);
@@ -807,13 +806,13 @@ export default function VoiceTriagePanel({
       {browserOnly && (
         <p className="text-sm text-graphite flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
-          <span>التعرف الصوتي يعمل بلغة واحدة الآن (المتصفح). تحدث بلغة واحدة. · Browser speech: one language at a time.</span>
+          <span>التعرف الصوتي بلغة واحدة (المتصفح) · Browser speech: one language at a time</span>
         </p>
       )}
       {sttError && (
-        <div role="status" className="w-full bg-paper border border-mist rounded-xl px-3 py-2 text-sm text-ink flex items-start justify-between gap-2">
+        <div role="status" className="bg-paper border border-mist rounded-xl px-3 py-2 text-sm text-ink flex items-start justify-between gap-2">
           <p className="flex-1">{sttError}</p>
-          <button type="button" onClick={() => { void refreshSttStatus(); }} className="shrink-0 text-sm font-semibold underline">
+          <button type="button" onClick={() => { void refreshSttStatus(); }} className="shrink-0 text-sm font-semibold underline min-h-[44px]">
             إعادة المحاولة · Retry
           </button>
         </div>
@@ -821,131 +820,110 @@ export default function VoiceTriagePanel({
     </>
   );
 
-  // ── Recording: status, clock, live transcript, one Stop button ──
+  // ── Recording: one compact row (status, clock, Stop) and the live text ──
   if (recording) {
     return (
-      <section aria-label="التسجيل جارٍ / Recording" className="bg-white rounded-2xl border border-mist px-5 py-6 flex flex-col items-center gap-5">
-        <div className="flex items-center gap-3" aria-live="polite">
-          <span aria-hidden="true" className="w-3 h-3 rounded-full bg-[#D3242C] motion-safe:animate-pulse" />
-          <span className="text-lg font-semibold text-ink">جارٍ التسجيل · Recording</span>
-          <span dir="ltr" className="text-lg font-semibold tabular-nums text-ink">{recClock}</span>
-        </div>
-        <div className={`w-full grid gap-4 ${liveFields ? 'lg:grid-cols-2' : ''}`}>
-          <div
-            dir="auto"
-            className="w-full min-h-[96px] sm:min-h-[140px] max-h-[30vh] lg:max-h-[52vh] overflow-y-auto rounded-xl bg-paper px-4 py-3 text-lg leading-relaxed text-ink"
-            aria-live="polite"
-          >
-            {liveTranscript || <span className="text-graphite">تحدث الآن بالعربية أو الإنجليزية… · Speak now in Arabic or English…</span>}
-          </div>
-          {isValidElement(liveFields) ? cloneElement(liveFields, { live: true }) : liveFields}
-        </div>
-        {notices}
-        {/* Stays reachable on small screens while the fields list grows */}
-        <div className="sticky bottom-3 z-10 w-full flex justify-center">
+      <section aria-label="التسجيل جارٍ / Recording" className="bg-white rounded-2xl border border-mist p-3 flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="w-3 h-3 rounded-full bg-[#D3242C] motion-safe:animate-pulse shrink-0" />
+          <span className="text-[15px] font-semibold text-ink" aria-live="polite">جارٍ التسجيل · Recording</span>
+          <span dir="ltr" className="text-[15px] font-semibold tabular-nums text-ink">{recClock}</span>
           <button
             type="button"
             onClick={handleToggleRecord}
-            className="w-full max-w-sm min-h-[64px] rounded-2xl bg-ink text-white text-lg font-semibold flex items-center justify-center gap-3 shadow-lg"
+            className="ms-auto h-12 px-5 rounded-xl bg-ink text-white font-semibold flex items-center gap-2"
           >
-            <Square className="w-6 h-6" aria-hidden="true" /> إيقاف ومراجعة · Stop & review
+            <Square className="w-5 h-5" aria-hidden="true" /> إيقاف · Stop
           </button>
         </div>
+        <div dir="auto" aria-live="polite" className="max-h-24 overflow-y-auto rounded-xl bg-paper px-3 py-2 text-[15px] leading-relaxed text-ink">
+          {liveTranscript || <span className="text-graphite">تحدث بالعربية أو الإنجليزية… · Speak in Arabic or English…</span>}
+        </div>
+        {notices}
       </section>
     );
   }
 
-  // ── After a recording or typed text: review, correct, continue ──
+  // ── After recording / typing: one row, transcript on demand ──
   if (hasTranscript || manualFallback) {
     return (
-      <section aria-label="مراجعة النص / Review transcript" className="bg-white rounded-2xl border border-mist px-5 py-5 flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-ink">النص المسجّل · Transcript</h2>
-          <span className="text-xs text-graphite">{modeLabel}</span>
-        </div>
-        <textarea
-          value={manualText || liveTranscript}
-          onChange={(e) => setManualText(e.target.value)}
-          placeholder="اكتب أو الصق الإملاء هنا (عربي/إنجليزي) · Type or paste the dictation"
-          rows={5}
-          dir="auto"
-          className="w-full rounded-xl border border-mist p-3 text-base leading-relaxed text-ink focus:outline-none focus:border-ink"
-        />
-        <p className="text-sm text-graphite -mt-2">صحّح أي خطأ ثم أعد الاستخراج. · Correct any error, then re-extract.</p>
-        {liveFields}
-        {notices}
-        {import.meta.env.DEV && (
-          <div className="flex flex-wrap gap-2">
-            {DEMO_SENTENCES.map((d) => (
-              <button key={d.id} type="button" onClick={() => pasteDemoSentence(d.text)} className="text-xs text-graphite underline">
-                {d.label}
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <section aria-label="التسجيل / Recording" className="bg-white rounded-2xl border border-mist p-3 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={handleToggleRecord}
             disabled={busy}
-            className="min-h-[52px] rounded-xl border border-mist bg-white text-ink font-semibold flex items-center justify-center gap-2 hover:border-ink"
+            className="h-12 px-4 rounded-xl bg-ink text-white font-semibold flex items-center gap-2 hover:bg-ink-deep disabled:opacity-70"
           >
-            <Mic className="w-5 h-5" aria-hidden="true" /> تسجيل إضافي · Record more
+            {busy ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> : <Mic className="w-5 h-5" aria-hidden="true" />}
+            {hasTranscript ? 'تسجيل إضافي · Record more' : 'بدء التسجيل · Start recording'}
           </button>
           <button
             type="button"
-            onClick={handleManualExtract}
-            disabled={busy || !hasTranscript}
-            className="min-h-[52px] rounded-xl border border-mist bg-white text-ink font-semibold flex items-center justify-center gap-2 hover:border-ink disabled:text-graphite"
+            onClick={() => setShowText((v) => !v)}
+            aria-expanded={showText}
+            className="h-12 px-3 rounded-xl border border-mist text-ink text-sm font-medium flex items-center gap-2 hover:border-ink"
           >
-            {extracting ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> : <Keyboard className="w-5 h-5" aria-hidden="true" />}
-            إعادة الاستخراج · Re-extract
+            <Keyboard className="w-4 h-4" aria-hidden="true" /> النص · Text
           </button>
-          <button
-            type="button"
-            onClick={async () => {
-              if (manualText.trim() && !sessionOutput) await handleManualExtract();
-              onContinue?.();
-            }}
-            disabled={busy}
-            className="min-h-[52px] rounded-xl bg-ink text-white font-semibold flex items-center justify-center gap-2 hover:bg-ink-deep"
-          >
-            مراجعة التقييم · Review assessment
-          </button>
+          <span className="ms-auto text-xs text-graphite">{modeLabel}</span>
         </div>
+        {showText && (
+          <div className="flex flex-col gap-2">
+            <textarea
+              value={manualText || liveTranscript}
+              onChange={(e) => setManualText(e.target.value)}
+              placeholder="اكتب أو صحّح الإملاء (عربي/إنجليزي) · Type or correct the dictation"
+              rows={4}
+              dir="auto"
+              className="w-full rounded-xl border border-mist p-3 text-base leading-relaxed text-ink focus:outline-none focus:border-ink"
+            />
+            {import.meta.env.DEV && (
+              <div className="flex flex-wrap gap-2">
+                {DEMO_SENTENCES.map((d) => (
+                  <button key={d.id} type="button" onClick={() => pasteDemoSentence(d.text)} className="text-xs text-graphite underline">
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={async () => { await handleManualExtract(); setShowText(false); }}
+              disabled={busy || !hasTranscript}
+              className="h-12 rounded-xl border border-ink text-ink font-semibold flex items-center justify-center gap-2 disabled:border-mist disabled:text-graphite"
+            >
+              {extracting && <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />}
+              استخراج من النص · Extract from text
+            </button>
+          </div>
+        )}
+        {notices}
       </section>
     );
   }
 
   // ── Start: one prominent action ──
   return (
-    <section aria-label="التقييم الصوتي / Voice assessment" className="bg-white rounded-2xl border border-mist px-5 py-10 flex flex-col items-center gap-5 text-center">
+    <section aria-label="التقييم الصوتي / Voice assessment" className="bg-white rounded-2xl border border-mist px-4 py-6 flex flex-col items-center gap-3 text-center">
       <button
         type="button"
         onClick={handleToggleRecord}
         disabled={busy}
         aria-label="بدء التقييم الصوتي / Start voice assessment"
-        className="w-40 h-40 rounded-full bg-ink text-white flex items-center justify-center shadow-lg hover:bg-ink-deep disabled:opacity-70 focus-visible:outline-offset-4"
+        className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-ink text-white flex items-center justify-center shadow-lg hover:bg-ink-deep disabled:opacity-70 focus-visible:outline-offset-4"
       >
-        {busy ? <Loader2 className="w-14 h-14 animate-spin" aria-hidden="true" /> : <Mic className="w-16 h-16" aria-hidden="true" />}
+        {busy ? <Loader2 className="w-12 h-12 animate-spin" aria-hidden="true" /> : <Mic className="w-14 h-14" aria-hidden="true" />}
       </button>
       <div>
-        <p className="text-2xl font-semibold text-ink">بدء التقييم الصوتي</p>
-        <p className="text-lg text-graphite">Start Voice Assessment</p>
+        <p className="text-xl font-semibold text-ink">بدء التقييم الصوتي</p>
+        <p className="text-base text-graphite">Start Voice Assessment</p>
+        <p className="text-xs text-graphite mt-1">{modeLabel}</p>
       </div>
-      <p className="text-sm text-graphite max-w-md">
-        اذكر العمر والجنس والشكوى والعلامات الحيوية ودرجة الألم. · State age, sex, complaint, vital signs and pain score.
-      </p>
-      <span className="text-xs text-graphite">{modeLabel}</span>
       {notices}
-      <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
-        <button type="button" onClick={() => setManualFallback(true)} className="text-ink underline min-h-[44px]">
-          الكتابة بدلاً من ذلك · Type instead
-        </button>
-        <button type="button" onClick={() => onContinue?.()} className="text-ink underline min-h-[44px]">
-          إدخال يدوي للحقول · Enter fields manually
-        </button>
-      </div>
+      <button type="button" onClick={() => { setManualFallback(true); setShowText(true); }} className="text-sm text-ink underline min-h-[44px]">
+        الكتابة بدلاً من الصوت · Type instead
+      </button>
     </section>
   );
 }
