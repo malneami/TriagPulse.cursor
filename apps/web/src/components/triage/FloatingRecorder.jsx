@@ -213,7 +213,7 @@ export default function FloatingRecorder({
             </span>
           )}
         </span>
-        <span className="text-[10px] text-slate-300">اضغط للتوسيع</span>
+        <span className="text-[10px] text-graphite/60">اضغط للتوسيع</span>
       </button>
     );
   }
@@ -264,7 +264,7 @@ export default function FloatingRecorder({
       </div>
 
       {/* Waveform */}
-      <div className="flex items-center justify-center gap-[3px] h-14 px-4 bg-white border-b border-slate-100">
+      <div className="flex items-center justify-center gap-[3px] h-14 px-4 bg-white border-b border-mist">
         {levels.map((v, i) => (
           <span
             key={i}
@@ -275,15 +275,15 @@ export default function FloatingRecorder({
       </div>
 
       {/* Latest turn */}
-      <div className="px-4 py-3 border-b border-slate-100">
+      <div className="px-4 py-3 border-b border-mist">
         <div className="flex items-center justify-between gap-2 mb-1">
-          <span className="flex items-center gap-1.5 text-xs font-black text-slate-800">
+          <span className="flex items-center gap-1.5 text-xs font-black text-ink">
             <span className="w-2 h-2 rounded-full bg-blue-500" /> مريض
           </span>
-          {lastTurnAt && <span className="text-[10px] text-slate-400">{formatTurnTime(lastTurnAt)}</span>}
+          {lastTurnAt && <span className="text-[10px] text-graphite">{formatTurnTime(lastTurnAt)}</span>}
         </div>
-        <p className="text-sm text-slate-700 leading-relaxed max-h-24 overflow-y-auto">
-          {transcript || <span className="text-slate-400">تحدث الآن… / Speak now…</span>}
+        <p className="text-sm text-ink leading-relaxed max-h-24 overflow-y-auto">
+          {transcript || <span className="text-graphite">تحدث الآن… / Speak now…</span>}
         </p>
       </div>
 
@@ -292,7 +292,7 @@ export default function FloatingRecorder({
         <CompletenessChips patient={patient} compact />
       </div>
 
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-slate-50 border-t border-slate-100">
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-paper border-t border-mist">
         {derived?.level != null ? (
           <div className="flex items-center gap-2 min-w-0">
             <span
@@ -303,18 +303,18 @@ export default function FloatingRecorder({
               {derived.level}
             </span>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+              <p className="text-[10px] font-bold text-graphite uppercase tracking-wide">
                 {dataComplete ? 'CTAS تقديري · Estimated' : 'CTAS أولي · Preliminary'}
               </p>
-              <p className="text-xs font-black text-slate-800 truncate">
+              <p className="text-xs font-black text-ink truncate">
                 {derived.ar || derived.en || `CTAS ${derived.level}`}
                 {derived.ar && derived.en ? ` / ${derived.en}` : ''}
               </p>
             </div>
           </div>
         ) : (
-          <p className="text-xs font-bold text-slate-500">
-            CTAS تقديري — <span className="text-slate-400">بانتظار بيانات كافية</span>
+          <p className="text-xs font-bold text-graphite">
+            CTAS تقديري — <span className="text-graphite">بانتظار بيانات كافية</span>
           </p>
         )}
         {recording && (

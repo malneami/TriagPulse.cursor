@@ -25,18 +25,18 @@ export default function NewPatientConfirm({ currentPid, currentName, onCancel })
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-black text-slate-800">بدء مريض جديد</h2>
-          <button onClick={onCancel}><X className="w-5 h-5 text-slate-400" /></button>
+          <h2 className="text-base font-black text-ink">بدء مريض جديد</h2>
+          <button onClick={onCancel}><X className="w-5 h-5 text-graphite" /></button>
         </div>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-graphite">
           هل تريد حفظ الفرز الحالي والبدء بمريض جديد؟<br />
-          <span className="text-xs text-slate-400">Save current triage and start a new patient?</span>
+          <span className="text-xs text-graphite">Save current triage and start a new patient?</span>
         </p>
         {currentPid && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs space-y-0.5">
-            <p className="font-black text-amber-800">الفرز الحالي / Current: {currentPid}</p>
-            {currentName && <p className="text-amber-700">{currentName}</p>}
-            <p className="text-amber-600">الحالة: سيُحفظ كـ "جارٍ / In progress"</p>
+          <div className="bg-paper border border-mist rounded-xl px-3 py-2 text-xs space-y-0.5">
+            <p className="font-black text-ink">الفرز الحالي / Current: {currentPid}</p>
+            {currentName && <p className="text-graphite">{currentName}</p>}
+            <p className="text-graphite">الحالة: سيُحفظ كـ "جارٍ / In progress"</p>
           </div>
         )}
         <div className="flex flex-col gap-2">
@@ -48,7 +48,7 @@ export default function NewPatientConfirm({ currentPid, currentName, onCancel })
           </button>
           <button
             onClick={onCancel}
-            className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200"
+            className="w-full py-3 bg-paper text-graphite rounded-xl font-bold text-sm hover:bg-mist"
           >
             ← إلغاء / Cancel
           </button>

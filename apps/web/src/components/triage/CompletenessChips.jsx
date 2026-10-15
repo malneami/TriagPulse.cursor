@@ -32,14 +32,14 @@ export default function CompletenessChips({
     <div>
       {showHeader && (
         <div className="flex items-center justify-between mb-2 gap-2">
-          <p className={`font-black text-slate-600 ${compact ? 'text-xs' : 'text-xs'}`}>
+          <p className={`font-black text-graphite ${compact ? 'text-xs' : 'text-xs'}`}>
             {compact ? 'اكتمال / Completeness' : 'اكتمال البيانات — Data Completeness'}
           </p>
           <p
             className="text-xs font-black shrink-0"
             style={{ color: captured === total ? '#14202B' : '#4B5765' }}
           >
-            {compact ? `${captured}/${total}` : `${captured} / ١٠ مكتمل — ${captured} / ${total} Complete`}
+            <span dir="ltr" className="tabular-nums">{captured}/{total}</span>{compact ? '' : ' مكتمل · complete'}
           </p>
         </div>
       )}

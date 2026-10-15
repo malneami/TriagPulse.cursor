@@ -30,14 +30,14 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
     const partialRange = result?.partial_ctas_range;
     if (!isIncomplete || !partialRange) {
       return (
-        <div className="rounded-2xl bg-slate-100 border border-slate-200 p-8 text-center space-y-3">
-          <AlertCircle className="w-10 h-10 text-slate-400 mx-auto" />
-          <p className="text-base font-bold text-slate-700">فشل التحليل — يرجى المحاولة مجدداً</p>
-          <p className="text-sm text-slate-500">Analysis failed — please try again</p>
+        <div className="rounded-2xl bg-paper border border-mist p-8 text-center space-y-3">
+          <AlertCircle className="w-10 h-10 text-graphite mx-auto" />
+          <p className="text-base font-bold text-ink">فشل التحليل — يرجى المحاولة مجدداً</p>
+          <p className="text-sm text-graphite">Analysis failed — please try again</p>
           {result && (
             <details className="text-left mt-4">
-              <summary className="text-xs text-slate-400 cursor-pointer">Raw response</summary>
-              <pre className="text-xs text-slate-500 mt-2 overflow-auto max-h-40">{JSON.stringify(result, null, 2)}</pre>
+              <summary className="text-xs text-graphite cursor-pointer">Raw response</summary>
+              <pre className="text-xs text-graphite mt-2 overflow-auto max-h-40">{JSON.stringify(result, null, 2)}</pre>
             </details>
           )}
           <button onClick={onReset} className="mt-4 px-5 py-2 bg-teal-600 text-white rounded-xl text-sm font-bold">
@@ -83,10 +83,10 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
 
       <div className="bg-white">
         {(summary || summaryEn) && (
-          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-            <p className="text-xs font-black text-slate-500 mb-1">الملخص السريري — Clinical Summary</p>
-            {summary && <p className="text-sm text-slate-800 leading-relaxed">{summary}</p>}
-            {summaryEn && <p className="text-xs text-slate-600 mt-2 leading-relaxed">{summaryEn}</p>}
+          <div className="px-4 py-3 border-b border-mist bg-paper">
+            <p className="text-xs font-black text-graphite mb-1">الملخص السريري — Clinical Summary</p>
+            {summary && <p className="text-sm text-ink leading-relaxed">{summary}</p>}
+            {summaryEn && <p className="text-xs text-graphite mt-2 leading-relaxed">{summaryEn}</p>}
           </div>
         )}
         <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-start gap-2">
@@ -99,29 +99,29 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
         </div>
         <button
           onClick={() => setDetailsOpen(v => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 text-slate-700 hover:bg-slate-50 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-3 text-ink hover:bg-paper transition-colors"
         >
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-teal-600" />
             <span className="text-sm font-bold">التفاصيل السريرية — Clinical Details</span>
           </div>
-          {detailsOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          {detailsOpen ? <ChevronUp className="w-4 h-4 text-graphite" /> : <ChevronDown className="w-4 h-4 text-graphite" />}
         </button>
 
         {detailsOpen && (
-          <div className="border-t border-slate-100 px-4 pb-4 space-y-4 pt-3">
+          <div className="border-t border-mist px-4 pb-4 space-y-4 pt-3">
 
             {/* Decision rationale */}
             {(primaryDeterminant || modifiers.length > 0) && (
-              <div className="bg-amber-50 rounded-xl p-3 border border-amber-200">
-                <p className="text-xs font-black text-amber-700 mb-2">مبرر القرار — Decision Rationale</p>
+              <div className="bg-paper rounded-xl p-3 border border-mist">
+                <p className="text-xs font-black text-graphite mb-2">مبرر القرار — Decision Rationale</p>
                 {primaryDeterminant && (
-                  <p className="text-xs text-amber-900 mb-1"><span className="font-bold">المحدد الرئيسي: </span>{primaryDeterminant}</p>
+                  <p className="text-xs text-ink mb-1"><span className="font-bold">المحدد الرئيسي: </span>{primaryDeterminant}</p>
                 )}
                 {modifiers.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
                     {modifiers.map((m, i) => (
-                      <span key={i} className="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full border border-amber-200">{m}</span>
+                      <span key={i} className="bg-mist text-ink text-xs px-2 py-0.5 rounded-full border border-mist">{m}</span>
                     ))}
                   </div>
                 )}
@@ -131,12 +131,12 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
             {/* Vitals summary table */}
             {patient && (
               <div>
-                <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">ملخص الحالة — Case Summary</p>
+                <p className="text-xs font-black text-graphite uppercase tracking-wide mb-2">ملخص الحالة — Case Summary</p>
                 <div className="grid grid-cols-2 gap-2">
                   {patient.chief_complaint && (
-                    <div className="col-span-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
-                      <span className="text-xs text-slate-400">الشكوى الرئيسية</span>
-                      <p className="text-sm font-semibold text-slate-800">{patient.chief_complaint}</p>
+                    <div className="col-span-2 bg-paper rounded-lg px-3 py-2 border border-mist">
+                      <span className="text-xs text-graphite">الشكوى الرئيسية</span>
+                      <p className="text-sm font-semibold text-ink">{patient.chief_complaint}</p>
                     </div>
                   )}
                   {[
@@ -149,10 +149,10 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
                     { label: 'Pain', key: 'Pain', value: patient.pain_score != null ? patient.pain_score : null, unit: '/10' },
                     { label: 'Age', key: 'Age', value: patient.age, unit: 'yrs' },
                   ].filter(f => f.value != null && f.value !== '').map(({ label, value, unit }) => (
-                      <div key={label} className="bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
+                      <div key={label} className="bg-paper rounded-lg px-3 py-2 border border-mist">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-slate-400 font-medium">{label}</span>
-                          <span className="text-sm font-bold text-slate-800">{value}<span className="text-xs font-normal text-slate-400"> {unit}</span></span>
+                          <span className="text-xs text-graphite font-medium">{label}</span>
+                          <span className="text-sm font-bold text-ink">{value}<span className="text-xs font-normal text-graphite"> {unit}</span></span>
                         </div>
                       </div>
                     ))}
@@ -178,18 +178,18 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
             {/* Clinical summary */}
             {summary && (
               <div>
-                <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-1.5">الملخص السريري — Clinical Summary</p>
-                <p className="text-sm text-slate-800 leading-loose bg-slate-50 rounded-xl p-3 border border-slate-100">{summary}</p>
+                <p className="text-xs font-black text-graphite uppercase tracking-wide mb-1.5">الملخص السريري — Clinical Summary</p>
+                <p className="text-sm text-ink leading-loose bg-paper rounded-xl p-3 border border-mist">{summary}</p>
               </div>
             )}
 
             {/* Disposition */}
             {disposition && (
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 flex items-start gap-2">
-                <MapPin className="w-4 h-4 mt-0.5 shrink-0 text-slate-600" />
+              <div className="bg-paper rounded-xl p-3 border border-mist flex items-start gap-2">
+                <MapPin className="w-4 h-4 mt-0.5 shrink-0 text-graphite" />
                 <div>
-                  <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-0.5">التصرف الموصى به — Disposition</p>
-                  <p className="text-sm font-semibold text-slate-800">{disposition}</p>
+                  <p className="text-xs font-black text-graphite uppercase tracking-wide mb-0.5">التصرف الموصى به — Disposition</p>
+                  <p className="text-sm font-semibold text-ink">{disposition}</p>
                 </div>
               </div>
             )}
@@ -198,7 +198,7 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
       </div>
 
       {/* ══════ ACTIONS ══════ */}
-      <div className="px-4 py-4 bg-white border-t border-slate-100 flex gap-3">
+      <div className="px-4 py-4 bg-white border-t border-mist flex gap-3">
         <button
           onClick={onSave}
           disabled={saving}
@@ -209,7 +209,7 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
         </button>
         <button
           onClick={onReset}
-          className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border-2 border-slate-200 text-slate-700 rounded-xl font-bold text-sm hover:border-teal-400 transition-colors"
+          className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border-2 border-mist text-ink rounded-xl font-bold text-sm hover:border-teal-400 transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
           مريض جديد

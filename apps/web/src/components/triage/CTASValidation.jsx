@@ -29,14 +29,14 @@ function OverrideMode({ aiLevel, onOverrideConfirm, onBack }) {
   const resolvedReason = reasonKey === 'other' ? otherReason : OVERRIDE_REASONS.find(r => r.key === reasonKey)?.en || '';
 
   return (
-    <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
-      <div className="bg-amber-50 px-4 py-3 border-b border-amber-200 flex items-center gap-2">
-        <Edit2 className="w-4 h-4 text-amber-700" />
-        <p className="font-bold text-amber-800 text-sm">تغيير مستوى CTAS — Override CTAS Level</p>
+    <div className="bg-white rounded-2xl border border-mist shadow-sm overflow-hidden">
+      <div className="bg-paper px-4 py-3 border-b border-mist flex items-center gap-2">
+        <Edit2 className="w-4 h-4 text-graphite" />
+        <p className="font-bold text-ink text-sm">تغيير مستوى CTAS — Override CTAS Level</p>
       </div>
       <div className="p-4 space-y-4">
         <div>
-          <p className="text-xs font-black text-slate-600 mb-2">اختر المستوى الصحيح — Select correct level:</p>
+          <p className="text-xs font-black text-graphite mb-2">اختر المستوى الصحيح — Select correct level:</p>
           <div className="flex gap-2">
             {[1, 2, 3, 4, 5].map(l => {
               const c = CTAS_CFG[l];
@@ -55,25 +55,25 @@ function OverrideMode({ aiLevel, onOverrideConfirm, onBack }) {
           </div>
         </div>
         <div>
-          <p className="text-xs font-black text-slate-600 mb-2">سبب التغيير — Reason for override:</p>
+          <p className="text-xs font-black text-graphite mb-2">سبب التغيير — Reason for override:</p>
           <div className="space-y-2">
             {OVERRIDE_REASONS.map(r => (
               <button key={r.key} onClick={() => setReasonKey(r.key)}
-                className={`w-full text-right px-3 py-2.5 rounded-xl border-2 transition-all flex items-center gap-2 ${reasonKey === r.key ? 'border-teal-500 bg-teal-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                className={`w-full text-right px-3 py-2.5 rounded-xl border-2 transition-all flex items-center gap-2 ${reasonKey === r.key ? 'border-teal-500 bg-teal-50' : 'border-mist bg-white hover:border-mist'}`}
               >
-                <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${reasonKey === r.key ? 'border-teal-500 bg-teal-500' : 'border-slate-300'}`}>
+                <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${reasonKey === r.key ? 'border-teal-500 bg-teal-500' : 'border-mist'}`}>
                   {reasonKey === r.key && <div className="w-2 h-2 bg-white rounded-full" />}
                 </div>
                 <div className="text-right flex-1">
-                  <p className="text-sm font-medium text-slate-800">{r.ar}</p>
-                  <p className="text-xs text-slate-400">{r.en}</p>
+                  <p className="text-sm font-medium text-ink">{r.ar}</p>
+                  <p className="text-xs text-graphite">{r.en}</p>
                 </div>
               </button>
             ))}
             {reasonKey === 'other' && (
               <input value={otherReason} onChange={e => setOtherReason(e.target.value)}
                 placeholder="اكتب السبب..."
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                className="w-full border border-mist rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                 dir="rtl"
               />
             )}
@@ -87,7 +87,7 @@ function OverrideMode({ aiLevel, onOverrideConfirm, onBack }) {
             <CheckCircle2 className="w-4 h-4" />
             تأكيد التغيير — Confirm Override
           </button>
-          <button onClick={onBack} className="px-4 py-3 border-2 border-slate-200 rounded-xl text-slate-600 font-bold text-sm hover:border-slate-300">
+          <button onClick={onBack} className="px-4 py-3 border-2 border-mist rounded-xl text-graphite font-bold text-sm hover:border-mist">
             رجوع
           </button>
         </div>
@@ -119,32 +119,32 @@ export default function CTASValidation({ result, patient, onComplete }) {
   );
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-mist shadow-sm overflow-hidden">
       {/* AI Result */}
       <div className="px-4 py-4" style={{ backgroundColor: '#FFFFFF', borderBottom: `4px solid ${cfg.hex === '#FFFFFF' ? '#14202B' : cfg.hex}` }}>
-        <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-3">تقييم الفرز الحالي — Current Triage Assessment</p>
+        <p className="text-xs font-black text-graphite uppercase tracking-wide mb-3">تقييم الفرز الحالي — Current Triage Assessment</p>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-3xl shrink-0" style={ctasFill(aiLevel)}>
             {aiLevel}
           </div>
           <div>
-            <p className="font-black text-slate-800 text-lg">{cfg.ar} / {cfg.en}</p>
-            <p className="text-sm text-slate-500">{cfg.wait}</p>
+            <p className="font-black text-ink text-lg">{cfg.ar} / {cfg.en}</p>
+            <p className="text-sm text-graphite">{cfg.wait}</p>
           </div>
         </div>
         {determinants.length > 0 && (
           <div className="space-y-1">
-            <p className="text-xs font-black text-slate-500 mb-1">المحددات الأساسية / Primary determinants:</p>
+            <p className="text-xs font-black text-graphite mb-1">المحددات الأساسية / Primary determinants:</p>
             {determinants.map((d, i) => (
               <div key={i} className="flex items-start gap-1.5">
-                <span className="text-slate-400 shrink-0">•</span>
-                <p className="text-xs text-slate-700">{d}</p>
+                <span className="text-graphite shrink-0">•</span>
+                <p className="text-xs text-ink">{d}</p>
               </div>
             ))}
           </div>
         )}
         {result?.clinical_summary_ar && (
-          <p className="text-xs text-slate-600 mt-2 leading-relaxed border-t border-black/10 pt-2">{result.clinical_summary_ar}</p>
+          <p className="text-xs text-graphite mt-2 leading-relaxed border-t border-black/10 pt-2">{result.clinical_summary_ar}</p>
         )}
         <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 flex items-start gap-2">
           <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
@@ -158,8 +158,8 @@ export default function CTASValidation({ result, patient, onComplete }) {
 
       {/* Nurse Decision */}
       <div className="p-4 space-y-3">
-        <p className="text-sm font-black text-slate-700">قرار الممرض — Nurse Decision</p>
-        <p className="text-xs text-slate-500">هل توافق على هذا المستوى؟ / Do you agree with this triage level?</p>
+        <p className="text-sm font-black text-ink">قرار الممرض — Nurse Decision</p>
+        <p className="text-xs text-graphite">هل توافق على هذا المستوى؟ / Do you agree with this triage level?</p>
 
         <button onClick={handleConfirm}
           className="w-full py-3.5 rounded-xl border-2 border-teal-500 bg-teal-50 hover:bg-teal-100 transition-colors flex items-center gap-3 px-4"
@@ -172,12 +172,12 @@ export default function CTASValidation({ result, patient, onComplete }) {
         </button>
 
         <button onClick={() => setMode('override')}
-          className="w-full py-3.5 rounded-xl border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors flex items-center gap-3 px-4"
+          className="w-full py-3.5 rounded-xl border-2 border-mist bg-paper hover:bg-mist transition-colors flex items-center gap-3 px-4"
         >
-          <Edit2 className="w-5 h-5 text-amber-700 shrink-0" />
+          <Edit2 className="w-5 h-5 text-graphite shrink-0" />
           <div className="text-right">
-            <p className="text-sm font-black text-amber-800">✏ تغيير المستوى — Override Triage Level</p>
-            <p className="text-xs text-amber-600">أنا أختلف مع التقييم / I disagree with this assessment</p>
+            <p className="text-sm font-black text-ink">✏ تغيير المستوى — Override Triage Level</p>
+            <p className="text-xs text-graphite">أنا أختلف مع التقييم / I disagree with this assessment</p>
           </div>
         </button>
       </div>

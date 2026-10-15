@@ -39,21 +39,21 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
         className="w-full bg-slate-800 text-white rounded-xl px-4 py-2.5 flex items-center justify-between gap-2"
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-slate-400 text-xs shrink-0">المريض الحالي:</span>
+          <span className="text-graphite text-xs shrink-0">المريض الحالي:</span>
           <span className="text-sm font-black truncate">
             {currentPid ? `${displayName(current)} — ${currentPid}` : 'لم يتم اختيار مريض'}
           </span>
-          {current?.age && <span className="text-slate-300 text-xs shrink-0">{current.age} سنة</span>}
-          {current?.vt_destination_ar && <span className="text-slate-400 text-xs shrink-0 hidden sm:block">— {current.vt_destination_ar}</span>}
+          {current?.age && <span className="text-graphite/60 text-xs shrink-0">{current.age} سنة</span>}
+          {current?.vt_destination_ar && <span className="text-graphite text-xs shrink-0 hidden sm:block">— {current.vt_destination_ar}</span>}
         </div>
         <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
-          <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
-            <span className="text-xs font-black text-slate-600">اختر مريضاً — Select Patient</span>
-            <button onClick={() => setOpen(false)}><X className="w-4 h-4 text-slate-400" /></button>
+        <div className="absolute top-full right-0 left-0 mt-1 bg-white border border-mist rounded-xl shadow-xl z-50 overflow-hidden">
+          <div className="px-4 py-2 border-b border-mist flex items-center justify-between">
+            <span className="text-xs font-black text-graphite">اختر مريضاً — Select Patient</span>
+            <button onClick={() => setOpen(false)}><X className="w-4 h-4 text-graphite" /></button>
           </div>
 
           {current && (
@@ -73,14 +73,14 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
               <button
                 key={p.id}
                 onClick={() => { setOpen(false); onSwitch(p.patient_id); }}
-                className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-slate-50 border-b border-slate-100 last:border-0"
+                className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-paper border-b border-mist last:border-0"
               >
                 <div className="text-right">
-                  <span className="text-sm font-bold text-slate-700">{displayName(p)}</span>
-                  <span className="text-xs text-slate-400 mr-2">{p.patient_id}</span>
-                  {p.age && <span className="text-xs text-slate-400">{p.age} سنة</span>}
+                  <span className="text-sm font-bold text-ink">{displayName(p)}</span>
+                  <span className="text-xs text-graphite mr-2">{p.patient_id}</span>
+                  {p.age && <span className="text-xs text-graphite">{p.age} سنة</span>}
                 </div>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-graphite">
                   {wm != null ? `${wm} د` : '—'}
                 </span>
               </button>
@@ -88,12 +88,12 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
           })}
 
           {others.length === 0 && !current && (
-            <div className="px-4 py-4 text-center text-xs text-slate-400">لا يوجد مرضى في انتظار الفرز</div>
+            <div className="px-4 py-4 text-center text-xs text-graphite">لا يوجد مرضى في انتظار الفرز</div>
           )}
 
           <button
             onClick={() => { setOpen(false); navigate('/visual-triage'); }}
-            className="w-full px-4 py-2.5 flex items-center gap-2 text-xs font-black text-red-600 hover:bg-red-50 border-t border-slate-100"
+            className="w-full px-4 py-2.5 flex items-center gap-2 text-xs font-black text-red-600 hover:bg-red-50 border-t border-mist"
           >
             <Plus className="w-3.5 h-3.5" /> مريض جديد / New Patient
           </button>

@@ -25,23 +25,45 @@ const MPOX_SYMPTOMS = [
   { id: 'myalgia',    ar: 'آلام الظهر أو الجسم',    en: 'Back pain / myalgia' },
 ];
 
-function CheckRow({ id, ar, en, checked, onChange, badge = null }) {
+/** Checkbox tile: whole row is the target, selection shown by an ink border and tick. */
+function CheckTile({ id, ar, en, checked, onChange, points = null }) {
   return (
     <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
       onClick={() => onChange(id)}
-      className={`w-full text-right flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all ${
-        checked ? 'bg-red-50 border-red-300 text-red-800' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+      className={`w-full text-start flex items-start gap-3 px-3 py-3 min-h-[52px] rounded-xl border-2 transition-colors ${
+        checked ? 'bg-white border-ink' : 'bg-white border-mist hover:border-graphite'
       }`}
     >
-      <span className={`w-5 h-5 rounded border-2 shrink-0 mt-0.5 flex items-center justify-center text-xs font-bold ${
-        checked ? 'bg-red-600 border-red-600 text-white' : 'border-slate-300'
-      }`}>{checked ? '✓' : ''}</span>
-      <span className="text-xs leading-relaxed flex-1">
-        <span className="font-bold block">{ar}</span>
-        <span className="text-slate-400">{en}</span>
+      <span
+        aria-hidden="true"
+        className={`w-6 h-6 rounded-md border-2 shrink-0 flex items-center justify-center text-sm font-bold ${
+          checked ? 'bg-ink border-ink text-white' : 'border-graphite/50'
+        }`}
+      >
+        {checked ? '✓' : ''}
       </span>
-      {badge && <span className="shrink-0 text-xs font-black bg-slate-100 text-slate-600 rounded-full px-2 py-0.5 self-center">{badge}</span>}
+      <span className="text-sm leading-snug flex-1">
+        <span className="font-semibold text-ink block">{ar}</span>
+        <span className="text-graphite text-xs">{en}</span>
+      </span>
+      {points != null && (
+        <span dir="ltr" className="shrink-0 self-center text-xs font-semibold text-graphite tabular-nums border border-mist rounded-full px-2 py-0.5">
+          {points === 0 ? '0' : `+${points}`}
+        </span>
+      )}
     </button>
+  );
+}
+
+function SubHeading({ children, aside }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 border-b border-mist pb-1.5">
+      <h3 className="text-sm font-semibold text-ink">{children}</h3>
+      {aside && <span className="text-xs text-graphite">{aside}</span>}
+    </div>
   );
 }
 
@@ -84,159 +106,125 @@ export default function SectionB({
   const mpoxRisk = mpoxRash === 'yes' && mpoxAssociated.length > 0 ? 'suspected'
     : mpoxRash === 'yes' ? 'monitor' : 'none';
 
-  const scoreColor = totalScore >= 4 ? 'bg-red-600 text-white' : totalScore >= 2 ? 'bg-orange-500 text-white' : 'bg-green-600 text-white';
-  const scoreBg    = totalScore >= 4 ? 'bg-red-50 border-red-300' : totalScore >= 2 ? 'bg-orange-50 border-orange-300' : 'bg-green-50 border-green-200';
+  const high = totalScore >= 4;
+  const moderate = totalScore >= 2 && totalScore < 4;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <span className="text-xs font-black text-slate-500 uppercase tracking-wide">القسم ب — Section B</span>
-        <p className="text-sm font-black text-slate-700 mt-0.5">فحص الأمراض التنفسية الحادة — Acute Respiratory Illness Screening</p>
-        {isPediatric && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">👶 Pediatric scoring active</span>}
-      </div>
-
-      {/* A. Exposure Risks */}
-      <div>
-        <div className="flex items-center justify-between mb-2 border-b border-slate-200 pb-1">
-          <p className="text-xs font-black text-slate-600">أ — خطر التعرض / A. Exposure Risks</p>
-          <span className="text-xs font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-            {anyExposure ? <span className="text-red-600">+3 نقاط</span> : '3 نقاط إذا تحقق أي منها'}
-          </span>
-        </div>
-        <div className="space-y-1.5">
-          {EXPOSURES.map(e => (
-            <CheckRow key={e.id} {...e} checked={!!exposures[e.id]} onChange={toggleExposure} badge="+3 pts (any)" />
-          ))}
-        </div>
-        {anyExposure && (
-          <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-700 font-bold">
-            ✅ تحقق خطر التعرض — Score +3 added
-          </div>
+    <section aria-labelledby="vt-section-b" className="flex flex-col gap-5">
+      <header>
+        <p className="text-xs font-semibold text-graphite tracking-wide">القسم ب · Section B</p>
+        <h2 id="vt-section-b" className="text-lg font-semibold text-ink">فحص الأمراض التنفسية الحادة</h2>
+        <p className="text-xs text-graphite">Acute respiratory illness screening (MOH)</p>
+        {isPediatric && (
+          <p className="mt-1 text-xs font-semibold text-ink">نقاط الأطفال مفعّلة · Paediatric scoring</p>
         )}
+      </header>
+
+      <div className="flex flex-col gap-2">
+        <SubHeading aside={anyExposure ? '3 نقاط' : '3 نقاط إذا تحقق أي منها'}>أ · خطر التعرض / Exposure</SubHeading>
+        {EXPOSURES.map(e => (
+          <CheckTile key={e.id} {...e} checked={!!exposures[e.id]} onChange={toggleExposure} />
+        ))}
       </div>
 
-      {/* B. Clinical Signs */}
-      <div>
-        <div className="flex items-center justify-between mb-2 border-b border-slate-200 pb-1">
-          <p className="text-xs font-black text-slate-600">ب — الأعراض السريرية / B. Clinical Signs & Symptoms</p>
-        </div>
-        {/* Score table header */}
-        <div className="grid grid-cols-3 text-xs font-black text-slate-500 mb-2 px-3">
-          <span className="col-span-1">العرض / Symptom</span>
-          <span className="text-center">Ped</span>
-          <span className="text-center">Adult</span>
-        </div>
-        <div className="space-y-1.5">
-          {CLINICAL.map(item => (
-            <div key={item.id} className="flex items-center gap-1">
-              <div className="flex-1">
-                <CheckRow
-                  id={item.id} ar={item.ar} en={item.en}
-                  checked={!!symptoms[item.id]}
-                  onChange={toggleSymptom}
-                />
-              </div>
-              <div className="flex flex-col gap-0.5 shrink-0 text-center w-16">
-                <span className={`text-xs font-black px-2 py-1 rounded ${isPediatric ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>
-                  {item.score_ped === 0 ? '—' : item.score_ped}
-                </span>
-                <span className={`text-xs font-black px-2 py-1 rounded ${!isPediatric ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-400'}`}>
-                  {item.score_adult}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* No symptoms button */}
-        <div className="mt-2">
-          <button
-            onClick={handleNoSymptoms}
-            className={`w-full text-right flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all ${
-              noSymptoms ? 'bg-green-50 border-green-400 text-green-800' : 'bg-white border-slate-200 text-slate-700 hover:border-green-300'
-            }`}
-          >
-            <span className={`w-5 h-5 rounded border-2 shrink-0 mt-0.5 flex items-center justify-center text-xs font-bold ${
-              noSymptoms ? 'bg-green-600 border-green-600 text-white' : 'border-slate-300'
-            }`}>{noSymptoms ? '✓' : ''}</span>
-            <span className="text-xs"><span className="font-bold block">لا توجد أعراض تنفسية</span><span className="text-slate-400">No respiratory symptoms</span></span>
-          </button>
-        </div>
+      <div className="flex flex-col gap-2">
+        <SubHeading aside={isPediatric ? 'نقاط الأطفال · Paed' : 'نقاط البالغين · Adult'}>ب · الأعراض / Clinical signs</SubHeading>
+        {CLINICAL.map(item => (
+          <CheckTile
+            key={item.id}
+            id={item.id} ar={item.ar} en={item.en}
+            checked={!!symptoms[item.id]}
+            onChange={toggleSymptom}
+            points={isPediatric ? item.score_ped : item.score_adult}
+          />
+        ))}
+        <CheckTile
+          id="none"
+          ar="لا توجد أعراض تنفسية"
+          en="No respiratory symptoms"
+          checked={noSymptoms}
+          onChange={handleNoSymptoms}
+        />
       </div>
 
-      {/* Total Score Box */}
-      <div className={`rounded-2xl border-2 px-4 py-3 ${scoreBg}`}>
-        <div className="flex items-center justify-between mb-2">
+      {/* Total score */}
+      <div
+        className={`rounded-2xl px-4 py-3 flex flex-col gap-2 ${
+          high ? 'bg-[#D3242C] text-white' : moderate ? 'bg-white border-2 border-dashed border-ink' : 'bg-white border border-mist'
+        }`}
+        aria-live="polite"
+      >
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-black text-slate-700">الدرجة الإجمالية — Total Score</p>
-            <div className="flex gap-3 text-xs mt-1">
-              <span className="text-slate-500">A (تعرض): <span className="font-black text-red-600">{exposureScore}</span></span>
-              <span className="text-slate-500">B (أعراض): <span className="font-black text-orange-600">{clinicalScore}</span></span>
-            </div>
+            <p className="text-sm font-semibold">الدرجة الإجمالية · Total score</p>
+            <p className={`text-xs ${high ? 'text-white/85' : 'text-graphite'}`}>
+              تعرض {exposureScore} + أعراض {clinicalScore}
+            </p>
           </div>
-          <div className={`w-14 h-14 rounded-full flex items-center justify-center font-black text-3xl shadow ${scoreColor}`}>
-            {totalScore}
-          </div>
+          <span className="text-4xl font-bold tabular-nums">{totalScore}</span>
         </div>
-        {totalScore >= 4 && (
-          <div className="text-xs space-y-1 text-red-800 bg-red-100 rounded-xl p-2.5 font-medium">
-            <p className="font-black text-red-700">⚠ الدرجة ≥ 4 — إجراءات إلزامية / Score ≥ 4 — Required Actions:</p>
-            <p>① اطلب غسل اليدين — Ask patient to perform hand hygiene</p>
-            <p>② أعطِ كمامة جراحية — Give patient a surgical mask</p>
-            <p>③ وجّه عبر المسار التنفسي — Direct through the respiratory pathway</p>
-            <p>④ أبلغ الطبيب للتقييم — Inform MD for assessment</p>
-            <p className="mt-1 text-red-600 font-black border-t border-red-200 pt-1">⚠ اختبار MERS-CoV / COVID-19 وفق تعريفات الحالات الرسمية فقط<br/><span className="font-normal">MERS-CoV OR COVID-19 testing per case definitions only</span></p>
+        {high && (
+          <div className="text-sm flex flex-col gap-1 border-t border-white/30 pt-2">
+            <p className="font-semibold">الدرجة ≥ 4: إجراءات إلزامية · Required actions</p>
+            <p>١. غسل اليدين · Hand hygiene</p>
+            <p>٢. كمامة جراحية · Surgical mask</p>
+            <p>٣. المسار التنفسي · Respiratory pathway</p>
+            <p>٤. أبلغ الطبيب · Inform the physician</p>
+            <p className="text-xs text-white/85 pt-1">اختبار MERS-CoV / COVID-19 وفق تعريفات الحالات فقط · Test per case definitions only</p>
           </div>
         )}
-        {totalScore >= 2 && totalScore < 4 && (
-          <p className="text-xs text-orange-700 font-bold">⚠ مخاطر معتدلة — ضع كمامة وراقب / Moderate risk — mask and monitor</p>
-        )}
-        {totalScore < 2 && (
-          <p className="text-xs text-green-700 font-bold">✓ مخاطر منخفضة — Low risk</p>
-        )}
+        {moderate && <p className="text-sm font-semibold">مخاطر معتدلة: ضع كمامة وراقب · Moderate risk: mask and monitor</p>}
+        {totalScore < 2 && <p className="text-sm text-graphite">مخاطر منخفضة · Low risk</p>}
       </div>
 
-      {/* Part 3 — Monkeypox */}
-      <div>
-        <p className="text-xs font-black text-slate-600 mb-2 border-b border-slate-200 pb-1">
-          ٣ — خطر الإصابة بجدري القرود / Risk for Monkeypox
+      {/* Monkeypox */}
+      <div className="flex flex-col gap-2">
+        <SubHeading>ج · جدري القرود / Mpox</SubHeading>
+        <p className="text-sm text-ink">
+          هل يوجد طفح جلدي غير مفسر؟ <span className="text-graphite text-xs">Unexplained rash (macular, papular, vesicular, pustular)?</span>
         </p>
-        <p className="text-xs font-bold text-slate-700 mb-2">
-          هل يوجد طفح جلدي غير مفسر؟ <span className="text-slate-400 font-normal">Unexplained rash (macular, papular, vesicular, pustular)?</span>
-        </p>
-        <div className="flex gap-3 mb-3">
-          {['yes', 'no'].map(opt => (
-            <button key={opt} onClick={() => { setMpoxRash(opt); if (opt === 'no') setMpoxSymptoms({}); }}
-              className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-bold transition-all ${
-                mpoxRash === opt
-                  ? opt === 'yes' ? 'bg-orange-500 border-orange-500 text-white' : 'bg-green-600 border-green-600 text-white'
-                  : 'bg-white border-slate-200 text-slate-600'
-              }`}>
-              {opt === 'yes' ? 'نعم / Yes' : 'لا / No'}
-            </button>
-          ))}
+        <div role="radiogroup" aria-label="طفح جلدي / Rash" className="flex gap-2">
+          {['yes', 'no'].map(opt => {
+            const selected = mpoxRash === opt;
+            return (
+              <button
+                key={opt}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => { setMpoxRash(opt); if (opt === 'no') setMpoxSymptoms({}); }}
+                className={`flex-1 min-h-[52px] rounded-xl border-2 text-[15px] font-semibold transition-colors ${
+                  selected ? 'bg-ink border-ink text-white' : 'bg-white border-mist text-ink hover:border-graphite'
+                }`}
+              >
+                {opt === 'yes' ? 'نعم / Yes' : 'لا / No'}
+              </button>
+            );
+          })}
         </div>
         {mpoxRash === 'yes' && (
-          <div className="space-y-1.5">
-            <p className="text-xs font-bold text-slate-600">الأعراض المصاحبة / Associated symptoms:</p>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-semibold text-graphite">الأعراض المصاحبة / Associated symptoms</p>
             {MPOX_SYMPTOMS.map(s => (
-              <CheckRow key={s.id} {...s} checked={!!mpoxSymptoms[s.id]}
+              <CheckTile key={s.id} {...s} checked={!!mpoxSymptoms[s.id]}
                 onChange={(id) => setMpoxSymptoms(prev => ({ ...prev, [id]: !prev[id] }))} />
             ))}
           </div>
         )}
         {mpoxRash && (
-          <div className={`mt-3 px-3 py-2 rounded-xl text-xs font-bold ${
-            mpoxRisk === 'suspected' ? 'bg-orange-100 border border-orange-400 text-orange-800' :
-            mpoxRisk === 'monitor'   ? 'bg-yellow-50 border border-yellow-300 text-yellow-800' :
-                                       'bg-green-50 border border-green-200 text-green-800'
-          }`}>
-            {mpoxRisk === 'suspected' && '🔴 خطر مشتبه به — Suspected Monkeypox · عزل فوري'}
-            {mpoxRisk === 'monitor'   && '🟡 راقب — Monitor · ضع كمامة وراقب'}
-            {mpoxRisk === 'none'      && '🟢 لا خطر — No Monkeypox risk'}
-          </div>
+          <p
+            className={`px-3 py-2 rounded-xl text-sm font-semibold ${
+              mpoxRisk === 'suspected' ? 'bg-[#D3242C] text-white' :
+              mpoxRisk === 'monitor'   ? 'bg-white border-2 border-dashed border-ink text-ink' :
+                                         'bg-white border border-mist text-graphite'
+            }`}
+          >
+            {mpoxRisk === 'suspected' && 'اشتباه جدري القرود: عزل فوري · Suspected mpox: isolate'}
+            {mpoxRisk === 'monitor'   && 'راقب: ضع كمامة وراقب · Monitor: mask and observe'}
+            {mpoxRisk === 'none'      && 'لا خطر · No mpox risk'}
+          </p>
         )}
       </div>
-    </div>
+    </section>
   );
 }

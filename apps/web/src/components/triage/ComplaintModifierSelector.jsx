@@ -19,22 +19,22 @@ export default function ComplaintModifierSelector({ match, selectedModifier, onS
   const { category, complaint, categoryKey } = match;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+    <div className="bg-white rounded-2xl border border-mist shadow-sm p-4 space-y-3">
       {/* Header */}
-      <div className="border-b border-slate-100 pb-2">
+      <div className="border-b border-mist pb-2">
         <div className="flex items-center gap-2 mb-1">
           <span
             className="w-3 h-3 rounded-full shrink-0"
             style={{ backgroundColor: category.color }}
           />
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+          <span className="text-xs font-bold text-graphite uppercase tracking-wide">
             {category.label_en} / {category.label_ar}
           </span>
         </div>
-        <p className="text-sm font-black text-slate-800">
+        <p className="text-sm font-black text-ink">
           {complaint.label_en} — {complaint.label_ar}
         </p>
-        <p className="text-xs text-slate-400 mt-0.5">
+        <p className="text-xs text-graphite mt-0.5">
           الخطوة ٢ — اختر المعدّل المحدد / Step 2 — Select Complaint Specific Modifier
         </p>
       </div>
@@ -51,7 +51,7 @@ export default function ComplaintModifierSelector({ match, selectedModifier, onS
               className={`w-full text-right flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border-2 transition-all font-medium text-sm ${
                 isSelected
                   ? LEVEL_COLORS[m.ctas] + ' shadow-sm scale-[1.01]'
-                  : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                  : 'bg-white border-mist text-ink hover:border-mist'
               }`}
             >
               <span className="flex-1 leading-snug">{m.modifier}</span>

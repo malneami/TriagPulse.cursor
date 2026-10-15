@@ -195,6 +195,15 @@ check(!String(after.json.arrivalTime).startsWith('2000'), 'client-sent journey f
 
 const board = await call('/tracking/board', { token: nurse });
 check(board.status === 200 && Array.isArray(board.json), 'tracking board loads');
+const onBoard = board.json.find((j) => j.id === journeyId);
+check(!!onBoard, 'a triaged patient stays on the board until seen');
+check(Number.isInteger(onBoard?.ticketNo) && onBoard.ticketNo > 0, 'board entries carry a ticket number', String(onBoard?.ticketNo));
+
+const seen = await call(`/journeys/${journeyId}/status`, { token: physician, method: 'PATCH', body: { status: 'seen' } });
+check(seen.status === 200 && seen.json?.seenAt, "a physician can mark a nurse's patient as seen", `status ${seen.status} ${seen.text.slice(0, 200)}`);
+
+const boardAfter = await call('/tracking/board', { token: nurse });
+check(!boardAfter.json.some((j) => j.id === journeyId), 'a seen patient leaves the board');
 
 // ── Single-port mode (SERVE_WEB_DIR): the API also serves the web app ─
 if (process.env.EXPECT_WEB === '1') {

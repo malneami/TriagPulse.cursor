@@ -9,6 +9,7 @@ import SectionB from '@/components/visualTriage/SectionB';
 import DestinationScreen from '@/components/journey/DestinationScreen';
 import JourneyProgress from '@/components/journey/JourneyProgress';
 import { toast } from 'sonner';
+import { ctasFill } from '@/lib/ctasStyle';
 
 const defaultSectionA = { breathing: null, consciousness: null, bleeding: null, skin: null, mobility: null };
 
@@ -185,80 +186,83 @@ export default function VisualTriage() {
     );
   }
 
-  return (
-    <div dir="rtl" className="space-y-4 pb-8">
-      <JourneyProgress currentStep={1} />
+  const answered = Object.values(sectionA).filter((v) => v !== null).length;
+  const preview = sectionAComplete
+    ? assignDestination({ sectionA, respiratoryScore: infectiousScore, monkeypoxRisk: mpoxRisk, patientAge })
+    : null;
+  const inputCls =
+    'mt-1 w-full h-12 bg-white border border-mist rounded-xl px-3 text-[15px] text-ink placeholder:text-graphite/60 focus:outline-none focus:border-ink';
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-base font-black text-slate-800">الفرز البصري — Visual Triage</h1>
-            <p className="text-xs text-slate-400">الخطوة ١ من ٣ — أكمل قبل نموذج CTAS</p>
-          </div>
+  return (
+    <div dir="rtl" className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink">الفرز البصري</h1>
+          <p className="text-sm text-graphite">Visual triage · الخطوة ١ من ٣</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:block"><JourneyProgress currentStep={1} /></div>
           <button
+            type="button"
             onClick={resetAll}
-            className="flex items-center gap-1.5 px-3 py-2 bg-red-600 text-white rounded-xl text-xs font-black hover:bg-red-700"
+            className="flex items-center gap-2 h-11 px-4 bg-white border border-mist text-ink rounded-xl text-sm font-semibold hover:border-ink"
           >
-            <Plus className="w-3.5 h-3.5" /> مريض جديد
+            <Plus className="w-4 h-4" aria-hidden="true" /> مريض جديد
           </button>
         </div>
       </div>
 
-      {/* Patient identity strip */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-4 space-y-3">
-        <p className="text-xs font-black text-slate-600 border-b border-slate-100 pb-2">بيانات أولية للتتبع — Pre-Registration Identity</p>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div>
-            <label className="text-xs font-bold text-slate-600">اسم المريض (عربي) / Name (Arabic)</label>
-            <input
-              className="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
-              value={patientNameAr} onChange={e => setPatientNameAr(e.target.value)}
-              placeholder="الاسم الكامل" dir="rtl"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-slate-600">Name (English) / الاسم بالإنجليزية</label>
-            <input
-              className="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
-              value={patientNameEn} onChange={e => setPatientNameEn(e.target.value)}
-              placeholder="Full name"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-slate-600">رقم الهوية / ID Number</label>
-            <input
-              className="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
-              value={patientIdNumber} onChange={e => setPatientIdNumber(e.target.value)}
-              placeholder="ID / رقم الهوية"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-slate-600">العمر / Age</label>
-            <input
-              type="number" min="0" max="120"
-              className="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
-              value={patientAge} onChange={e => setPatientAge(e.target.value)}
-              placeholder="السنوات / Years"
-            />
-            {patientAge && parseFloat(patientAge) < 14 && (
-              <p className="text-xs text-blue-600 font-bold mt-1">👶 طفل — بروتوكول الأطفال نشط / Pediatric pathway active</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {hasCritical && (
-        <div className="bg-red-600 text-white rounded-2xl px-4 py-3 text-center animate-pulse">
-          <p className="font-black text-sm">🚨 علامات حرجة مكتشفة — CRITICAL SIGNS DETECTED</p>
-          <p className="text-xs opacity-80">أكمل جميع الحقول وأكد لتوجيه المريض فوراً</p>
-        </div>
+      {waitingCount > 0 && (
+        <button
+          type="button"
+          onClick={() => navigate('/tracking')}
+          className="w-full flex items-center justify-between px-4 h-12 bg-white border border-mist rounded-xl hover:border-ink"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <Users className="w-4 h-4" aria-hidden="true" />
+            بانتظار CTAS: <span className="tabular-nums">{waitingCount}</span>
+          </span>
+          <span className="text-sm text-graphite">لوحة التتبع ←</span>
+        </button>
       )}
 
-      <div className="flex flex-col md:flex-row gap-4">
-        <div className="md:w-1/2 bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-4">
+      {/* Patient identity */}
+      <section aria-labelledby="vt-identity" className="bg-white rounded-2xl border border-mist px-5 py-4">
+        <h2 id="vt-identity" className="text-sm font-semibold text-ink">بيانات أولية للتتبع · Pre-registration identity</h2>
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <label className="text-sm text-graphite md:col-span-1">
+            الاسم (عربي)
+            <input className={inputCls} value={patientNameAr} onChange={e => setPatientNameAr(e.target.value)} placeholder="الاسم الكامل" dir="rtl" />
+          </label>
+          <label className="text-sm text-graphite md:col-span-1">
+            Name (English)
+            <input className={inputCls} value={patientNameEn} onChange={e => setPatientNameEn(e.target.value)} placeholder="Full name" dir="ltr" />
+          </label>
+          <label className="text-sm text-graphite">
+            رقم الهوية · ID
+            <input className={inputCls} value={patientIdNumber} onChange={e => setPatientIdNumber(e.target.value)} dir="ltr" inputMode="numeric" />
+          </label>
+          <label className="text-sm text-graphite">
+            العمر بالسنوات · Age
+            <input type="number" min="0" max="120" className={inputCls} value={patientAge} onChange={e => setPatientAge(e.target.value)} dir="ltr" />
+          </label>
+        </div>
+        {isPediatric && (
+          <p className="mt-2 text-sm font-semibold text-ink">طفل: مسار الأطفال مفعّل · Paediatric pathway active</p>
+        )}
+      </section>
+
+      {hasCritical && (
+        <p role="alert" className="bg-[#D3242C] text-white rounded-2xl px-5 py-3 text-[15px] font-semibold">
+          علامات حرجة: أكمل القسم أ ووجّه المريض فوراً · Critical signs, complete Section A and direct now
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <div className="bg-white rounded-2xl border border-mist px-5 py-5">
           <SectionA values={sectionA} onChange={(key, val) => setSectionA(prev => ({ ...prev, [key]: val }))} />
         </div>
-        <div className="md:w-1/2 bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-4">
+        <div className="bg-white rounded-2xl border border-mist px-5 py-5">
           <SectionB
             symptoms={symptoms} setSymptoms={setSymptoms}
             noSymptoms={noSymptoms} setNoSymptoms={setNoSymptoms}
@@ -270,41 +274,42 @@ export default function VisualTriage() {
         </div>
       </div>
 
-      {/* Waiting counter */}
-      {waitingCount > 0 && (
+      {/* Sticky footer: suggested destination and the one primary action */}
+      <div className="sticky bottom-3 z-10 bg-white border border-mist rounded-2xl shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[200px]" aria-live="polite">
+          {preview ? (
+            <>
+              <p className="text-xs text-graphite">الوجهة المقترحة · Suggested destination</p>
+              <p className="text-base font-semibold text-ink flex items-center gap-2">
+                {preview.estimated_ctas && (
+                  <span aria-hidden="true" className="w-3 h-3 rounded-full shrink-0" style={ctasFill(preview.estimated_ctas)} />
+                )}
+                {preview.destination_ar} <span className="font-normal text-graphite">· {preview.destination_en}</span>
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-graphite">أكمل القسم أ لعرض الوجهة · Complete Section A ({answered}/5)</p>
+          )}
+        </div>
         <button
-          onClick={() => navigate('/tracking')}
-          className="w-full flex items-center justify-between px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors"
+          type="button"
+          onClick={handleConfirm}
+          disabled={!sectionAComplete || saving}
+          className={`min-h-[56px] px-6 rounded-xl text-base font-semibold transition-colors ${
+            sectionAComplete && !saving
+              ? hasCritical
+                ? 'bg-[#D3242C] text-white hover:bg-[#B81E25]'
+                : 'bg-ink text-white hover:bg-ink-deep'
+              : 'bg-mist text-graphite cursor-not-allowed'
+          }`}
         >
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-amber-600" />
-            <span className="text-sm font-bold text-amber-800">
-              المرضى المنتظرون / Waiting: {waitingCount}
-            </span>
-          </div>
-          <span className="text-xs text-amber-600 font-bold">عرض ▶</span>
+          {saving
+            ? 'جاري الحفظ…'
+            : hasCritical
+              ? 'تأكيد وتوجيه للإنعاش · Confirm'
+              : 'تأكيد الفرز البصري · Confirm'}
         </button>
-      )}
-
-      <button
-        onClick={handleConfirm}
-        disabled={!sectionAComplete || saving}
-        className={`w-full py-4 rounded-2xl font-black text-base shadow-lg transition-all ${
-          sectionAComplete && !saving
-            ? hasCritical
-              ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
-              : 'bg-red-600 hover:bg-red-700 text-white'
-            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-        }`}
-      >
-        {saving ? '⏳ جاري...' :
-          sectionAComplete
-            ? hasCritical
-              ? '🚨 تأكيد — توجيه فوري للإنعاش / Confirm — Send to Resus'
-              : `✅ تأكيد الفرز البصري — Confirm Visual Triage`
-            : `أكمل القسم أ (${Object.values(sectionA).filter(v => v !== null).length}/5 مكتمل)`
-        }
-      </button>
+      </div>
     </div>
   );
 }

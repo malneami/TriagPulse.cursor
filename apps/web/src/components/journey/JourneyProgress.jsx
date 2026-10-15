@@ -1,38 +1,30 @@
 const STEPS = [
   { num: 1, ar: 'الفرز البصري', en: 'Visual' },
-  { num: 2, ar: 'التسجيل', en: 'Reg' },
+  { num: 2, ar: 'التسجيل', en: 'Registration' },
   { num: 3, ar: 'CTAS', en: 'CTAS' },
 ];
 
+/** Compact three-step indicator: done steps are filled ink, the current one outlined. */
 export default function JourneyProgress({ currentStep }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3">
-      <div className="flex items-center justify-center gap-0">
-        {STEPS.map((step, i) => (
-          <div key={step.num} className="flex items-center">
-            <div className="flex flex-col items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-black border-2 transition-all ${
-                step.num < currentStep
-                  ? 'bg-red-600 border-red-600 text-white'
-                  : step.num === currentStep
-                  ? 'bg-white border-red-600 text-red-600'
-                  : 'bg-white border-slate-300 text-slate-400'
-              }`}>
-                {step.num < currentStep ? '✓' : step.num}
-              </div>
-              <p className={`text-xs font-bold mt-1 whitespace-nowrap ${
-                step.num === currentStep ? 'text-red-600' : step.num < currentStep ? 'text-red-400' : 'text-slate-400'
-              }`}>
-                {step.ar}
-              </p>
-              <p className="text-xs text-slate-300">{step.en}</p>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div className={`w-12 h-0.5 mb-5 mx-1.5 ${step.num < currentStep ? 'bg-red-500' : 'bg-slate-200'}`} />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
+    <ol aria-label="مراحل الرحلة / Journey steps" className="flex items-center gap-2 list-none m-0 p-0">
+      {STEPS.map((step, i) => {
+        const done = step.num < currentStep;
+        const current = step.num === currentStep;
+        return (
+          <li key={step.num} className="flex items-center gap-2" aria-current={current ? 'step' : undefined}>
+            <span
+              className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold border-2 ${
+                done ? 'bg-ink border-ink text-white' : current ? 'bg-white border-ink text-ink' : 'bg-white border-mist text-graphite'
+              }`}
+            >
+              {done ? '✓' : step.num}
+            </span>
+            <span className={`text-sm whitespace-nowrap ${current ? 'font-semibold text-ink' : 'text-graphite'}`}>{step.ar}</span>
+            {i < STEPS.length - 1 && <span aria-hidden="true" className={`w-6 h-0.5 ${done ? 'bg-ink' : 'bg-mist'}`} />}
+          </li>
+        );
+      })}
+    </ol>
   );
 }

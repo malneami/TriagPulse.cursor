@@ -8,7 +8,7 @@ import { canAccess } from '@/lib/security/roles';
 /** Page width per screen: the CTAS rail and the board need room; forms stay narrow. */
 function mainWidth(pathname) {
   if (pathname.startsWith('/tracking')) return 'max-w-[1600px]';
-  if (pathname.startsWith('/triage')) return 'max-w-6xl';
+  if (pathname.startsWith('/triage') || pathname.startsWith('/visual-triage')) return 'max-w-6xl';
   if (pathname.startsWith('/admin/')) return 'max-w-5xl';
   return 'max-w-3xl';
 }

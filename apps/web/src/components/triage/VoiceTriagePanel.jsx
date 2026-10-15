@@ -792,31 +792,31 @@ export default function VoiceTriagePanel({
   const lastTurnAt = lastLine && typeof lastLine !== 'string' ? lastLine.at : null;
 
   const panel = (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+    <div className="bg-white rounded-2xl border border-mist shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-mist flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-black text-slate-800">التقاط صوتي — Voice Triage STT</p>
-          <p className="text-xs text-slate-500 truncate">Live auto-fill · decision support only</p>
+          <p className="text-sm font-black text-ink">التقاط صوتي — Voice Triage STT</p>
+          <p className="text-xs text-graphite truncate">Live auto-fill · decision support only</p>
         </div>
-        <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${sttMode === 'realtime' ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-600'}`}>
+        <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${sttMode === 'realtime' ? 'bg-teal-100 text-teal-800' : 'bg-paper text-graphite'}`}>
           {modeLabel}
         </span>
       </div>
 
       {/* Guide — how the AI STT mode behaves + phrases that exercise it */}
-      <div className="mx-4 mt-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+      <div className="mx-4 mt-3 bg-paper border border-mist rounded-xl">
         <button
           type="button"
           onClick={() => setShowGuide((v) => !v)}
           className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-right"
         >
-          <span className="text-xs font-black text-emerald-900">
+          <span className="text-xs font-black text-ink">
             كيف يعمل الالتقاط الصوتي — How AI voice capture works
           </span>
-          <ChevronDown className={`w-4 h-4 text-emerald-700 shrink-0 transition-transform ${showGuide ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`w-4 h-4 text-graphite shrink-0 transition-transform ${showGuide ? 'rotate-180' : ''}`} />
         </button>
         {showGuide && (
-          <div className="px-3 pb-3 text-xs text-emerald-900 leading-relaxed space-y-2">
+          <div className="px-3 pb-3 text-xs text-ink leading-relaxed space-y-2">
             <p>
               Backend AI STT records microphone audio only — it does <strong>not</strong> use browser
               speech detection. On Stop the audio goes to <code className="font-mono">transcribeAudio</code>,
@@ -824,13 +824,13 @@ export default function VoiceTriagePanel({
             </p>
             <div className="space-y-1.5">
               {DEMO_SENTENCES.map((d) => (
-                <div key={d.id} className="bg-white/70 border border-emerald-200 rounded-lg p-2">
+                <div key={d.id} className="bg-white/70 border border-mist rounded-lg p-2">
                   <p className="font-black mb-1">{d.label}</p>
-                  <p dir={d.dir} className="text-[11px] text-emerald-800 mb-1.5">{d.text}</p>
+                  <p dir={d.dir} className="text-[11px] text-ink mb-1.5">{d.text}</p>
                   <button
                     type="button"
                     onClick={() => pasteDemoSentence(d.text)}
-                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 underline"
+                    className="text-[10px] font-bold text-graphite hover:text-ink underline"
                   >
                     لصق / Paste
                   </button>
@@ -842,7 +842,7 @@ export default function VoiceTriagePanel({
       </div>
 
       {browserOnly && (
-        <div className="mx-4 mt-3 bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-900">
+        <div className="mx-4 mt-3 bg-paper border border-mist rounded-xl p-3 text-xs text-ink">
           <div className="flex items-center gap-2 font-black mb-1">
             <AlertTriangle className="w-4 h-4" />
             Mixed Arabic/English is unavailable — لا يمكن خلط العربية والإنجليزية
@@ -857,12 +857,12 @@ export default function VoiceTriagePanel({
       )}
 
       {sttError && (
-        <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-start justify-between gap-2">
+        <div className="mx-4 mt-3 bg-paper border border-mist rounded-xl p-3 text-xs text-ink flex items-start justify-between gap-2">
           <p className="font-bold flex-1">{sttError}</p>
           <button
             type="button"
             onClick={() => { void refreshSttStatus(); }}
-            className="shrink-0 text-[11px] font-black underline text-amber-800 hover:text-amber-950"
+            className="shrink-0 text-[11px] font-black underline text-ink hover:text-ink"
           >
             Retry
           </button>
@@ -875,7 +875,7 @@ export default function VoiceTriagePanel({
           <button
             type="button"
             onClick={() => setShowTranscript((v) => !v)}
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 text-sm font-black text-slate-700 hover:bg-slate-50"
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-mist text-sm font-black text-ink hover:bg-paper"
           >
             <Keyboard className="w-4 h-4" /> Transcript
           </button>
@@ -903,7 +903,7 @@ export default function VoiceTriagePanel({
               onChange={(e) => setManualText(e.target.value)}
               placeholder="تحدث أو اكتب الإملاء هنا (عربي/إنجليزي) — Speak or type dictation here"
               rows={4}
-              className="w-full rounded-xl border border-slate-200 p-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+              className="w-full rounded-xl border border-mist p-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-teal-500/40"
             />
             {interimText && (
               <p className="text-xs text-teal-600 -mt-1 px-1 truncate">{interimText}</p>
@@ -913,7 +913,7 @@ export default function VoiceTriagePanel({
               type="button"
               onClick={handleManualExtract}
               disabled={busy || !(manualText || liveTranscript).trim()}
-              className="w-full py-3 rounded-xl bg-teal-700 hover:bg-teal-800 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-black"
+              className="w-full py-3 rounded-xl bg-teal-700 hover:bg-teal-800 disabled:bg-mist disabled:text-graphite text-white text-sm font-black"
             >
               استخراج وتعبئة حقول CTAS / Extract + auto-fill CTAS fields
             </button>
@@ -948,12 +948,12 @@ export default function VoiceTriagePanel({
 
       {sessionOutput?.low_confidence_spans?.length > 0 && (
         <div className="px-4 pb-4">
-          <p className="text-xs font-black text-amber-700 mb-1 flex items-center gap-1">
+          <p className="text-xs font-black text-graphite mb-1 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" /> Low confidence — review
           </p>
           <div className="flex flex-wrap gap-1">
             {sessionOutput.low_confidence_spans.map((s, i) => (
-              <span key={i} className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+              <span key={i} className="text-[10px] bg-mist text-ink px-2 py-0.5 rounded-full">
                 {s.text} ({Math.round(s.confidence * 100)}%)
               </span>
             ))}
