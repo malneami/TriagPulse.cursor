@@ -368,9 +368,10 @@ export default function Triage() {
 
   // Re-score clarifying CTAS/destination when pain or vitals change (do not reshuffle questions)
   useEffect(() => {
-    if (clarifyingSource !== 'modifier_engine') return;
     if (!modifierEvaluation && !selectedModifier) return;
-    const initial = selectedModifier?.ctas || clarifyingLevel || liveLevel || 5;
+    // Start from the current data, never from an earlier result: a corrected vital
+    // (e.g. a mis-heard GCS) must be able to change the level again.
+    const initial = selectedModifier?.ctas || liveResult?.level || 5;
     const evaluation = evaluateModifierEngine({
       patient,
       answers: { ...clarifyingAnswers, _selectedModifier: selectedModifier },
@@ -381,7 +382,7 @@ export default function Triage() {
       visualTriage,
     });
     setModifierEvaluation(evaluation);
-    setClarifyingLevel(evaluation.updated_ctas ?? evaluation.initial_ctas ?? initial);
+    if (clarifyingSource === 'modifier_engine') setClarifyingLevel(evaluation.updated_ctas ?? evaluation.initial_ctas ?? initial);
     // Vitals/pain rescore only — clarifying answers re-run the full pipeline elsewhere
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -534,7 +535,7 @@ export default function Triage() {
       ]);
     }
     if (clarifyingSource === 'modifier_engine' || clarifyingSource === 'empty') {
-      const initial = clarifyingLevel || selectedModifier?.ctas || liveResult?.level || 5;
+      const initial = selectedModifier?.ctas || liveResult?.level || 5;
       // Full re-pipeline: rebuild facts, reselect ≤3 gaps, rescore by category
       const evaluation = runModifierEngine(initial, pathwayKey, next, selectedModifier);
       if (!evaluation.questions?.length && clarifyingSource === 'modifier_engine') {
@@ -544,7 +545,7 @@ export default function Triage() {
       return;
     }
     if (clarifyingSource === 'bank') {
-      const level = clarifyingLevel || selectedModifier?.ctas || liveResult?.level || 5;
+      const level = selectedModifier?.ctas || liveResult?.level || 5;
       applyBankQuestions(level, pathwayKey, next);
     }
   };
@@ -639,6 +640,15 @@ export default function Triage() {
         const bed = sessionOutput.case_details.bedside || {};
         if (bed.glucose && (prev.glucose === '' || prev.glucose == null)) next.glucose = String(bed.glucose.value);
         if (bed.ketones && !prev.ketones) next.ketones = bed.ketones.value;
+        const cd = sessionOutput.case_details;
+        const typed = manualEditedFieldsRef.current;
+        if (!next.current_medications && !typed.has('current_medications') && cd.medications?.length) {
+          next.current_medications = cd.medications.map((m) => m.name).join('، ');
+        }
+        const present = (cd.conditions || []).filter((c) => c.status === 'present');
+        if (!next.relevant_history && !typed.has('relevant_history') && present.length) {
+          next.relevant_history = present.map((c) => `${c.label_ar} · ${c.label_en}`).join('، ');
+        }
       }
       for (const [key, value] of Object.entries(updates)) {
         if (key === 'chief_complaint' && multiComplaint) continue;
@@ -1174,7 +1184,7 @@ export default function Triage() {
   useEffect(() => {
     if (!questionsGeneratedRef.current || clarifyingSource === 'bank' || !patient.chief_complaint) return undefined;
     const id = setTimeout(() => {
-      const level = clarifyingLevel || selectedModifier?.ctas || liveResult?.level || 5;
+      const level = selectedModifier?.ctas || liveResult?.level || 5;
       runModifierEngine(level, pathwayKey, clarifyingAnswers, selectedModifier);
     }, 1500);
     return () => clearTimeout(id);
@@ -1205,7 +1215,7 @@ export default function Triage() {
       // Not sent to the engine as yes or no; re-run so another question can take the slot.
       unknownRef.current = { ...unknownRef.current, [q.field]: true };
       setUnknownAnswers(unknownRef.current);
-      const initial = clarifyingLevel || selectedModifier?.ctas || liveResult?.level || 5;
+      const initial = selectedModifier?.ctas || liveResult?.level || 5;
       if (clarifyingSource === 'bank') applyBankQuestions(initial, pathwayKey, clarifyingAnswers);
       else runModifierEngine(initial, pathwayKey, clarifyingAnswers, selectedModifier);
       return;

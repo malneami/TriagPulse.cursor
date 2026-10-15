@@ -61,6 +61,9 @@ const CLASS_LABEL = {
   steroid: 'كورتيزون · steroid',
   beta_blocker: 'حاصر بيتا · beta-blocker',
   antiepileptic: 'مضاد صرع · antiepileptic',
+  bronchodilator: 'موسّع شعب · bronchodilator',
+  inhaled_steroid: 'كورتيزون استنشاقي · inhaled steroid',
+  leukotriene: 'مضاد ليكوترين · leukotriene',
 };
 export const drugClassLabel = (id) => CLASS_LABEL[id] || id;
 

@@ -79,6 +79,12 @@ export const DRUG_CLASSES = [
     rx: /prednisolone|prednisone|dexamethasone|hydrocortisone|methylpred\w*|steroid|بريدنيزولون|ديكساميثازون|هيدروكورتيزون|كورتيزون/i },
   { id: 'beta_blocker', en: 'Beta-blocker', ar: 'حاصر بيتا',
     rx: /\w+olol\b|beta.?blocker|بيسوبرولول|كونكور|بروبرانولول|أتينولول/i },
+  { id: 'bronchodilator', en: 'Bronchodilator', ar: 'موسّع شعب',
+    rx: /salbutamol|albuterol|ventolin|atrovent|ipratropium|فنتولين|فينتولين|سالبيوتامول|أتروفنت/i },
+  { id: 'inhaled_steroid', en: 'Inhaled steroid', ar: 'كورتيزون استنشاقي',
+    rx: /budesonide|pulmicort|flixotide|fluticasone|seretide|symbicort|beclomet\w*|clenil|بلميكورت|ميكورت|فليكسوتايد|سيريتايد|سيمبيكورت/i },
+  { id: 'leukotriene', en: 'Leukotriene antagonist', ar: 'مضاد ليكوترين',
+    rx: /montelukast|singulair|سينجولير|سينغولير|مونتيلوكاست/i },
   { id: 'antiepileptic', en: 'Antiepileptic', ar: 'مضاد صرع',
     rx: /levetiracetam|keppra|valpro\w*|depakine|carbamazepine|tegretol|phenytoin|lamotrigine|topiramate|كيبرا|ديباكين|تجريتول/i },
 ];

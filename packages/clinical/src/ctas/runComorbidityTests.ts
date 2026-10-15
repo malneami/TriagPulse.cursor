@@ -6,6 +6,7 @@ import { buildCaseDetails } from './caseDetails.js';
 import { evaluateComorbidityRules, extractBedsideTests } from './comorbidityRules.js';
 import { applyModifierLibraryEffects } from './modifierLibrary.js';
 import { selectMissingModifiers } from './modifierEngine.js';
+import { extractFieldsFromTranscript, mapSttSessionToPatientUpdates } from '../stt/extractFields.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -119,5 +120,20 @@ export function runComorbidityTests(assert: Assert) {
     assert(no.direction_applied.length === 0 && yes.direction_applied.length === 1,
       'CR-20', '"No" to recent abdominal surgery does not change direction; "Yes" does',
       JSON.stringify({ no: no.direction_applied, yes: yes.direction_applied.map((d: { destination_hint: string }) => d.destination_hint) }));
+  }
+
+  // Dictation fills onset, medicines and history fields (3-year-old asthma case).
+  {
+    const t = 'مريضة عمرها ثلاث سنوات تشتكي من كحة وضيق في التنفس تعاني من ربو. المريضة تأخذ علاجات مزمنة. بلميكورت وفنتولين الأعراض بدأت من يومين';
+    const u = mapSttSessionToPatientUpdates(extractFieldsFromTranscript(t)).updates as Record<string, string>;
+    const cd = buildCaseDetails(t);
+    assert(/يومين/.test(String(u.onset_duration || '')), 'CR-21', 'Arabic onset "بدأت من يومين" fills the onset field', JSON.stringify(u.onset_duration));
+    assert(cd.drug_classes.includes('bronchodilator') && cd.drug_classes.includes('inhaled_steroid'),
+      'CR-22', 'asthma medicines are recognised (Ventolin, Pulmicort)', JSON.stringify(cd.medications));
+    const e = mapSttSessionToPatientUpdates(extractFieldsFromTranscript('cough for 3 days, history of asthma, takes salbutamol and montelukast, allergic to penicillin')).updates as Record<string, string>;
+    assert(/3 days/.test(String(e.onset_duration)) && /salbutamol/.test(String(e.current_medications)) && /asthma/.test(String(e.relevant_history)),
+      'CR-23', 'English onset, medicines and history are copied to the form', JSON.stringify(e));
+    const a = mapSttSessionToPatientUpdates(extractFieldsFromTranscript('عمره خمس سنوات، حرارة من البارحة')).updates as Record<string, string>;
+    assert(!/سنوات/.test(String(a.onset_duration || '')), 'CR-24', 'age ("five years") is not taken as onset', JSON.stringify(a.onset_duration));
   }
 }

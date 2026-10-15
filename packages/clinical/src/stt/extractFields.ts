@@ -346,9 +346,13 @@ function parseAllergies(text: string): { value: string; span: string; confidence
   return null;
 }
 
+const ONSET_UNIT = 'hours?|hrs?|minutes?|mins?|days?|weeks?|months?|morning|evening|night|yesterday|ago'
+  + '|صباح|الصبح|مساء|الليل|أمس|امس|البارحة|ساعة|ساعتين|ساعات|دقيقة|دقيقتين|دقائق|يوم|يومين|أيام|ايام|أسبوع|اسبوع|أسبوعين|اسبوعين|أسابيع|شهر|شهرين|أشهر|شهور';
+
 function parseOnset(text: string): { value: string; span: string; confidence: number } | null {
-  const m = text.match(/(?:for|since|منذ|من)\s+([\w\u0600-\u06FF\s\d]+?(?:hours?|hour|minutes?|minute|days?|day|morning|evening|صباح|مساء|ساعة|ساعات|دقيقة|أيام))/i)
-    || text.match(/(\d+\s*(?:hours?|minutes?|days?|ساعة|ساعات|دقيقة|أيام))/i);
+  const unit = `(?:${ONSET_UNIT})`;
+  const m = text.match(new RegExp(`(?:for|since|started|began|منذ|من|بدأت?\\s+(?:من|منذ)?|بدات\\s+(?:من)?)\\s*((?:[\\w\\u0600-\\u06FF\\d]+\\s+){0,3}?${unit}(?:\\s+ago)?)(?![\\w\\u0600-\\u06FF])`, 'i'))
+    || text.match(new RegExp(`(\\d+\\s*${unit}(?:\\s+ago)?)`, 'i'));
   if (m) return { value: m[1].trim(), span: m[0], confidence: 0.85 };
   return null;
 }
@@ -431,13 +435,13 @@ function parseName(text: string): { value: string; span: string; confidence: num
 }
 
 /** List items after "takes/on …" that are clearly not medicines. */
-const NOT_A_MEDICINE = /^(?:no|not|non|denies|never|nil|none|لا|ليس|ما|بدون)\b|^(?:لا|ما|ليس)\s|allerg|حساسي|history|known|تاريخ|معروف|examination|arrival|admission|since|for\s+\d|\d+\s*(?:days?|weeks?|months?|years?)|يوم|أسبوع|شهر|سنة|سنوات/i;
+const NOT_A_MEDICINE = /^(?:no|not|non|denies|never|nil|none|لا|ليس|ما|بدون)\b|^(?:لا|ما|ليس)\s|allerg|حساسي|history|known|تاريخ|معروف|علاج|مزمن|chronic|regular|examination|arrival|admission|since|for\s+\d|\d+\s*(?:days?|weeks?|months?|years?)|يوم|أسبوع|شهر|سنة|سنوات/i;
 
 function parseMedications(text: string): { value: string[]; span: string; confidence: number } | null {
   const meds: string[] = [];
   const spans: string[] = [];
   // Every "takes / on / يتناول …" starts a list that runs to the end of the sentence.
-  const lead = /(?:^|[\s,،])(?:takes|taking|on|medications?|meds|يتناول|تتناول|يستخدم|تستخدم|أدوية)\s+/gi;
+  const lead = /(?:^|[\s,،])(?:takes|taking|on|medications?|meds|يتناول|تتناول|يستخدم|تستخدم|يستعمل|تستعمل|يأخذ|تأخذ|ياخذ|تاخذ|أدوية)\s+/gi;
   for (const m of text.matchAll(lead)) {
     const rest = text.slice((m.index ?? 0) + m[0].length).split(/[.;\n]/)[0];
     const items = rest.split(/,|،|\band\b|\s+و\s+|\s+و(?=\S)/i).map((s) => s.trim()).filter(Boolean);
@@ -925,6 +929,13 @@ export function mapSttSessionToPatientUpdates(fields: Record<SttFieldKey, SttFie
   if (fields.sex.value === 'F') set('gender', 'female', fields.sex.confidence);
   if (fields.chief_complaint.value) set('chief_complaint', fields.chief_complaint.value, fields.chief_complaint.confidence);
   if (fields.pain_score.value != null) set('pain_score', fields.pain_score.value, fields.pain_score.confidence);
+  // History fields said aloud (previously extracted but never copied to the form).
+  if (fields.onset_duration?.value) set('onset_duration', String(fields.onset_duration.value), fields.onset_duration.confidence);
+  if (Array.isArray(fields.current_medications?.value) && fields.current_medications.value.length) {
+    set('current_medications', (fields.current_medications.value as string[]).join('، '), fields.current_medications.confidence);
+  }
+  if (fields.relevant_history?.value) set('relevant_history', String(fields.relevant_history.value), fields.relevant_history.confidence);
+  if (fields.allergies?.value) set('allergies', String(fields.allergies.value), fields.allergies.confidence);
 
   const coerceNum = (raw: unknown): string | number | null => {
     if (raw == null || raw === '') return null;
