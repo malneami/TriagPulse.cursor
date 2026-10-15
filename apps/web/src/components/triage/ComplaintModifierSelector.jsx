@@ -3,13 +3,15 @@
  * Displays the official CTAS 2025 complaint-specific modifiers as a tap list.
  */
 import { CTAS_CONFIG } from '@triagepulse/clinical';
+import { ctasFill } from '@/lib/ctasStyle';
 
+// Selected row: thick ink border; the level badge carries the CTAS colour.
 const LEVEL_COLORS = {
-  1: 'border-red-500 bg-red-50 text-red-800',
-  2: 'border-orange-400 bg-orange-50 text-orange-800',
-  3: 'border-green-600 bg-green-50 text-green-800',
-  4: 'border-blue-400 bg-blue-50 text-blue-800',
-  5: 'border-slate-300 bg-slate-50 text-slate-700',
+  1: 'border-ink bg-white text-ink',
+  2: 'border-ink bg-white text-ink',
+  3: 'border-ink bg-white text-ink',
+  4: 'border-ink bg-white text-ink',
+  5: 'border-ink bg-white text-ink',
 };
 
 export default function ComplaintModifierSelector({ match, selectedModifier, onSelect }) {
@@ -54,8 +56,8 @@ export default function ComplaintModifierSelector({ match, selectedModifier, onS
             >
               <span className="flex-1 leading-snug">{m.modifier}</span>
               <span
-                className="shrink-0 text-xs font-black px-2.5 py-1 rounded-full text-white"
-                style={{ backgroundColor: cfg.hex }}
+                className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full"
+                style={ctasFill(m.ctas)}
               >
                 CTAS {m.ctas}
               </span>

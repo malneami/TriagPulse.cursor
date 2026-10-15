@@ -900,6 +900,27 @@ export default function Triage() {
   const isReady = assessValidation.ok;
   const confirmedCount = getConfirmedCount();
 
+  const confirmButton = (extraClass = '') => (
+    !nurseValidation && (
+      <button
+        type="button"
+        onClick={handleAssess}
+        disabled={!isReady}
+        className={`w-full min-h-[60px] py-4 rounded-2xl font-semibold text-lg flex items-center justify-center gap-3 transition-colors ${
+          isReady ? 'bg-ink hover:bg-ink-deep text-white' : 'bg-mist text-graphite cursor-not-allowed'
+        } ${extraClass}`}
+      >
+        {isReady
+          ? <><Stethoscope className="w-6 h-6" aria-hidden="true" /> تأكيد الفرز — CTAS {displayCtasLevel || '?'}</>
+          : <><Lock className="w-5 h-5" aria-hidden="true" /> أدخل الشكوى الرئيسية للتفعيل</>}
+      </button>
+    )
+  );
+
+  const livePanel = (
+    <LiveCTASPanel liveResult={displayLiveResult} confirmed={isReady && !!ctasResult} selectedModifier={selectedModifier} />
+  );
+
   return (
     <div dir="rtl" className="space-y-4">
       {/* New Patient Confirm Modal */}
@@ -921,158 +942,157 @@ export default function Triage() {
         />
       )}
 
-      {/* Patient selector strip */}
-      <PatientSelectorStrip currentPid={urlPid} onSwitch={handleSwitchPatient} />
-
-      {/* New Patient button — top right */}
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[240px]">
+          <PatientSelectorStrip currentPid={urlPid} onSwitch={handleSwitchPatient} />
+        </div>
         <button
+          type="button"
           onClick={() => setShowNewPatientConfirm(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 text-white rounded-xl text-xs font-black hover:bg-slate-800"
+          className="h-12 flex items-center gap-2 px-4 border border-mist bg-white text-ink rounded-xl text-[15px] font-medium hover:bg-paper"
         >
-          <Plus className="w-3.5 h-3.5" /> مريض جديد / New Patient
+          <Plus className="w-4 h-4" aria-hidden="true" /> مريض جديد / New patient
         </button>
       </div>
 
       {activeJourney && <PatientTimeline journey={activeJourney} />}
       <UrgentAlert alert={urgentAlert} onDismiss={acknowledgeUrgentAlert} />
 
-      {confirmedCount === 0 && (
-        <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3">
-          <p className="text-sm font-black text-green-800">Speak or complete the fields below to assess CTAS / تحدث أو أكمل الحقول أدناه</p>
-        </div>
-      )}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6 lg:items-start">
+        {/* ── Main column: capture and questions ── */}
+        <div className="space-y-4 min-w-0">
+          {confirmedCount === 0 && (
+            <p className="bg-white border border-mist rounded-2xl px-4 py-3 text-[15px]">
+              تحدث أو أكمل الحقول أدناه لتقييم مستوى CTAS.
+              <span className="block text-sm text-graphite">Speak or complete the fields below to assess CTAS.</span>
+            </p>
+          )}
 
-      <VoiceTriagePanel
-        journeyId={activeJourney?.id}
-        patient={patient}
-        onSessionUpdate={applySttSessionToPatient}
-        onResync={(output) => applySttSessionToPatient(output, { force: true })}
-        onRecordingStart={handleRecordingStart}
-        ctasLevel={displayCtasLevel}
-        ctasLabelAr={displayCtasMeta?.ar || displayLiveResult?.ctas_ar || null}
-        ctasLabelEn={displayCtasMeta?.en || displayLiveResult?.ctas_en || null}
-        ctasHex={displayCtasMeta?.hex || displayLiveResult?.hex || null}
-      />
+          <VoiceTriagePanel
+            journeyId={activeJourney?.id}
+            patient={patient}
+            onSessionUpdate={applySttSessionToPatient}
+            onResync={(output) => applySttSessionToPatient(output, { force: true })}
+            onRecordingStart={handleRecordingStart}
+            ctasLevel={displayCtasLevel}
+            ctasLabelAr={displayCtasMeta?.ar || displayLiveResult?.ctas_ar || null}
+            ctasLabelEn={displayCtasMeta?.en || displayLiveResult?.ctas_en || null}
+            ctasHex={displayCtasMeta?.hex || displayLiveResult?.hex || null}
+          />
 
-      <ArrivalTimer timerStartTime={timerStartTime} timerStatus={timerStatus} confirmedTime={confirmedTime} />
+          <ArrivalTimer timerStartTime={timerStartTime} timerStatus={timerStatus} confirmedTime={confirmedTime} />
 
-      <div id="chief-complaint"><QuickComplaints selected={patient.chief_complaint} onSelect={(v) => update({ chief_complaint: v, confirmed_complaint_key: null })} /></div>
+          <div id="chief-complaint"><QuickComplaints selected={patient.chief_complaint} onSelect={(v) => update({ chief_complaint: v, confirmed_complaint_key: null })} /></div>
 
-      <ChiefComplaintConfirm
-        resolution={complaintResolution}
-        confirmedKey={patient.confirmed_complaint_key}
-        onConfirm={handleComplaintConfirm}
-      />
+          <ChiefComplaintConfirm
+            resolution={complaintResolution}
+            confirmedKey={patient.confirmed_complaint_key}
+            onConfirm={handleComplaintConfirm}
+          />
 
-      {/* ═══ STEP 2 — Complaint Specific Modifier (shown when complaint is identified) ═══ */}
-      {complaintMatch && !complaintResolution.needs_confirmation && (
-        <ComplaintModifierSelector
-          match={complaintMatch}
-          selectedModifier={selectedModifier}
-          onSelect={handleModifierSelect}
-        />
-      )}
-
-      <div id="pain-scale"><PainScale value={patient.pain_score} onChange={(v) => update({ pain_score: v })} /></div>
-      <div id="vitals-form"><VitalsForm vitals={patient} onChange={update} highlightedFields={highlightedVitals} /></div>
-
-      <LiveCTASPanel liveResult={displayLiveResult} confirmed={isReady && !!ctasResult} selectedModifier={selectedModifier} />
-
-      {/* ═══ CTAS MODIFIER ENGINE — after live CTAS; minimum relevant questions only ═══ */}
-      {(loadingQuestions || clarifyingQuestions.length > 0 || !!selectedModifier || !!modifierEvaluation) && (
-        <div id="clarifying-questions">
-          {(clarifyingSource === 'modifier_engine' || !!modifierEvaluation) ? (
-            <ModifierEnginePanel
-              evaluation={modifierEvaluation}
-              questions={clarifyingQuestions}
-              answers={clarifyingAnswers}
-              onAnswer={handleClarifyingAnswer}
-              liveLevel={displayCtasLevel}
-              loading={loadingQuestions}
-            />
-          ) : (
-            <ClarifyingQuestions
-              questions={clarifyingQuestions}
-              answers={clarifyingAnswers}
-              onAnswer={handleClarifyingAnswer}
-              onRegenerate={() => {
-                questionsGeneratedRef.current = false;
-                generateClarifyingQuestions(patient.chief_complaint);
-              }}
-              loading={loadingQuestions}
-              cascadeRules={clarifyingSource === 'bank' ? {} : CASCADE_RULES}
-              patient={patient}
-              liveLevel={displayCtasLevel}
-              source={clarifyingSource}
-              clarifyingLevel={clarifyingLevel}
+          {/* STEP 2: complaint-specific modifier (shown when the complaint is identified) */}
+          {complaintMatch && !complaintResolution.needs_confirmation && (
+            <ComplaintModifierSelector
+              match={complaintMatch}
+              selectedModifier={selectedModifier}
+              onSelect={handleModifierSelect}
             />
           )}
-          {complaintMatch && !selectedModifier && clarifyingQuestions.length > 0 && (
-            <div className="bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-xs text-amber-800 font-bold mt-2">
-              ⚠ لم يتم اختيار المعدّل المحدد (الخطوة ٢) بعد — Step 2 Complaint Modifier not yet selected
+
+          <div id="pain-scale"><PainScale value={patient.pain_score} onChange={(v) => update({ pain_score: v })} /></div>
+          <div id="vitals-form"><VitalsForm vitals={patient} onChange={update} highlightedFields={highlightedVitals} /></div>
+
+          {/* Narrow screens: the level panel stays inline, after the vitals. */}
+          <div className="lg:hidden">{livePanel}</div>
+
+          {/* CTAS modifier engine: minimum relevant questions only */}
+          {(loadingQuestions || clarifyingQuestions.length > 0 || !!selectedModifier || !!modifierEvaluation) && (
+            <div id="clarifying-questions">
+              {(clarifyingSource === 'modifier_engine' || !!modifierEvaluation) ? (
+                <ModifierEnginePanel
+                  evaluation={modifierEvaluation}
+                  questions={clarifyingQuestions}
+                  answers={clarifyingAnswers}
+                  onAnswer={handleClarifyingAnswer}
+                  liveLevel={displayCtasLevel}
+                  loading={loadingQuestions}
+                />
+              ) : (
+                <ClarifyingQuestions
+                  questions={clarifyingQuestions}
+                  answers={clarifyingAnswers}
+                  onAnswer={handleClarifyingAnswer}
+                  onRegenerate={() => {
+                    questionsGeneratedRef.current = false;
+                    generateClarifyingQuestions(patient.chief_complaint);
+                  }}
+                  loading={loadingQuestions}
+                  cascadeRules={clarifyingSource === 'bank' ? {} : CASCADE_RULES}
+                  patient={patient}
+                  liveLevel={displayCtasLevel}
+                  source={clarifyingSource}
+                  clarifyingLevel={clarifyingLevel}
+                />
+              )}
+              {complaintMatch && !selectedModifier && clarifyingQuestions.length > 0 && (
+                <p className="bg-white border-2 border-dashed border-ink rounded-xl px-3 py-2 text-sm font-medium mt-2">
+                  لم يتم اختيار المعدّل المحدد (الخطوة ٢) بعد — Step 2 modifier not yet selected
+                </p>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* ═══ DATA COMPLETENESS BAR — shared with the floating recorder ═══ */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3">
-        <CompletenessChips
-          patient={patient}
-          onFieldClick={(f) => scrollToSection(f.scrollTo)}
-        />
+          {/* Data completeness: shared with the floating recorder */}
+          <div className="bg-white rounded-2xl border border-mist px-4 py-3">
+            <CompletenessChips
+              patient={patient}
+              onFieldClick={(f) => scrollToSection(f.scrollTo)}
+            />
+          </div>
+
+          <div className="lg:hidden">{confirmButton()}</div>
+
+          {/* Validation: inline, same page */}
+          {ctasResult && !nurseValidation && (
+            <div id="ctas-validation">
+              <CTASValidation result={ctasResult} patient={patient} onComplete={handleValidationComplete} />
+            </div>
+          )}
+
+          {/* Final result */}
+          {ctasResult && nurseValidation && (
+            <TriageResult
+              id="ctas-result"
+              result={{
+                ...ctasResult,
+                ctas_level: nurseValidation.nurseLevel,
+                ai_ctas_level: ctasResult.ctas_level,
+                nurse_overrode: !nurseValidation.agreed,
+                override_reason: nurseValidation.overrideReason,
+                reviewed_at: nurseValidation.reviewedAt,
+                safety_note: ctasResult.safety_note || sttSafetyDisclaimer(),
+                confidence_pct: ctasResult.confidence_pct,
+              }}
+              patient={patient}
+              onSave={handleSave}
+              onReset={handleReset}
+              saving={saving}
+            />
+          )}
+
+          {ctasResult && nurseValidation && (
+            <button type="button" onClick={handleReset} className="w-full h-12 text-graphite text-[15px] underline">
+              إعادة التقييم — Re-assess
+            </button>
+          )}
+        </div>
+
+        {/* ── Acuity rail (wide screens): level, target time, reasons, confirm ── */}
+        <aside aria-label="مستوى CTAS" className="hidden lg:flex lg:flex-col lg:gap-3 lg:sticky lg:top-4">
+          {livePanel}
+          {confirmButton()}
+        </aside>
       </div>
-
-      {/* ═══ CONFIRM TRIAGE BUTTON — hidden once nurse has validated ═══ */}
-      {!nurseValidation && (
-        <button
-          onClick={handleAssess}
-          disabled={!isReady}
-          className={`w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 shadow-lg transition-all ${
-            isReady ? 'bg-teal-700 hover:bg-teal-800 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-          } disabled:opacity-70`}
-        >
-          {isReady
-            ? <><Stethoscope className="w-6 h-6" /> تأكيد الفرز — Confirm Triage · CTAS {displayCtasLevel || '?'}</>
-            : <><Lock className="w-5 h-5" /> أدخل الشكوى الرئيسية للتفعيل — Enter chief complaint</>
-          }
-        </button>
-      )}
-
-      {/* ═══ VALIDATION — inline, same page ═══ */}
-      {ctasResult && !nurseValidation && (
-        <div id="ctas-validation">
-          <CTASValidation result={ctasResult} patient={patient} onComplete={handleValidationComplete} />
-        </div>
-      )}
-
-      {/* ═══ FINAL RESULT ═══ */}
-      {ctasResult && nurseValidation && (
-        <TriageResult
-          id="ctas-result"
-          result={{
-            ...ctasResult,
-            ctas_level: nurseValidation.nurseLevel,
-            ai_ctas_level: ctasResult.ctas_level,
-            nurse_overrode: !nurseValidation.agreed,
-            override_reason: nurseValidation.overrideReason,
-            reviewed_at: nurseValidation.reviewedAt,
-            safety_note: ctasResult.safety_note || sttSafetyDisclaimer(),
-            confidence_pct: ctasResult.confidence_pct,
-          }}
-          patient={patient}
-          onSave={handleSave}
-          onReset={handleReset}
-          saving={saving}
-        />
-      )}
-
-      {ctasResult && nurseValidation && (
-        <button onClick={handleReset} className="w-full py-3 text-slate-500 text-sm underline">
-          إعادة التقييم — Re-assess
-        </button>
-      )}
     </div>
   );
 }

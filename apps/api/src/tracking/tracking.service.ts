@@ -7,10 +7,17 @@ import { waitMins, waitTimeColor, isActiveJourney } from '@triagepulse/clinical'
 export class TrackingService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Everyone in the department from the last 12 hours who has not yet been
+   * seen by a physician: waiting for triage, in triage, and triaged (completed)
+   * patients waiting for a doctor. 'seen' patients leave the board.
+   */
   async getBoard(user: { id: string; role: string }) {
+    const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
     const journeys = await this.prisma.patientJourney.findMany({
       where: {
-        currentStatus: { not: JourneyStatus.completed },
+        currentStatus: { not: JourneyStatus.seen },
+        arrivalTime: { gte: cutoff },
       },
       orderBy: [{ ctasLevel: 'asc' }, { arrivalTime: 'asc' }],
     });

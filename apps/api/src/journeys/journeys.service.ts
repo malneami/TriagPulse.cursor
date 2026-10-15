@@ -54,7 +54,7 @@ export class JourneysService {
     const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
     const where: Prisma.PatientJourneyWhereInput = {
       arrivalTime: { gte: cutoff },
-      currentStatus: { not: JourneyStatus.completed },
+      currentStatus: { notIn: [JourneyStatus.completed, JourneyStatus.seen] },
     };
     if (user.role !== 'admin') {
       where.OR = [{ createdById: user.id }, { currentStatus: { not: JourneyStatus.visual_triage } }];
@@ -128,16 +128,27 @@ export class JourneysService {
     return { journey: updated, destination };
   }
 
-  async updateStatus(id: string, status: JourneyStatus, user: { id: string; role: string }) {
-    const journey = await this.findOne(id, user);
+  async updateStatus(id: string, status: JourneyStatus, user: { id: string; role: string; full_name?: string; email?: string }) {
+    // Marking a patient as seen is a department-wide board action (any user with
+    // perform_triage); other status changes stay limited to the journey's creator.
+    const journey = status === JourneyStatus.seen
+      ? await this.prisma.patientJourney.findUnique({ where: { id } })
+      : await this.findOne(id, user);
+    if (!journey) throw new NotFoundException('Journey not found');
+    if (status === JourneyStatus.seen) {
+      await this.audit.log('PatientJourney', id, 'patient_seen', user, { ticketNo: journey.ticketNo });
+    }
     // Stamp the CTAS start once, with server time, the first time triage begins.
     // Re-opening the patient must not restart the triage clock.
     const startingCtas = status === JourneyStatus.ctas_in_progress && !journey.ctasStartedAt;
+    // 'seen' records when a physician saw the patient (door-to-doctor), once.
+    const markingSeen = status === JourneyStatus.seen && !journey.seenAt;
     return this.prisma.patientJourney.update({
       where: { id },
       data: {
         currentStatus: status,
         ...(startingCtas ? { ctasStartedAt: new Date() } : {}),
+        ...(markingSeen ? { seenAt: new Date() } : {}),
       },
     });
   }

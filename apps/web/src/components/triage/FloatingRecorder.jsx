@@ -1,18 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Square, X } from 'lucide-react';
 import { formatTurnTime } from '@/lib/stt/ctasFieldMap';
-import { computeLiveCTAS, normalizeSpokenNumbers } from '@triagepulse/clinical';
+import { computeLiveCTAS, normalizeSpokenNumbers, CTAS_CONFIG } from '@triagepulse/clinical';
+import { ctasFill } from '@/lib/ctasStyle';
 import CompletenessChips, { REQUIRED_FIELDS } from './CompletenessChips';
 
 const BAR_COUNT = 21;
 
-const CTAS_HEX = {
-  1: '#E24B4A',
-  2: '#EF9F27',
-  3: '#0F6E56',
-  4: '#378ADD',
-  5: '#888780',
-};
+const CTAS_HEX = Object.fromEntries([1, 2, 3, 4, 5].map((l) => [l, CTAS_CONFIG[l].hex]));
 
 /** Deterministic idle heights so the bar row isn't empty before audio arrives. */
 const IDLE_BARS = Array.from({ length: BAR_COUNT }, (_, i) => 0.25 + 0.2 * Math.sin(i * 0.9));
@@ -139,7 +134,7 @@ export default function FloatingRecorder({
           level,
           ar: ctasLabelAr || null,
           en: ctasLabelEn || null,
-          hex: ctasHex || CTAS_HEX[level] || '#0F6E56',
+          hex: ctasHex || CTAS_HEX[level] || '#DCE2E8',
         };
       }
     }
@@ -150,7 +145,7 @@ export default function FloatingRecorder({
           level: result.level,
           ar: result.ctas_ar || null,
           en: result.ctas_en || null,
-          hex: result.hex || CTAS_HEX[result.level] || '#0F6E56',
+          hex: result.hex || CTAS_HEX[result.level] || '#DCE2E8',
         };
       }
     } catch {
@@ -212,7 +207,7 @@ export default function FloatingRecorder({
           {derived?.level != null && (
             <span
               className="ms-1 px-1.5 py-0.5 rounded-md text-[10px] font-black"
-              style={{ backgroundColor: derived.hex, color: '#fff' }}
+              style={ctasFill(derived.level)}
             >
               CTAS {derived.level}
             </span>
@@ -301,8 +296,8 @@ export default function FloatingRecorder({
         {derived?.level != null ? (
           <div className="flex items-center gap-2 min-w-0">
             <span
-              className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-xl text-white text-lg font-black shadow-sm"
-              style={{ backgroundColor: derived.hex }}
+              className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-xl text-lg font-bold"
+              style={ctasFill(derived.level)}
               title={dataComplete ? 'Estimated CTAS (data complete)' : 'Estimated CTAS (partial data)'}
             >
               {derived.level}

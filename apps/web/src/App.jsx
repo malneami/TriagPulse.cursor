@@ -10,6 +10,7 @@ import RoleGuard from '@/components/auth/RoleGuard';
 import Triage from './pages/Triage';
 import VisualTriage from './pages/VisualTriage';
 import PatientTracking from './pages/PatientTracking';
+import TrackingWall from './pages/TrackingWall';
 import ClinicalLibrariesAdmin from './pages/ClinicalLibrariesAdmin';
 import ClinicalAnalytics from './pages/ClinicalAnalytics';
 import AiEvaluationDashboard from './pages/AiEvaluationDashboard';
@@ -64,6 +65,8 @@ const AuthenticatedApp = () => {
         <Route path="/admin/analytics" element={<Guarded permission="view_clinical_analytics"><ClinicalAnalytics /></Guarded>} />
         <Route path="/admin/ai-evaluation" element={<Guarded permission="view_clinical_analytics"><AiEvaluationDashboard /></Guarded>} />
       </Route>
+      {/* Wall display: full screen, no app chrome, ticket codes only. */}
+      <Route path="/tracking/wall" element={<Guarded permission="perform_triage"><TrackingWall /></Guarded>} />
       <Route path="/login" element={<Navigate to="/visual-triage" replace />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>

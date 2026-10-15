@@ -27,7 +27,8 @@ enum JourneyStatus {
   visual_triage
   awaiting_ctas
   ctas_in_progress
-  completed
+  completed // triaged, waiting to be seen by a physician (stays on the board)
+  seen      // seen by a physician (leaves the board)
 }
 
 model User {
@@ -50,6 +51,8 @@ model User {
 model PatientJourney {
   id        String   @id @default(uuid())
   patientId String   @unique @map("patient_id")
+  /// Short public number for the wall display (shown as T + last 3 digits). Never a name.
+  ticketNo  Int      @default(autoincrement()) @map("ticket_no")
   createdById String @map("created_by_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -105,6 +108,7 @@ model PatientJourney {
   alertAcknowledgedAt DateTime? @map("alert_acknowledged_at")
   alertAcknowledgedBy String?   @map("alert_acknowledged_by")
   incompleteDataFlags Json?     @map("incomplete_data_flags")
+  seenAt              DateTime? @map("seen_at")
 
   createdBy     User           @relation("JourneyCreator", fields: [createdById], references: [id])
   triageRecords TriageRecord[]

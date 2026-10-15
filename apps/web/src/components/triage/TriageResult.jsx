@@ -1,12 +1,15 @@
 import { useState } from 'react';
+import { CTAS_CONFIG } from '@triagepulse/clinical';
+import { ctasFill } from '@/lib/ctasStyle';
+
 import { Save, RotateCcw, Loader2, ShieldAlert, Activity, AlertCircle, ChevronDown, ChevronUp, MapPin, ShieldCheck } from 'lucide-react';
 
 const CTAS = {
-  1: { hex: '#E24B4A', ar: 'إنعاش',       en: 'Resuscitation', wait_ar: 'فوري',         wait_en: 'Immediate',   pulse: true },
-  2: { hex: '#EF9F27', ar: 'طارئ',         en: 'Emergent',      wait_ar: '١٥ دقيقة',     wait_en: '15 minutes',  pulse: true },
-  3: { hex: '#0F6E56', ar: 'عاجل',         en: 'Urgent',        wait_ar: '٣٠ دقيقة',     wait_en: '30 minutes',  pulse: false },
-  4: { hex: '#378ADD', ar: 'أقل إلحاحاً',  en: 'Less Urgent',   wait_ar: '٦٠ دقيقة',     wait_en: '60 minutes',  pulse: false },
-  5: { hex: '#888780', ar: 'غير عاجل',     en: 'Non-Urgent',    wait_ar: '١٢٠ دقيقة',    wait_en: '120 minutes', pulse: false },
+  1: { hex: CTAS_CONFIG[1].hex, ink: CTAS_CONFIG[1].ink, ar: 'إنعاش',       en: 'Resuscitation', wait_ar: 'فوري',         wait_en: 'Immediate',   pulse: true },
+  2: { hex: CTAS_CONFIG[2].hex, ink: CTAS_CONFIG[2].ink, ar: 'طارئ',         en: 'Emergent',      wait_ar: '١٥ دقيقة',     wait_en: '15 minutes',  pulse: true },
+  3: { hex: CTAS_CONFIG[3].hex, ink: CTAS_CONFIG[3].ink, ar: 'عاجل',         en: 'Urgent',        wait_ar: '٣٠ دقيقة',     wait_en: '30 minutes',  pulse: false },
+  4: { hex: CTAS_CONFIG[4].hex, ink: CTAS_CONFIG[4].ink, ar: 'أقل إلحاحاً',  en: 'Less Urgent',   wait_ar: '٦٠ دقيقة',     wait_en: '60 minutes',  pulse: false },
+  5: { hex: CTAS_CONFIG[5].hex, ink: CTAS_CONFIG[5].ink, ar: 'غير عاجل',     en: 'Non-Urgent',    wait_ar: '١٢٠ دقيقة',    wait_en: '120 minutes', pulse: false },
 };
 
 export default function TriageResult({ result, patient, onSave, onReset, saving }) {
@@ -45,7 +48,7 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
     }
   }
 
-  const colorHex = cfg?.hex || '#888780';
+  const colorHex = cfg?.hex || '#DCE2E8';
   const confidence = result?.confidence_pct ?? 100;
 
   // Clinical details
@@ -61,19 +64,19 @@ export default function TriageResult({ result, patient, onSave, onReset, saving 
     <div id="ctas-result" className="rounded-2xl overflow-hidden shadow-2xl">
 
       {/* Compact CTAS header */}
-      <div className="text-white p-4 flex items-center justify-between" style={{ backgroundColor: colorHex }}>
+      <div className="p-4 flex items-center justify-between" style={ctasFill(level)}>
         <div className="flex items-center gap-3">
-          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center font-black text-3xl shrink-0">{level}</div>
+          <div className="w-14 h-14 bg-black/10 rounded-2xl flex items-center justify-center font-bold text-3xl shrink-0">{level}</div>
           <div>
-            <p className="font-black text-xl leading-tight">{cfg.ar}</p>
-            <p className="text-sm text-white/80">{cfg.en} · {cfg.wait_ar} / {cfg.wait_en}</p>
+            <p className="font-semibold text-xl leading-tight">{cfg.ar}</p>
+            <p className="text-sm opacity-85">{cfg.en} · {cfg.wait_ar} / {cfg.wait_en}</p>
           </div>
         </div>
         {result.nurse_overrode && (
-          <div className="text-right bg-white/20 rounded-xl px-3 py-2 shrink-0 max-w-[140px]">
-            <p className="text-xs text-white/70">AI: CTAS {result.ai_ctas_level}</p>
-            <p className="text-xs font-black">✏️ Nurse: CTAS {level}</p>
-            {result.override_reason && <p className="text-xs text-white/80 mt-0.5 leading-tight">{result.override_reason}</p>}
+          <div className="text-right bg-black/10 rounded-xl px-3 py-2 shrink-0 max-w-[160px]">
+            <p className="text-xs opacity-80">AI: CTAS {result.ai_ctas_level}</p>
+            <p className="text-xs font-semibold">Nurse: CTAS {level}</p>
+            {result.override_reason && <p className="text-xs opacity-85 mt-0.5 leading-tight">{result.override_reason}</p>}
           </div>
         )}
       </div>

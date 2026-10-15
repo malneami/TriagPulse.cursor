@@ -1,12 +1,15 @@
 import { useState } from 'react';
+import { CTAS_CONFIG } from '@triagepulse/clinical';
+import { ctasFill } from '@/lib/ctasStyle';
+
 import { CheckCircle2, Edit2, ShieldCheck } from 'lucide-react';
 
 const CTAS_CFG = {
-  1: { hex: '#E24B4A', ar: 'إنعاش', en: 'Resuscitation', wait: 'Immediate' },
-  2: { hex: '#EF9F27', ar: 'طارئ', en: 'Emergent', wait: '15 min' },
-  3: { hex: '#0F6E56', ar: 'عاجل', en: 'Urgent', wait: '30 min' },
-  4: { hex: '#378ADD', ar: 'أقل إلحاحاً', en: 'Less Urgent', wait: '60 min' },
-  5: { hex: '#888780', ar: 'غير عاجل', en: 'Non-Urgent', wait: '120 min' },
+  1: { hex: CTAS_CONFIG[1].hex, ar: 'إنعاش', en: 'Resuscitation', wait: 'Immediate' },
+  2: { hex: CTAS_CONFIG[2].hex, ar: 'طارئ', en: 'Emergent', wait: '15 min' },
+  3: { hex: CTAS_CONFIG[3].hex, ar: 'عاجل', en: 'Urgent', wait: '30 min' },
+  4: { hex: CTAS_CONFIG[4].hex, ar: 'أقل إلحاحاً', en: 'Less Urgent', wait: '60 min' },
+  5: { hex: CTAS_CONFIG[5].hex, ar: 'غير عاجل', en: 'Non-Urgent', wait: '120 min' },
 };
 
 const OVERRIDE_REASONS = [
@@ -40,8 +43,9 @@ function OverrideMode({ aiLevel, onOverrideConfirm, onBack }) {
               const sel = nurseLevel === l;
               return (
                 <button key={l} onClick={() => setNurseLevel(l)}
-                  className={`flex-1 rounded-xl py-3 flex flex-col items-center gap-0.5 font-black border-2 transition-all ${sel ? 'text-white border-transparent scale-105 shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:opacity-80'}`}
-                  style={sel ? { backgroundColor: c.hex } : {}}
+                  aria-pressed={sel}
+                  className={`flex-1 min-h-[56px] rounded-xl py-3 flex flex-col items-center gap-0.5 font-semibold border-2 transition-all ${sel ? 'border-transparent' : 'bg-white border-mist text-ink hover:bg-paper'}`}
+                  style={sel ? ctasFill(l) : {}}
                 >
                   <span className="text-xl leading-none">{l}</span>
                   <span className="text-xs font-semibold">{c.ar}</span>
@@ -117,10 +121,10 @@ export default function CTASValidation({ result, patient, onComplete }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       {/* AI Result */}
-      <div className="px-4 py-4" style={{ backgroundColor: cfg.hex + '18', borderBottom: `3px solid ${cfg.hex}` }}>
+      <div className="px-4 py-4" style={{ backgroundColor: '#FFFFFF', borderBottom: `4px solid ${cfg.hex === '#FFFFFF' ? '#14202B' : cfg.hex}` }}>
         <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-3">تقييم الفرز الحالي — Current Triage Assessment</p>
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-black text-3xl text-white shadow-md shrink-0" style={{ backgroundColor: cfg.hex }}>
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-3xl shrink-0" style={ctasFill(aiLevel)}>
             {aiLevel}
           </div>
           <div>

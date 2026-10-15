@@ -1,13 +1,9 @@
 import { AlertTriangle, ArrowRight, HelpCircle, MapPin, ShieldAlert, ShieldCheck, Stethoscope } from 'lucide-react';
 import ClarifyingQuestions from './ClarifyingQuestions';
+import { CTAS_CONFIG } from '@triagepulse/clinical';
 
-const CTAS_HEX = {
-  1: '#E24B4A',
-  2: '#EF9F27',
-  3: '#0F6E56',
-  4: '#378ADD',
-  5: '#888780',
-};
+// Level numbers are written in ink; the border shows the CTAS colour (standard scale).
+const CTAS_HEX = Object.fromEntries([1, 2, 3, 4, 5].map((l) => [l, CTAS_CONFIG[l].outline || CTAS_CONFIG[l].hex]));
 
 const CATEGORY_STYLE = {
   ctas_modifier: 'bg-amber-100 text-amber-900 border-amber-200',
@@ -78,7 +74,7 @@ export default function ModifierEnginePanel({
             {initial != null && (
               <div className="rounded-xl border border-slate-200 px-3 py-2 min-w-[7rem]">
                 <p className="text-[10px] font-bold text-slate-500 uppercase">Initial CTAS</p>
-                <p className="text-2xl font-black" style={{ color: CTAS_HEX[initial] }}>{initial}</p>
+                <p className="text-2xl font-bold text-ink">{initial}</p>
               </div>
             )}
             {initial != null && updated != null && initial !== updated && (
@@ -89,7 +85,7 @@ export default function ModifierEnginePanel({
                 <p className="text-[10px] font-bold text-slate-500 uppercase">
                   Updated CTAS{evaluation?.ctas_changed ? ' ●' : ''}
                 </p>
-                <p className="text-2xl font-black" style={{ color: CTAS_HEX[updated] }}>{updated}</p>
+                <p className="text-2xl font-bold text-ink">{updated}</p>
               </div>
             )}
             {dest && (
