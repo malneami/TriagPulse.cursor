@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Mic, Square, Loader2, AlertTriangle, Keyboard, ChevronDown } from 'lucide-react';
+import { Mic, Square, Loader2, AlertTriangle, Keyboard } from 'lucide-react';
 import {
   detectTranscriptLanguage,
   conservativeTranscriptCleanup,
   mergeTranscriptLines,
   getLiveTranscript,
 } from '@/lib/stt/ctasFieldMap';
-import FloatingRecorder from './FloatingRecorder';
 import {
   createMediaRecorder,
   createPcmStreamer,
@@ -73,10 +72,8 @@ export default function VoiceTriagePanel({
   onSessionUpdate,
   onResync,
   onRecordingStart,
-  ctasLevel = null,
-  ctasLabelAr = null,
-  ctasLabelEn = null,
-  ctasHex = null,
+  onRecordingChange,
+  onContinue,
 }) {
   const [sessionId, setSessionId] = useState(null);
   const [sessionOutput, setSessionOutput] = useState(null);
@@ -90,8 +87,6 @@ export default function VoiceTriagePanel({
   const [manualText, setManualText] = useState('');
   const [recognitionLang, setRecognitionLang] = useState('ar-SA');
   const [extracting, setExtracting] = useState(false);
-  const [showTranscript, setShowTranscript] = useState(true);
-  const [showGuide, setShowGuide] = useState(false);
 
   const streamRef = useRef(null);
   const recorderRef = useRef(null);
@@ -778,210 +773,171 @@ export default function VoiceTriagePanel({
   };
 
   const modeLabel = ({
-    checking: 'Checking…',
-    realtime: recording ? 'OpenAI Realtime (live)' : 'OpenAI Realtime',
-    openai: 'OpenAI STT',
-    openai_error: 'OpenAI error',
-    browser_batch: 'OpenAI batch (AR+EN)',
-    browser: 'Browser STT — single language only',
-    manual: 'Manual only',
+    checking: 'جارٍ التحقق · Checking',
+    realtime: 'عربي + English · live',
+    openai: 'عربي + English',
+    openai_error: 'الخادم غير متاح · Server STT unavailable',
+    browser_batch: 'عربي + English',
+    browser: 'لغة واحدة · Single language',
+    manual: 'إدخال يدوي · Manual',
   }[sttMode] || sttMode);
 
   const busy = loading || extracting;
-  const lastLine = finalLines[finalLines.length - 1];
-  const lastTurnAt = lastLine && typeof lastLine !== 'string' ? lastLine.at : null;
+  const transcriptText = (manualText || liveTranscript || '').trim();
+  const hasTranscript = transcriptText.length > 0;
 
-  const panel = (
-    <div className="bg-white rounded-2xl border border-mist shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-mist flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-black text-ink">التقاط صوتي — Voice Triage STT</p>
-          <p className="text-xs text-graphite truncate">Live auto-fill · decision support only</p>
+  // Recording clock (independent of the triage timer in the header)
+  const [recordStartedAt, setRecordStartedAt] = useState(null);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!recording) return undefined;
+    setRecordStartedAt((t) => t || Date.now());
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [recording]);
+  useEffect(() => { if (!recording) setRecordStartedAt(null); }, [recording]);
+  const recSec = recordStartedAt ? Math.floor((Date.now() - recordStartedAt) / 1000) : 0;
+  const recClock = `${String(Math.floor(recSec / 60)).padStart(2, '0')}:${String(recSec % 60).padStart(2, '0')}`;
+
+  useEffect(() => { onRecordingChange?.(recording); }, [recording, onRecordingChange]);
+
+  const notices = (
+    <>
+      {browserOnly && (
+        <p className="text-sm text-graphite flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>التعرف الصوتي يعمل بلغة واحدة الآن (المتصفح). تحدث بلغة واحدة. · Browser speech: one language at a time.</span>
+        </p>
+      )}
+      {sttError && (
+        <div role="status" className="w-full bg-paper border border-mist rounded-xl px-3 py-2 text-sm text-ink flex items-start justify-between gap-2">
+          <p className="flex-1">{sttError}</p>
+          <button type="button" onClick={() => { void refreshSttStatus(); }} className="shrink-0 text-sm font-semibold underline">
+            إعادة المحاولة · Retry
+          </button>
         </div>
-        <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${sttMode === 'realtime' ? 'bg-teal-100 text-teal-800' : 'bg-paper text-graphite'}`}>
-          {modeLabel}
-        </span>
-      </div>
+      )}
+    </>
+  );
 
-      {/* Guide — how the AI STT mode behaves + phrases that exercise it */}
-      <div className="mx-4 mt-3 bg-paper border border-mist rounded-xl">
+  // ── Recording: status, clock, live transcript, one Stop button ──
+  if (recording) {
+    return (
+      <section aria-label="التسجيل جارٍ / Recording" className="bg-white rounded-2xl border border-mist px-5 py-6 flex flex-col items-center gap-5">
+        <div className="flex items-center gap-3" aria-live="polite">
+          <span aria-hidden="true" className="w-3 h-3 rounded-full bg-[#D3242C] motion-safe:animate-pulse" />
+          <span className="text-lg font-semibold text-ink">جارٍ التسجيل · Recording</span>
+          <span dir="ltr" className="text-lg font-semibold tabular-nums text-ink">{recClock}</span>
+        </div>
+        <div
+          dir="auto"
+          className="w-full min-h-[140px] max-h-[40vh] overflow-y-auto rounded-xl bg-paper px-4 py-3 text-lg leading-relaxed text-ink"
+          aria-live="polite"
+        >
+          {liveTranscript || <span className="text-graphite">تحدث الآن بالعربية أو الإنجليزية… · Speak now in Arabic or English…</span>}
+        </div>
+        {notices}
         <button
           type="button"
-          onClick={() => setShowGuide((v) => !v)}
-          className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-right"
+          onClick={handleToggleRecord}
+          className="w-full max-w-sm min-h-[64px] rounded-2xl bg-ink text-white text-lg font-semibold flex items-center justify-center gap-3"
         >
-          <span className="text-xs font-black text-ink">
-            كيف يعمل الالتقاط الصوتي — How AI voice capture works
-          </span>
-          <ChevronDown className={`w-4 h-4 text-graphite shrink-0 transition-transform ${showGuide ? 'rotate-180' : ''}`} />
+          <Square className="w-6 h-6" aria-hidden="true" /> إيقاف ومراجعة · Stop & review
         </button>
-        {showGuide && (
-          <div className="px-3 pb-3 text-xs text-ink leading-relaxed space-y-2">
-            <p>
-              Backend AI STT records microphone audio only — it does <strong>not</strong> use browser
-              speech detection. On Stop the audio goes to <code className="font-mono">transcribeAudio</code>,
-              and OpenAI detects Arabic / English / mixed speech and returns the transcript.
-            </p>
-            <div className="space-y-1.5">
-              {DEMO_SENTENCES.map((d) => (
-                <div key={d.id} className="bg-white/70 border border-mist rounded-lg p-2">
-                  <p className="font-black mb-1">{d.label}</p>
-                  <p dir={d.dir} className="text-[11px] text-ink mb-1.5">{d.text}</p>
-                  <button
-                    type="button"
-                    onClick={() => pasteDemoSentence(d.text)}
-                    className="text-[10px] font-bold text-graphite hover:text-ink underline"
-                  >
-                    لصق / Paste
-                  </button>
-                </div>
-              ))}
-            </div>
+      </section>
+    );
+  }
+
+  // ── After a recording or typed text: review, correct, continue ──
+  if (hasTranscript || manualFallback) {
+    return (
+      <section aria-label="مراجعة النص / Review transcript" className="bg-white rounded-2xl border border-mist px-5 py-5 flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-ink">النص المسجّل · Transcript</h2>
+          <span className="text-xs text-graphite">{modeLabel}</span>
+        </div>
+        <textarea
+          value={manualText || liveTranscript}
+          onChange={(e) => setManualText(e.target.value)}
+          placeholder="اكتب أو الصق الإملاء هنا (عربي/إنجليزي) · Type or paste the dictation"
+          rows={5}
+          dir="auto"
+          className="w-full rounded-xl border border-mist p-3 text-base leading-relaxed text-ink focus:outline-none focus:border-ink"
+        />
+        <p className="text-sm text-graphite -mt-2">صحّح أي خطأ ثم أعد الاستخراج. · Correct any error, then re-extract.</p>
+        {notices}
+        {import.meta.env.DEV && (
+          <div className="flex flex-wrap gap-2">
+            {DEMO_SENTENCES.map((d) => (
+              <button key={d.id} type="button" onClick={() => pasteDemoSentence(d.text)} className="text-xs text-graphite underline">
+                {d.label}
+              </button>
+            ))}
           </div>
         )}
-      </div>
-
-      {browserOnly && (
-        <div className="mx-4 mt-3 bg-paper border border-mist rounded-xl p-3 text-xs text-ink">
-          <div className="flex items-center gap-2 font-black mb-1">
-            <AlertTriangle className="w-4 h-4" />
-            Mixed Arabic/English is unavailable — لا يمكن خلط العربية والإنجليزية
-          </div>
-          <p>
-            The server has no <code className="font-mono">OPENAI_API_KEY</code>, so capture is using the
-            browser recogniser. It transcribes <strong>one language at a time</strong> and will render
-            English speech as Arabic letters (and vice versa). Set the key on the API and press Start
-            again — no page reload needed.
-          </p>
-        </div>
-      )}
-
-      {sttError && (
-        <div className="mx-4 mt-3 bg-paper border border-mist rounded-xl p-3 text-xs text-ink flex items-start justify-between gap-2">
-          <p className="font-bold flex-1">{sttError}</p>
-          <button
-            type="button"
-            onClick={() => { void refreshSttStatus(); }}
-            className="shrink-0 text-[11px] font-black underline text-ink hover:text-ink"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      <div className="p-4 space-y-3">
-        {/* Primary action row — stacks on narrow screens */}
-        <div className="grid grid-cols-1 sm:grid-cols-[auto,1fr] gap-2">
-          <button
-            type="button"
-            onClick={() => setShowTranscript((v) => !v)}
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-mist text-sm font-black text-ink hover:bg-paper"
-          >
-            <Keyboard className="w-4 h-4" /> Transcript
-          </button>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <button
             type="button"
             onClick={handleToggleRecord}
             disabled={busy}
-            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-black text-white transition-colors disabled:opacity-70 ${
-              recording ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-700 hover:bg-teal-800'
-            }`}
+            className="min-h-[52px] rounded-xl border border-mist bg-white text-ink font-semibold flex items-center justify-center gap-2 hover:border-ink"
           >
-            {busy
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : recording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            {busy
-              ? 'جاري النسخ / Transcribing…'
-              : recording ? 'إيقاف التسجيل / Stop' : 'تسجيل صوت / Record AI Audio'}
+            <Mic className="w-5 h-5" aria-hidden="true" /> تسجيل إضافي · Record more
+          </button>
+          <button
+            type="button"
+            onClick={handleManualExtract}
+            disabled={busy || !hasTranscript}
+            className="min-h-[52px] rounded-xl border border-mist bg-white text-ink font-semibold flex items-center justify-center gap-2 hover:border-ink disabled:text-graphite"
+          >
+            {extracting ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> : <Keyboard className="w-5 h-5" aria-hidden="true" />}
+            إعادة الاستخراج · Re-extract
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              if (manualText.trim() && !sessionOutput) await handleManualExtract();
+              onContinue?.();
+            }}
+            disabled={busy}
+            className="min-h-[52px] rounded-xl bg-ink text-white font-semibold flex items-center justify-center gap-2 hover:bg-ink-deep"
+          >
+            مراجعة التقييم · Review assessment
           </button>
         </div>
+      </section>
+    );
+  }
 
-        {showTranscript && (
-          <>
-            <textarea
-              value={manualText || liveTranscript}
-              onChange={(e) => setManualText(e.target.value)}
-              placeholder="تحدث أو اكتب الإملاء هنا (عربي/إنجليزي) — Speak or type dictation here"
-              rows={4}
-              className="w-full rounded-xl border border-mist p-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-teal-500/40"
-            />
-            {interimText && (
-              <p className="text-xs text-teal-600 -mt-1 px-1 truncate">{interimText}</p>
-            )}
-
-            <button
-              type="button"
-              onClick={handleManualExtract}
-              disabled={busy || !(manualText || liveTranscript).trim()}
-              className="w-full py-3 rounded-xl bg-teal-700 hover:bg-teal-800 disabled:bg-mist disabled:text-graphite text-white text-sm font-black"
-            >
-              استخراج وتعبئة حقول CTAS / Extract + auto-fill CTAS fields
-            </button>
-
-            {sessionOutput && onResync && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const full = getLiveTranscript(finalLinesRef.current, interimTextRef.current);
-                  if (sessionIdRef.current && full) {
-                    try {
-                      const retry = await extractTranscript(sessionIdRef.current, full, true, true);
-                      pushSession(retry);
-                    } catch (e) {
-                      setSttError(e.message);
-                    }
-                  }
-                  onResync(sessionOutput);
-                }}
-                className="w-full py-2.5 border border-teal-200 bg-teal-50/50 rounded-xl text-xs font-black text-teal-700 hover:bg-teal-50"
-              >
-                إعادة مزامنة الحقول / Re-sync fields
-              </button>
-            )}
-          </>
-        )}
-      </div>
-
-      {sessionOutput?.extraction_method === 'hybrid' && (
-        <p className="px-4 pb-2 text-[10px] text-teal-700 font-bold">Hybrid extraction (rules + AI) applied</p>
-      )}
-
-      {sessionOutput?.low_confidence_spans?.length > 0 && (
-        <div className="px-4 pb-4">
-          <p className="text-xs font-black text-graphite mb-1 flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3" /> Low confidence — review
-          </p>
-          <div className="flex flex-wrap gap-1">
-            {sessionOutput.low_confidence_spans.map((s, i) => (
-              <span key={i} className="text-[10px] bg-mist text-ink px-2 py-0.5 rounded-full">
-                {s.text} ({Math.round(s.confidence * 100)}%)
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
+  // ── Start: one prominent action ──
   return (
-    <div className="space-y-4">
-      {panel}
-
-      <FloatingRecorder
-        open={recording || extracting}
-        recording={recording}
-        transcribing={extracting}
-        stream={streamRef.current}
-        patient={patient}
-        transcript={interimText || liveTranscript}
-        lastTurnAt={lastTurnAt}
-        ctasLevel={ctasLevel ?? sessionOutput?.ctas_level ?? null}
-        ctasLabelAr={ctasLabelAr}
-        ctasLabelEn={ctasLabelEn}
-        ctasHex={ctasHex}
-        onClose={stopCapture}
-        onStop={stopCapture}
-      />
-    </div>
+    <section aria-label="التقييم الصوتي / Voice assessment" className="bg-white rounded-2xl border border-mist px-5 py-10 flex flex-col items-center gap-5 text-center">
+      <button
+        type="button"
+        onClick={handleToggleRecord}
+        disabled={busy}
+        aria-label="بدء التقييم الصوتي / Start voice assessment"
+        className="w-40 h-40 rounded-full bg-ink text-white flex items-center justify-center shadow-lg hover:bg-ink-deep disabled:opacity-70 focus-visible:outline-offset-4"
+      >
+        {busy ? <Loader2 className="w-14 h-14 animate-spin" aria-hidden="true" /> : <Mic className="w-16 h-16" aria-hidden="true" />}
+      </button>
+      <div>
+        <p className="text-2xl font-semibold text-ink">بدء التقييم الصوتي</p>
+        <p className="text-lg text-graphite">Start Voice Assessment</p>
+      </div>
+      <p className="text-sm text-graphite max-w-md">
+        اذكر العمر والجنس والشكوى والعلامات الحيوية ودرجة الألم. · State age, sex, complaint, vital signs and pain score.
+      </p>
+      <span className="text-xs text-graphite">{modeLabel}</span>
+      {notices}
+      <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
+        <button type="button" onClick={() => setManualFallback(true)} className="text-ink underline min-h-[44px]">
+          الكتابة بدلاً من ذلك · Type instead
+        </button>
+        <button type="button" onClick={() => onContinue?.()} className="text-ink underline min-h-[44px]">
+          إدخال يدوي للحقول · Enter fields manually
+        </button>
+      </div>
+    </section>
   );
 }

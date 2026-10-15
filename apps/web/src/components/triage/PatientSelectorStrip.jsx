@@ -33,17 +33,19 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
   };
 
   return (
-    <div className="relative mb-4">
+    <div className="relative">
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-full bg-slate-800 text-white rounded-xl px-4 py-2.5 flex items-center justify-between gap-2"
+        type="button"
+        aria-expanded={open}
+        className="w-full h-11 bg-white border border-mist text-ink rounded-xl px-4 flex items-center justify-between gap-2 hover:border-ink"
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-graphite text-xs shrink-0">المريض الحالي:</span>
-          <span className="text-sm font-black truncate">
-            {currentPid ? `${displayName(current)} — ${currentPid}` : 'لم يتم اختيار مريض'}
+          <span className="text-graphite text-sm shrink-0">المريض:</span>
+          <span className="text-[15px] font-semibold truncate">
+            {currentPid ? `${displayName(current)} · ${currentPid}` : 'غير مرتبط بمريض · No patient linked'}
           </span>
-          {current?.age && <span className="text-graphite/60 text-xs shrink-0">{current.age} سنة</span>}
+          {current?.age && <span className="text-graphite text-sm shrink-0">{current.age} سنة</span>}
           {current?.vt_destination_ar && <span className="text-graphite text-xs shrink-0 hidden sm:block">— {current.vt_destination_ar}</span>}
         </div>
         <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -57,13 +59,13 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
           </div>
 
           {current && (
-            <div className="px-4 py-2.5 bg-teal-50 border-b border-teal-100 flex items-center justify-between">
+            <div className="px-4 py-2.5 bg-paper border-b border-mist flex items-center justify-between">
               <div>
-                <span className="text-sm font-black text-teal-800">{displayName(current)}</span>
-                <span className="text-xs text-teal-600 mr-2">{currentPid}</span>
-                {current.age && <span className="text-xs text-teal-500">{current.age} سنة</span>}
+                <span className="text-sm font-semibold text-ink">{displayName(current)}</span>
+                <span className="text-xs text-graphite mr-2">{currentPid}</span>
+                {current.age && <span className="text-xs text-graphite">{current.age} سنة</span>}
               </div>
-              <span className="text-xs bg-teal-600 text-white px-2 py-0.5 rounded-full font-bold">جارٍ / Current</span>
+              <span className="text-xs bg-ink text-white px-2 py-0.5 rounded-full font-semibold">جارٍ / Current</span>
             </div>
           )}
 
@@ -93,7 +95,7 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
 
           <button
             onClick={() => { setOpen(false); navigate('/visual-triage'); }}
-            className="w-full px-4 py-2.5 flex items-center gap-2 text-xs font-black text-red-600 hover:bg-red-50 border-t border-mist"
+            className="w-full px-4 py-3 flex items-center gap-2 text-sm font-semibold text-ink hover:bg-paper border-t border-mist"
           >
             <Plus className="w-3.5 h-3.5" /> مريض جديد / New Patient
           </button>

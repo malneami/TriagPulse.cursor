@@ -13,7 +13,26 @@ const COMPLAINTS = [
   { ar: 'ألم ظهر', en: 'Back Pain' },
 ];
 
-export default function QuickComplaints({ selected, onSelect }) {
+export default function QuickComplaints({ selected, onSelect, compact = false }) {
+  if (compact) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {COMPLAINTS.map((c) => (
+          <button
+            key={c.ar}
+            type="button"
+            onClick={() => onSelect(c.ar)}
+            aria-pressed={selected === c.ar}
+            className={`min-h-[44px] px-3 rounded-full text-[15px] border ${
+              selected === c.ar ? 'bg-ink text-white border-ink' : 'bg-white text-ink border-mist hover:border-ink'
+            }`}
+          >
+            {c.ar} <span className="text-xs opacity-70">· {c.en}</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-mist p-4">
       <div className="mb-3">

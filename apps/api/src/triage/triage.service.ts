@@ -122,6 +122,8 @@ export class TriageService {
           alertAcknowledgedBy: record.alert_acknowledged_by as string | undefined ?? clinicianName,
           ctasReviewedAt: new Date(),
           incompleteDataFlags: (record.missing_fields as object | string | undefined) ?? undefined,
+          // Final patient direction (nurse-confirmed), shown on the journey.
+          currentLocation: typeof record.disposition === 'string' ? record.disposition : undefined,
           // Only these server-derived fields are written to the journey. The client can
           // no longer send arbitrary journey columns (mass-assignment fix, review B3).
         },

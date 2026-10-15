@@ -179,7 +179,10 @@ const saved = await call('/triage/save', {
   method: 'POST',
   body: {
     journeyId,
-    triageRecord: { ctas_level: 4, clinician_final_ctas: 4, chief_complaint: 'Back Pain', missing_fields: '' },
+    triageRecord: {
+      ctas_level: 4, clinician_final_ctas: 4, chief_complaint: 'Back Pain', missing_fields: '',
+      disposition: 'FM_IM | Family Medicine & Internal Medicine',
+    },
     // An attacker-style extra field: must be ignored, not written to the journey (review B3).
     journeyUpdate: { createdById: 'someone-else', arrivalTime: '2000-01-01T00:00:00.000Z' },
   },
@@ -190,6 +193,7 @@ const after = await call(`/journeys/${journeyId}`, { token: nurse });
 check(after.status === 200, 'saved journey can be read back');
 check(after.json.currentStatus === 'completed', 'saved journey is marked completed', after.json.currentStatus);
 check(after.json.clinicianFinalCtas === 4, 'saved journey carries the final CTAS level');
+check(after.json.currentLocation === 'FM_IM | Family Medicine & Internal Medicine', 'saved journey carries the confirmed patient direction', after.json.currentLocation);
 check(after.json.createdById === me.json.id, 'client-sent journey fields are ignored (owner unchanged)');
 check(!String(after.json.arrivalTime).startsWith('2000'), 'client-sent journey fields are ignored (arrival time unchanged)');
 
