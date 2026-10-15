@@ -1,5 +1,6 @@
 import { mapClinicalCodes } from './coding';
 import { matchComplaint } from '../ctas/resolveChiefComplaint';
+import { buildCaseDetails } from '../ctas/caseDetails';
 import { STT_FIELD_DEFINITIONS, STT_REQUIRED_KEYS } from './vocabulary';
 import { conservativeTranscriptCleanup, detectTranscriptLanguage, segmentTranscriptByLanguage } from './vocabulary';
 import type {
@@ -7,6 +8,7 @@ import type {
   SttFieldSlot,
   SttSessionOutput,
   VitalSignEntry,
+  CaseDetails,
 } from './types';
 
 const ARABIC_DIGITS: Record<string, string> = {
@@ -428,14 +430,28 @@ function parseName(text: string): { value: string; span: string; confidence: num
   return null;
 }
 
+/** List items after "takes/on …" that are clearly not medicines. */
+const NOT_A_MEDICINE = /^(?:no|not|non|denies|never|nil|none|لا|ليس|ما|بدون)\b|^(?:لا|ما|ليس)\s|allerg|حساسي|history|known|تاريخ|معروف|examination|arrival|admission|since|for\s+\d|\d+\s*(?:days?|weeks?|months?|years?)|يوم|أسبوع|شهر|سنة|سنوات/i;
+
 function parseMedications(text: string): { value: string[]; span: string; confidence: number } | null {
   const meds: string[] = [];
-  const rxList = text.match(/(?:takes|on|medications?|meds|يتناول|أدوية)\s*([^.،;\n]+)/gi) || [];
-  for (const chunk of rxList) {
-    const inner = chunk.replace(/^(?:takes|on|medications?|meds|يتناول|أدوية)\s*/i, '');
-    inner.split(/,|،|and|و/).map((s) => s.trim()).filter(Boolean).forEach((m) => meds.push(m));
+  const spans: string[] = [];
+  // Every "takes / on / يتناول …" starts a list that runs to the end of the sentence.
+  const lead = /(?:^|[\s,،])(?:takes|taking|on|medications?|meds|يتناول|تتناول|يستخدم|تستخدم|أدوية)\s+/gi;
+  for (const m of text.matchAll(lead)) {
+    const rest = text.slice((m.index ?? 0) + m[0].length).split(/[.;\n]/)[0];
+    const items = rest.split(/,|،|\band\b|\s+و\s+|\s+و(?=\S)/i).map((s) => s.trim()).filter(Boolean);
+    const kept: string[] = [];
+    for (const item of items) {
+      const clean = item.replace(/^(?:takes|taking|on|يتناول|تتناول|يستخدم|تستخدم)\s+/i, '').trim();
+      // Stop at the first part that is not a medicine ("…, not asthmatic, no allergies").
+      if (!clean || NOT_A_MEDICINE.test(clean) || clean.split(/\s+/).length > 4) break;
+      kept.push(clean);
+    }
+    if (kept.length) { meds.push(...kept); spans.push(`${m[0].trim()} ${kept.join(', ')}`); }
   }
-  if (meds.length) return { value: meds, span: rxList.join('; '), confidence: 0.8 };
+  const unique = [...new Set(meds)];
+  if (unique.length) return { value: unique, span: spans.join('; '), confidence: 0.8 };
   return null;
 }
 
@@ -847,7 +863,10 @@ export function buildSttSessionOutput(
   transcript: string,
   fields: Record<SttFieldKey, SttFieldSlot>,
   modelVersion = 'triagepulse-stt-extract-v1',
-  extras: Partial<Pick<import('./types').SttSessionOutput, 'extraction_method' | 'llm_used' | 'transcript_analysis'>> = {},
+  extras: Partial<Pick<import('./types').SttSessionOutput, 'extraction_method' | 'llm_used' | 'transcript_analysis'>> & {
+    /** Latest LLM case details for this session; validated against the transcript. */
+    llm_case_details?: Pick<import('./llmExtractSchema').LlmCtasExtractResult, 'complaints' | 'conditions' | 'medications'> | null;
+  } = {},
 ): SttSessionOutput {
   const cleaned = conservativeTranscriptCleanup(transcript);
   const languageProfile = detectTranscriptLanguage(cleaned);
@@ -857,6 +876,10 @@ export function buildSttSessionOutput(
   const low_confidence_spans = Object.values(fields)
     .filter((f) => isFilled(f) && f.confidence > 0 && f.confidence < 0.75)
     .map((f) => ({ text: f.source_span, confidence: f.confidence }));
+
+  const { llm_case_details: llmCase, ...rest } = extras;
+  const listedMeds = Array.isArray(fields.current_medications?.value) ? fields.current_medications.value as string[] : [];
+  const case_details = buildCaseDetails(cleaned, { medications: listedMeds, llm: llmCase || null }) as CaseDetails;
 
   return {
     session_id: sessionId,
@@ -868,7 +891,8 @@ export function buildSttSessionOutput(
     low_confidence_spans,
     model_version: modelVersion,
     timestamp: new Date().toISOString(),
-    ...extras,
+    ...rest,
+    case_details,
   };
 }
 

@@ -65,6 +65,12 @@ const HeroResult = forwardRef(function HeroResult({ ctas, direction, critical = 
                 <p className="text-[15px] text-graphite leading-tight">
                   {cfg.en}{ctas?.atLeast && ' · at least'}
                 </p>
+                {ctas?.drivenBy && (
+                  <p className="text-sm text-ink leading-tight">
+                    حسب: <span className="font-semibold">{ctas.drivenBy.ar}</span>
+                    <span className="text-graphite"> · set by {ctas.drivenBy.en}</span>
+                  </p>
+                )}
                 <p className="mt-1 self-start text-sm font-semibold text-ink bg-paper rounded-full px-3 py-1 flex items-center gap-1.5 whitespace-nowrap">
                   <Clock className="w-4 h-4 shrink-0" aria-hidden="true" />
                   {level === 1 ? cfg.wait_ar : `خلال ${cfg.wait_ar}`}

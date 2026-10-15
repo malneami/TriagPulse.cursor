@@ -28,6 +28,7 @@ export function buildTriageDocument(r) {
     `Chief complaint: ${val(p.chief_complaint)}    Onset: ${val(p.onset_duration)}`,
     `Pain: ${val(p.pain_score, '/10')}`,
     `Vitals: HR ${val(p.hr)} · BP ${val(p.bp_systolic)}/${val(p.bp_diastolic)} · SpO2 ${val(p.spo2, '%')} · RR ${val(p.rr)} · T ${val(p.temperature, '°C')} · GCS ${val(p.gcs)}`,
+    ...(r.caseLines || []),
     `History: ${val(p.relevant_history)}    Medications: ${val(p.current_medications)}    Allergies: ${val(p.allergies)}`,
   ];
   if (r.justification?.length) lines.push('', 'Clinical justification:', ...r.justification.map((j) => `- ${j}`));

@@ -25,7 +25,9 @@ const val = (v) => (v == null ? '' : String(v));
  * on any tile corrects that one value. Missing mandatory fields are dashed; abnormal
  * vitals are flagged with age-adjusted ranges. Nothing is filled in by assumption.
  */
-export default function FieldGrid({ patient, onChange, missingKeys = [], total = 10, more = null }) {
+export default function FieldGrid({
+  patient, onChange, missingKeys = [], total = 10, more = null, complaintSlot = null, historySlot = null,
+}) {
   const done = total - missingKeys.length;
   const [showMore, setShowMore] = useState(false);
   const prev = useRef({});
@@ -77,7 +79,9 @@ export default function FieldGrid({ patient, onChange, missingKeys = [], total =
                   <span className={`ms-auto font-semibold truncate ${critical ? 'text-[#D3242C]' : 'text-ink'}`}>{interp.label}</span>
                 )}
               </label>
-              {t.type === 'sex' ? (
+              {t.key === 'chief_complaint' && complaintSlot ? (
+                <div id={`fg-${t.key}`} className="pt-1 pb-0.5">{complaintSlot}</div>
+              ) : t.type === 'sex' ? (
                 <div id={`fg-${t.key}`} role="radiogroup" aria-label="الجنس / Sex" className="flex gap-1 mt-0.5">
                   {[['male', 'ذكر'], ['female', 'أنثى']].map(([k, ar]) => (
                     <button
@@ -130,6 +134,8 @@ export default function FieldGrid({ patient, onChange, missingKeys = [], total =
           );
         })}
       </div>
+
+      {historySlot && <div className="border-t border-mist pt-2.5">{historySlot}</div>}
 
       {more && (
         <div>

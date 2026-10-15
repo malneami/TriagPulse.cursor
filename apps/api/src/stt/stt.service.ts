@@ -19,6 +19,7 @@ import {
   type SttFieldSlot,
   type SttSessionOutput,
   type CtasFieldKey,
+  type LlmCtasExtractResult,
 } from '@triagepulse/clinical';
 
 interface SessionState {
@@ -30,7 +31,13 @@ interface SessionState {
   modelVersion: string;
   lastCtasCaptured: number;
   stagnantExtractCount: number;
+  /** Latest LLM case details (complaints, illnesses, medicines); checked against the transcript on use. */
+  llmCaseDetails: LlmCaseDetails | null;
+  /** Transcript length when case details were last read by the LLM. */
+  caseDetailsAt: number;
 }
+
+type LlmCaseDetails = Pick<LlmCtasExtractResult, 'complaints' | 'conditions' | 'medications'>;
 
 function ctasFieldsFromPatientUpdates(updates: Record<string, unknown>) {
   return computeCtasCompleteness(updates);
@@ -67,6 +74,8 @@ export class SttService {
       modelVersion: this.resolveModelVersion(),
       lastCtasCaptured: 0,
       stagnantExtractCount: 0,
+      llmCaseDetails: null,
+      caseDetailsAt: 0,
     });
     return { sessionId: id };
   }
@@ -107,6 +116,7 @@ export class SttService {
       extraction_method: 'rules',
       llm_used: false,
       transcript_analysis,
+      llm_case_details: session.llmCaseDetails,
     });
   }
 
@@ -132,8 +142,14 @@ export class SttService {
     }
     session.lastCtasCaptured = ctas.captured;
 
+    // Case details (all complaints, chronic illnesses, medicines) are read once per
+    // finished recording or typed text, when the transcript has grown since last time.
+    const caseDetailsDue = isFinal
+      && session.transcript.length > 40
+      && session.transcript.length !== session.caseDetailsAt;
     const shouldLlm = forceLlm
       || (isFinal && !ctas.isComplete)
+      || caseDetailsDue
       || hasLowCtasConfidence(session.fields)
       || session.stagnantExtractCount >= 2;
 
@@ -142,6 +158,12 @@ export class SttService {
       const llmResult = await this.callLlmExtract(session.transcript, ctas.missing as CtasFieldKey[]);
       if (llmResult) {
         session.fields = mergeLlmExtractIntoFields(session.fields, llmResult, session.transcript);
+        session.llmCaseDetails = {
+          complaints: llmResult.complaints,
+          conditions: llmResult.conditions,
+          medications: llmResult.medications,
+        };
+        session.caseDetailsAt = session.transcript.length;
         llmUsed = true;
         session.stagnantExtractCount = 0;
       }
@@ -154,6 +176,7 @@ export class SttService {
       extraction_method: llmUsed ? 'hybrid' : 'rules',
       llm_used: llmUsed,
       transcript_analysis,
+      llm_case_details: session.llmCaseDetails,
     });
   }
 
@@ -246,6 +269,7 @@ export class SttService {
     const transcript_analysis = analyzeTranscriptCompleteness(session.transcript, patientUpdates);
     return buildSttSessionOutput(session.id, session.transcript, session.fields, session.modelVersion, {
       transcript_analysis,
+      llm_case_details: session.llmCaseDetails,
     });
   }
 

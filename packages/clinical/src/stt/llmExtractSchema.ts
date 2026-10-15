@@ -33,7 +33,23 @@ export interface LlmCtasExtractResult {
   temperature: string | null;
   gcs: string | null;
   field_confidence: Partial<Record<LlmCtasPatientKey, number>>;
+  /** Case details, each with the exact transcript words it came from (checked later). */
+  complaints: Array<{ text: string; evidence: string }>;
+  conditions: Array<{ name: string; status: 'present' | 'absent'; evidence: string }>;
+  medications: Array<{ name: string; evidence: string }>;
 }
+
+const CONFIDENCE_KEYS = [
+  'patient_name_ar', 'patient_name_en', 'age', 'chief_complaint', 'pain_score',
+  'hr', 'bp_systolic', 'bp_diastolic', 'spo2', 'rr', 'temperature', 'gcs',
+] as const;
+
+const EVIDENCE_ITEM = (props: Record<string, unknown>) => ({
+  type: 'object',
+  additionalProperties: false,
+  properties: props,
+  required: Object.keys(props),
+});
 
 export const LLM_CTAS_JSON_SCHEMA = {
   type: 'object',
@@ -51,14 +67,34 @@ export const LLM_CTAS_JSON_SCHEMA = {
     rr: { type: ['string', 'null'] },
     temperature: { type: ['string', 'null'] },
     gcs: { type: ['string', 'null'] },
+    // Strict structured output needs every key listed and no open-ended objects.
     field_confidence: {
       type: 'object',
-      additionalProperties: { type: 'number' },
+      additionalProperties: false,
+      properties: Object.fromEntries(CONFIDENCE_KEYS.map((k) => [k, { type: ['number', 'null'] }])),
+      required: [...CONFIDENCE_KEYS],
+    },
+    complaints: {
+      type: 'array',
+      items: EVIDENCE_ITEM({ text: { type: 'string' }, evidence: { type: 'string' } }),
+    },
+    conditions: {
+      type: 'array',
+      items: EVIDENCE_ITEM({
+        name: { type: 'string' },
+        status: { type: 'string', enum: ['present', 'absent'] },
+        evidence: { type: 'string' },
+      }),
+    },
+    medications: {
+      type: 'array',
+      items: EVIDENCE_ITEM({ name: { type: 'string' }, evidence: { type: 'string' } }),
     },
   },
   required: [
     'patient_name_ar', 'patient_name_en', 'age', 'chief_complaint', 'pain_score',
     'hr', 'bp_systolic', 'bp_diastolic', 'spo2', 'rr', 'temperature', 'gcs',
+    'field_confidence', 'complaints', 'conditions', 'medications',
   ],
 };
 
@@ -78,8 +114,23 @@ Transcript:
 ${transcript.slice(0, 4000)}
 """
 
+Also list the case details, each with "evidence": the exact words copied from the transcript (same language, no translation):
+- complaints: EVERY presenting complaint or symptom the patient has now (e.g. chest pain, vomiting, fever), one item each. Not past illnesses, not negated symptoms.
+- conditions: chronic illnesses / past medical history (diabetes, hypertension, asthma, sickle cell, heart disease, kidney disease, cancer, pregnancy…). status "absent" only when explicitly denied ("not diabetic", "no history of…"). Do not infer conditions from symptoms.
+- medications: regular medicines the patient takes.
+Use empty arrays when nothing was said. Never invent items.
+
 Return JSON with patient_name_ar, patient_name_en, age (string), chief_complaint, pain_score (0-10 or null),
-hr, bp_systolic, bp_diastolic, spo2, rr, temperature, gcs, and field_confidence (0-1 per populated field).`;
+hr, bp_systolic, bp_diastolic, spo2, rr, temperature, gcs, complaints, conditions, medications, and field_confidence (0-1 per populated field).`;
+}
+
+function listOf<T>(v: unknown, map: (x: Record<string, unknown>) => T | null): T[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((x) => x && typeof x === 'object')
+    .map((x) => map(x as Record<string, unknown>))
+    .filter((x): x is T => x != null)
+    .slice(0, 20);
 }
 
 export function normalizeLlmExtractResult(raw: unknown): LlmCtasExtractResult {
@@ -106,5 +157,12 @@ export function normalizeLlmExtractResult(raw: unknown): LlmCtasExtractResult {
     temperature: str(r.temperature),
     gcs: str(r.gcs),
     field_confidence: conf,
+    complaints: listOf(r.complaints, (x) => (x.text ? { text: String(x.text), evidence: String(x.evidence || '') } : null)),
+    conditions: listOf(r.conditions, (x) => (x.name ? {
+      name: String(x.name),
+      status: x.status === 'absent' ? 'absent' as const : 'present' as const,
+      evidence: String(x.evidence || ''),
+    } : null)),
+    medications: listOf(r.medications, (x) => (x.name ? { name: String(x.name), evidence: String(x.evidence || '') } : null)),
   };
 }

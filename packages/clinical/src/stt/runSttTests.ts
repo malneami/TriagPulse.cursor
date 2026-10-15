@@ -14,6 +14,8 @@ import {
   reduceRealtimeEvent,
 } from './realtimeEvents.js';
 import { createEmptySttFields, extractFieldsFromTranscript, mapSttSessionToPatientUpdates } from './extractFields.js';
+import { buildCaseDetails, normalizeLlmCaseDetails } from '../ctas/caseDetails.js';
+import { LLM_CTAS_JSON_SCHEMA } from './llmExtractSchema.js';
 
 /** Mixed AR/EN dictation the ED actually produces. Mirrors scripts/stt-sample-encounters.json. */
 export const CODE_SWITCH_SAMPLES = [
@@ -561,5 +563,85 @@ export function runSttTests(
       'turn_detection rejection flags a VAD retry instead of failing the session',
       `vadRejected=${state.vadRejected} sessionError=${state.sessionError}`,
     );
+  }
+
+  // ── Case details: every complaint, chronic illnesses, medicines ───────────
+  {
+    const d = buildCaseDetails('45 year old female with chest pain and vomiting since morning, also headache, known hypertensive and diabetic on insulin, takes warfarin for atrial fibrillation');
+    const keys = d.complaints.map((c: { key: string | null }) => c.key);
+    assert(
+      keys.includes('vomiting_nausea') && keys.includes('headache') && keys.some((k: string | null) => String(k).startsWith('chest_pain')),
+      'CASE-01', 'all three complaints are captured, in order', JSON.stringify(keys),
+    );
+    const cond = Object.fromEntries(d.conditions.map((c: { id: string; status: string }) => [c.id, c.status]));
+    assert(cond.diabetes === 'present' && cond.hypertension === 'present' && cond.arrhythmia === 'present',
+      'CASE-02', 'chronic illnesses are captured as present', JSON.stringify(cond));
+    assert(d.drug_classes.includes('anticoagulant') && d.drug_classes.includes('insulin'),
+      'CASE-03', 'medicines are classified (anticoagulant, insulin)', JSON.stringify(d.drug_classes));
+  }
+  {
+    const d = buildCaseDetails('patient name Ahmad, age 58, chest pain, HR 112, pain 7 out of 10, history of diabetes, on metformin, no known allergies');
+    const keys = d.complaints.map((c: { key: string | null }) => c.key);
+    assert(keys.length === 1, 'CASE-04', 'history, pain score and allergies are not turned into complaints', JSON.stringify(keys));
+  }
+  {
+    const d = buildCaseDetails('not diabetic, no history of asthma, denies fever, presents with abdominal pain');
+    const cond = Object.fromEntries(d.conditions.map((c: { id: string; status: string }) => [c.id, c.status]));
+    const keys = d.complaints.map((c: { key: string | null }) => c.key);
+    assert(cond.diabetes === 'absent' && cond.asthma === 'absent' && !keys.includes('fever') && keys.includes('abdominal_pain'),
+      'CASE-05', 'denied illnesses are absent, denied symptoms are not complaints', JSON.stringify({ cond, keys }));
+  }
+  {
+    const d = buildCaseDetails('طفل عمره 6 سنوات عنده حرارة وكحة من يومين، معروف عنده فقر الدم المنجلي، لا يعاني من الربو');
+    const cond = Object.fromEntries(d.conditions.map((c: { id: string; status: string }) => [c.id, c.status]));
+    const keys = d.complaints.map((c: { key: string | null }) => c.key);
+    assert(keys.includes('fever') && keys.includes('urti_complaints') && cond.sickle_cell === 'present' && cond.asthma === 'absent',
+      'CASE-06', 'Arabic: complaints, sickle cell present, asthma absent', JSON.stringify({ cond, keys }));
+  }
+  {
+    const d = buildCaseDetails('child 4 years with vomiting and diarrhea, previously healthy, no medical history');
+    assert(d.no_known_history && d.conditions.length === 0, 'CASE-07', 'no chronic illness is recorded when the nurse says so', JSON.stringify(d.conditions));
+    const silent = buildCaseDetails('chest pain, HR 90');
+    assert(!silent.history_asked && silent.conditions.length === 0, 'CASE-08', 'silence is unknown, never "no history"', JSON.stringify(silent));
+  }
+  {
+    const t = 'patient with fever, known asthmatic';
+    const v = normalizeLlmCaseDetails({
+      complaints: [{ text: 'fever', evidence: 'patient with fever' }, { text: 'chest pain', evidence: 'severe chest pain' }],
+      conditions: [{ name: 'asthma', status: 'present', evidence: 'known asthmatic' }, { name: 'diabetes', status: 'present', evidence: 'type 2 diabetes' }],
+      medications: [],
+    }, t);
+    assert(v.complaints.length === 1 && v.conditions.length === 1 && v.rejected === 2,
+      'CASE-09', 'LLM items without evidence in the transcript are rejected', JSON.stringify(v));
+  }
+  {
+    const d = buildCaseDetails('fever and cough, on tacrolimus');
+    const imm = d.conditions.find((c: { id: string }) => c.id === 'immunocompromised');
+    assert(imm?.status === 'probable', 'CASE-10', 'a medicine implies a condition only as probable', JSON.stringify(imm));
+  }
+
+  {
+    const d = buildCaseDetails('امرأة حامل في الشهر السابع عندها ألم بطن، ومريضة ربو');
+    const cond = Object.fromEntries(d.conditions.map((c: { id: string; status: string }) => [c.id, c.status]));
+    assert(cond.pregnancy === 'present' && cond.asthma === 'present', 'CASE-11', 'Arabic pregnancy and asthma words are recognised', JSON.stringify(cond));
+    const carrier = buildCaseDetails('الطفل حامل لفقر الدم المنجلي، عنده حرارة');
+    assert(!carrier.conditions.some((c: { id: string }) => c.id === 'pregnancy'), 'CASE-12', '"carrier of" (حامل ل…) is not pregnancy', JSON.stringify(carrier.conditions));
+  }
+  {
+    // OpenAI strict structured output rejects open objects and partly-required keys.
+    const problems: string[] = [];
+    const walk = (node: any, path: string) => {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'object' || (Array.isArray(node.type) && node.type.includes('object'))) {
+        const keys = Object.keys(node.properties || {});
+        if (node.additionalProperties !== false) problems.push(`${path}: additionalProperties must be false`);
+        const req = new Set(node.required || []);
+        for (const k of keys) if (!req.has(k)) problems.push(`${path}.${k}: not required`);
+        for (const k of keys) walk(node.properties[k], `${path}.${k}`);
+      }
+      if (node.items) walk(node.items, `${path}[]`);
+    };
+    walk(LLM_CTAS_JSON_SCHEMA, 'schema');
+    assert(problems.length === 0, 'CASE-13', 'LLM schema is valid for strict structured output', problems.join('; '));
   }
 }

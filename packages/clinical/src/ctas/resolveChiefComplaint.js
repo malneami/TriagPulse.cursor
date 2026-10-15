@@ -39,7 +39,10 @@ const EXTRA_SYNONYMS = {
     'heat stroke', 'heatstroke', 'heat exhaustion', 'heat related', 'heat cramps',
     'ضربة شمس', 'إجهاد حراري', 'حرارة بيئية',
   ],
-  fever: ['fever', 'febrile', 'pyrexia', 'حمى', 'سخونة', 'سخون'],
+  fever: [
+    'fever', 'febrile', 'pyrexia', 'حمى', 'سخونة', 'سخون', 'سخونية',
+    'عنده حرارة', 'عندها حرارة', 'ارتفاع حرارة', 'ارتفاع في الحرارة', 'ارتفاع درجة الحرارة',
+  ],
   nasal_congestion: [
     'nasal congestion', 'hay fever', 'allergic rhinitis', 'stuffy nose',
     'احتقان الأنف', 'حساسية الأنف',
@@ -397,6 +400,91 @@ export function matchComplaint(chiefComplaint, opts = {}) {
   }
   if (opts.confirmedKey) return getComplaintByKey(opts.confirmedKey);
   return null;
+}
+
+// Clause markers for findComplaintMentions.
+const NEGATION_CUE = /(?:^|\s)(?:no|not|non|denies|denied|without|negative for|free of|لا|ليس|ليست|بدون|ينفي|تنفي|ما\s*في|ما\s*عنده|ما\s*عندها|مافي|ماعنده|ما\s*يشكو|غير\s*موجود)(?:\s|$)/;
+const HISTORY_CUE = /(?:^|\s)(?:history of|past history|known case of|known case|known|previous|previously|prior|on treatment for|medications?|meds|takes|taking|allerg\w*|تاريخ(?:\s*مرضي)?|سابق(?:اً|ا)?|معروف|مريض\s+(?:سكري|ضغط|قلب|ربو)|يستخدم|يتناول|أدوية|حساسية)(?:\s|$)/;
+
+/**
+ * Every distinct complaint mentioned in a transcript, in order of first mention.
+ * Negated mentions ("no fever") and history clauses ("history of stroke") are skipped,
+ * so a chronic illness is never turned into a presenting complaint. Ambiguous phrases
+ * are resolved against their own clause (e.g. "chest pain … non cardiac").
+ * @param {string} text
+ * @returns {Array<{ complaintKey: string, categoryKey: string, label_en: string, label_ar: string, default_ctas: number, term: string, clause: string }>}
+ */
+/** Index of `term` as a whole word (Arabic و/ب/ف/ل/ال prefixes and English plural allowed), or -1. */
+function wordAt(clause, term) {
+  const arabic = /[\u0600-\u06FF]/.test(term);
+  let from = 0;
+  while (from <= clause.length) {
+    const at = clause.indexOf(term, from);
+    if (at < 0) return -1;
+    const end = at + term.length;
+    let start = at;
+    if (arabic) {
+      if (clause.slice(Math.max(0, start - 2), start) === 'ال') start -= 2;
+      if (start > 0 && 'وبفل'.includes(clause[start - 1]) && (start - 1 === 0 || clause[start - 2] === ' ')) start -= 1;
+    }
+    const okBefore = start === 0 || clause[start - 1] === ' ';
+    const after = clause.slice(end);
+    const okAfter = after === '' || after[0] === ' ' || (!arabic && /^(?:s|es)(?:\s|$)/.test(after));
+    if (okBefore && okAfter) return at;
+    from = at + 1;
+  }
+  return -1;
+}
+
+export function findComplaintMentions(text) {
+  const clauses = String(text || '')
+    .split(/[.!?؟،,;:\n]+|\s(?:and|also|plus|then|with|ومعه|ومعها|وأيضاً|وايضا|كذلك)\s/i)
+    .map((c) => normalizeText(c))
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const clause of clauses) {
+    if (HISTORY_CUE.test(` ${clause} `)) continue;
+    // Terms present in this clause, longest first; a term inside a longer hit is skipped.
+    const hits = [];
+    for (const entry of LEXICON.values()) {
+      for (const term of entry.terms) {
+        if (!term || term.length < 3 || SHORT_WEAK.has(term) || termWeight(term) < 0.55) continue;
+        const at = wordAt(clause, term);
+        if (at >= 0) hits.push({ entry, term, at, end: at + term.length });
+      }
+    }
+    hits.sort((a, b) => (b.end - b.at) - (a.end - a.at) || a.at - b.at);
+    const taken = [];
+    for (const h of hits) {
+      if (taken.some((t) => h.at < t.end && h.end > t.at && (t.term !== h.term))) continue;
+      // Words before the term in the same clause: a negation there rules it out.
+      const before = clause.slice(Math.max(0, h.at - 30), h.at);
+      if (NEGATION_CUE.test(` ${before} `)) continue;
+      taken.push(h);
+    }
+    // Same phrase can belong to several complaints: score each against the clause.
+    const byTerm = new Map();
+    for (const h of taken) {
+      const scored = scoreEntry(h.entry, clause).score;
+      const cur = byTerm.get(`${h.at}:${h.term}`);
+      if (!cur || scored > cur.scored) byTerm.set(`${h.at}:${h.term}`, { ...h, scored });
+    }
+    for (const h of [...byTerm.values()].sort((a, b) => a.at - b.at)) {
+      if (seen.has(h.entry.complaintKey)) continue;
+      seen.add(h.entry.complaintKey);
+      out.push({
+        complaintKey: h.entry.complaintKey,
+        categoryKey: h.entry.categoryKey,
+        label_en: h.entry.label_en,
+        label_ar: h.entry.label_ar,
+        default_ctas: h.entry.default_ctas,
+        term: h.term,
+        clause,
+      });
+    }
+  }
+  return out;
 }
 
 /**

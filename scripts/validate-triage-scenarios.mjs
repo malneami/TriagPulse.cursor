@@ -16,6 +16,7 @@
  */
 import { createRequire } from 'node:module';
 import { deriveAssessment, nextPrompt } from '../apps/web/src/lib/triageAssessment.js';
+import { deriveCase } from '../apps/web/src/lib/caseModel.js';
 
 const require = createRequire(import.meta.url);
 const clinical = require('../packages/clinical/dist/index.js');
@@ -78,6 +79,22 @@ const SCENARIOS = [
   { id: 'P6', name: 'Child 4 y, abdominal pain only (insufficient data)',
     patient: { age: '4', chief_complaint: 'abdominal pain' },
     expect: { pending: true } },
+
+  // ── Several complaints and chronic illness (from the dictation) ───
+  // The most urgent complaint sets the level (and is a floor); history is recorded only.
+  { id: 'M1', name: 'Adult chest pain + vomiting + headache, hypertensive, on warfarin',
+    transcript: '58 year old male with vomiting since morning, also headache, and chest pain radiating to left arm, known hypertensive, takes warfarin',
+    patient: { ...base, age: '58', gender: 'male', pain_score: 6, hr: '104', bp_systolic: '160', spo2: '96', rr: '18', temperature: '37', weight: '85' },
+    expect: { maxLevel: 2, primary: /^chest_pain/, conditions: ['hypertension'], drugClasses: ['anticoagulant'] } },
+  { id: 'M2', name: 'Child 6 y fever + cough, known sickle cell (Arabic)',
+    transcript: 'طفل عمره 6 سنوات عنده حرارة وكحة من يومين، معروف عنده فقر الدم المنجلي',
+    patient: { ...base, age: '6', gender: 'male', pain_score: 2, hr: '118', bp_systolic: '100', spo2: '97', rr: '24', temperature: '38.9', weight: '20' },
+    expect: { maxLevel: 3, primary: /^fever$/, conditions: ['sickle_cell'] } },
+  { id: 'M3', name: 'Adult abdominal pain + diarrhoea, previously healthy',
+    transcript: '30 year old female with abdominal pain and diarrhea, previously healthy, no medical history',
+    patient: { ...base, age: '30', gender: 'female', pain_score: 5, hr: '92', bp_systolic: '118', spo2: '99', rr: '16', temperature: '37.4', weight: '60' },
+    expect: { maxLevel: 3, primary: /^abdominal_pain$/, noKnownHistory: true },
+    knownIssue: 'Same as A9: moderate (4-7) acute central/visceral pain should be CTAS 3; the engine gives 4.' },
 ];
 
 const rows = [];
@@ -85,8 +102,19 @@ let failures = 0;
 let known = 0;
 for (const s of SCENARIOS) {
   const patient = { ...s.patient };
-  const transcript = patient.chief_complaint || '';
-  const live = clinical.computeLiveCTAS(patient, {});
+  let cc = null;
+  let floor = null;
+  if (s.transcript) {
+    // Same path as the screen: case details from the dictation, every complaint scored,
+    // the most urgent becomes the chief complaint and a floor for the level.
+    patient.case_details = clinical.buildCaseDetails(s.transcript);
+    cc = deriveCase(patient, { computeLiveCTAS: clinical.computeLiveCTAS, answers: {} });
+    if (cc.primary) patient.chief_complaint = cc.primary.text;
+    floor = cc.complaints.length >= 2 ? cc.mostUrgent?.level ?? null : null;
+  }
+  const transcript = s.transcript || patient.chief_complaint || '';
+  const liveRaw = clinical.computeLiveCTAS(patient, {});
+  const live = liveRaw && floor != null ? { ...liveRaw, level: Math.min(liveRaw.level ?? 9, floor) } : liveRaw;
   const pathway = clinical.resolveClinicalPathway({ patient, transcript }).pathway || 'general';
   let evaluation = null;
   if (patient.chief_complaint) {
@@ -109,6 +137,14 @@ for (const s of SCENARIOS) {
   if (e.minLevel != null && a.level != null && a.level < e.minLevel) warnings.push(`over-triage: CTAS ${a.level}, expected ≥ ${e.minLevel}`);
   if (e.atLeast && !a.atLeast) problems.push('expected "at least" (provisional) label');
   if (e.direction && a.direction?.destination !== e.direction) problems.push(`direction ${a.direction?.destination || 'pending'}, expected ${e.direction}`);
+  if (e.primary && !e.primary.test(String(cc?.primary?.key || ''))) problems.push(`primary complaint ${cc?.primary?.key || 'none'}, expected ${e.primary}`);
+  for (const id of e.conditions || []) {
+    if (!cc?.conditions.some((c) => c.id === id && c.status === 'present')) problems.push(`chronic illness ${id} not captured`);
+  }
+  for (const id of e.drugClasses || []) {
+    if (!patient.case_details?.drug_classes?.includes(id)) problems.push(`medicine class ${id} not captured`);
+  }
+  if (e.noKnownHistory && !cc?.noKnownHistory) problems.push('"no chronic illness" not recorded');
 
   const issueText = [...problems, ...warnings].join('; ');
   let status = 'PASS';
@@ -120,7 +156,7 @@ for (const s of SCENARIOS) {
   rows.push({
     id: s.id,
     scenario: s.name,
-    shown: a.pending ? 'pending' : `CTAS ${a.level}${a.atLeast ? ' (at least)' : ''}`,
+    shown: a.pending ? 'pending' : `CTAS ${a.level}${a.atLeast ? ' (at least)' : ''}${cc?.complaints.length > 1 ? ` · ${cc.complaints.map((c) => `${c.key}:${c.level}`).join(' ')}` : ''}`,
     direction: a.direction?.destination || 'pending',
     prompt: prompt ? prompt.en : '—',
     status,

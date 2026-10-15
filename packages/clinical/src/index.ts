@@ -10,6 +10,7 @@ export {
   resolveChiefComplaint,
   getComplaintByKey,
   listAllComplaints,
+  findComplaintMentions,
   COMPLAINT_RESOLVER_VERSION,
   AUTO_MIN,
   AUTO_MARGIN,
@@ -23,6 +24,18 @@ export {
   SYMPTOM_CHRONICITY_VERSION,
 } from './ctas/detectSymptomChronicity.js';
 export { resolveClinicalPathway } from './ctas/resolveClinicalPathway.js';
+export {
+  buildCaseDetails,
+  extractComplaints,
+  extractConditions,
+  extractMedications,
+  classifyMedication,
+  normalizeLlmCaseDetails,
+  evidenceInTranscript,
+  CONDITION_VOCAB,
+  DRUG_CLASSES,
+  CASE_DETAILS_VERSION,
+} from './ctas/caseDetails.js';
 export {
   CLARIFYING_QUESTION_BANK,
   getClarifyingQuestions,
@@ -160,4 +173,7 @@ export type {
   VitalSignEntry,
   CodedTerm,
   SttFieldDefinition,
+  CaseDetails,
+  CaseComplaint,
+  CaseCondition,
 } from './stt/types';

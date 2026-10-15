@@ -48,6 +48,8 @@ import QuickComplaints from '@/components/triage/QuickComplaints';
 import ChiefComplaintConfirm from '@/components/triage/ChiefComplaintConfirm';
 import { deriveAssessment, nextPrompt } from '@/lib/triageAssessment';
 import { buildTriageDocument } from '@/lib/triageDocument';
+import { deriveCase, casePayload, caseSummaryLines } from '@/lib/caseModel';
+import { ComplaintChips, HistoryChips } from '@/components/triage/flow/CaseChips';
 import { useQuery } from '@tanstack/react-query';
 
 const emptyPatient = () => ({
@@ -60,6 +62,8 @@ const emptyPatient = () => ({
   spo2: '', rr: '', temperature: '', gcs: '', weight: '',
   pain_score: null, transcription: '', receipt_image_url: '',
   onset_duration: '', relevant_history: '', current_medications: '', allergies: '',
+  // Case details from the dictation, plus the nurse's corrections.
+  case_details: null, primary_complaint: null, dismissed_complaints: [], dismissed_conditions: [],
 });
 
 /** Fields that can change CTAS; if any is missing a low level is never shown as a result. */
@@ -290,9 +294,27 @@ export default function Triage() {
   // _selectedModifier is passed so the engine can use the official Step 2 CTAS level
   const answersWithModifier = { ...clarifyingAnswers, _selectedModifier: selectedModifier };
   const liveResult = computeLiveCTAS(patient, answersWithModifier);
+
+  // Every complaint scored with the same vitals; the most urgent is the primary one.
+  const cc = deriveCase(patient, { computeLiveCTAS, answers: clarifyingAnswers });
+  // With several complaints the most urgent one is a floor: choosing a less urgent
+  // primary never lowers CTAS by itself (only «Change» with a reason can).
+  const complaintFloor = cc.complaints.length >= 2 ? (cc.mostUrgent?.level ?? null) : null;
+
   // Most-urgent wins: live vitals/pain must move the badge even if clarifying evaluation is stale
-  const liveLevel = liveResult?.level ?? null;
+  const liveLevel = [liveResult?.level, complaintFloor].some((n) => n != null)
+    ? Math.min(...[liveResult?.level, complaintFloor].filter((n) => n != null))
+    : null;
   const evalLevel = modifierEvaluation?.updated_ctas ?? null;
+  const ccPrimaryText = cc.complaints.length >= 2 ? cc.primary?.text : null;
+  useEffect(() => {
+    if (!ccPrimaryText) return;
+    // A complaint typed by the nurse is kept unless she picks one of the chips.
+    if (manualEditedFieldsRef.current.has('chief_complaint') && !patient.primary_complaint) return;
+    setPatient((prev) => (prev.chief_complaint === ccPrimaryText
+      ? prev
+      : { ...prev, chief_complaint: ccPrimaryText, confirmed_complaint_key: null }));
+  }, [ccPrimaryText, patient.primary_complaint]);
   const displayCtasLevel = [liveLevel, evalLevel].every((n) => n == null)
     ? null
     : Math.min(...[liveLevel, evalLevel].filter((n) => n != null));
@@ -592,9 +614,13 @@ export default function Triage() {
     let mergedForMeta = null;
     const highlightKeys = new Set();
 
+    // With several complaints the primary one is chosen below (most urgent, or the nurse's pick).
+    const multiComplaint = (sessionOutput.case_details?.complaints?.length || 0) >= 2;
     update((prev) => {
       const next = { ...prev };
+      if (sessionOutput.case_details) next.case_details = sessionOutput.case_details;
       for (const [key, value] of Object.entries(updates)) {
+        if (key === 'chief_complaint' && multiComplaint) continue;
         const prevVal = prev[key];
         const hasPrev = prevVal != null && prevVal !== '';
         const valueChanged = hasPrev && String(prevVal) !== String(value);
@@ -887,6 +913,7 @@ export default function Triage() {
             allergies: patient.allergies || null,
           },
           outstanding_missing: outstanding,
+          case_details: casePayload(cc),
         },
         disposition: finalDirection ? `${finalDirection.destination} | ${finalDirection.destination_en}` : null,
         audit_trail: serializeAuditTrail(auditTrail),
@@ -982,6 +1009,7 @@ export default function Triage() {
     status: decidedStatus || (a.pending ? 'incomplete' : (answeredAny ? 'updated' : 'preliminary')),
     changedFrom: initialSnapshot?.level ?? null,
     note: null,
+    drivenBy: cc.complaints.length >= 2 && cc.primary ? { ar: cc.primary.label_ar, en: cc.primary.label_en } : null,
   };
   const directionBox = {
     status: decidedStatus || (directionAi ? (answeredAny ? 'updated' : 'preliminary') : 'pending'),
@@ -1041,7 +1069,12 @@ export default function Triage() {
     modifierEvaluation?.team_leader_review && 'يُوصى بمراجعة قائد الفريق · Team leader review recommended',
     ...redFlagText.map((t) => `علامة خطر: ${t}`),
   ].filter(Boolean);
+  const complaintWhy = cc.complaints.length >= 2 && cc.primary ? [
+    `الشكوى المحددة للمستوى · Set by: ${cc.primary.label_ar} · ${cc.primary.label_en}${cc.chosenByNurse ? ' (اختيار الممرض · nurse choice)' : ''}`,
+    `الشكاوى · Complaints: ${cc.complaints.map((c) => `${c.label_en}${c.level ? ` (CTAS ${c.level})` : ''}`).join('، ')}`,
+  ] : [];
   const why = [
+    ...complaintWhy,
     ...justification,
     ...findings.slice(0, 6).map((f) => `+ ${f}`),
     ...(outstanding.length ? [`ناقص · Missing: ${outstanding.join('، ')}`] : []),
@@ -1063,6 +1096,7 @@ export default function Triage() {
     answers: answeredLog,
     outstanding: missingFields.map((f) => f.label_en),
     safetyAlerts,
+    caseLines: caseSummaryLines(cc),
     nurse: user?.full_name || user?.email,
   };
 
@@ -1153,6 +1187,32 @@ export default function Triage() {
     handleClarifyingAnswer(field, undefined);
   };
 
+  // ── Complaints and history: the nurse's corrections ─────────────────
+  const logCase = (msg, action, details) => setAuditLog((log) => [...log, {
+    time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+    msg, action, details,
+  }]);
+  const makePrimaryComplaint = (c) => {
+    const auto = cc.mostUrgent?.id === c.id;
+    manualEditedFieldsRef.current.delete('chief_complaint');
+    setPatient((prev) => ({ ...prev, primary_complaint: auto ? null : c.id, chief_complaint: c.text, confirmed_complaint_key: null }));
+    logCase(`Primary complaint: ${c.text}`, 'primary_complaint_changed', {
+      to: { key: c.key, level: c.level }, most_urgent: cc.mostUrgent ? { key: cc.mostUrgent.key, level: cc.mostUrgent.level } : null, by: auto ? 'auto' : 'nurse',
+    });
+  };
+  const removeComplaint = (c) => {
+    setPatient((prev) => ({
+      ...prev,
+      dismissed_complaints: [...(prev.dismissed_complaints || []), c.id],
+      primary_complaint: prev.primary_complaint === c.id ? null : prev.primary_complaint,
+    }));
+    logCase(`Complaint removed: ${c.text}`, 'complaint_removed', { key: c.key, text: c.text, level: c.level });
+  };
+  const removeCondition = (c) => {
+    setPatient((prev) => ({ ...prev, dismissed_conditions: [...(prev.dismissed_conditions || []), c.id] }));
+    logCase(`History item removed: ${c.label_en}`, 'condition_removed', { id: c.id, status: c.status, source: c.source });
+  };
+
   // ── Confirm / Change = save ─────────────────────────────────────────
   const blocked = recording ? 'أوقف التسجيل أولاً · Stop recording first'
     : !patient.chief_complaint ? 'أدخل الشكوى الرئيسية · Enter the chief complaint'
@@ -1198,7 +1258,11 @@ export default function Triage() {
   };
 
   // During recording: ask for the most useful missing item, then the top question.
-  const prompt = recording ? nextPrompt(a.missingKeys, patient) : null;
+  // Missing CTAS data first, then chronic illness and medicines if not yet mentioned.
+  const historyPrompt = recording && transcript.length > 60 && !cc.historyAsked
+    ? { ar: 'اسأل عن الأمراض المزمنة والأدوية المنتظمة', en: 'Ask about chronic illnesses and regular medicines' }
+    : null;
+  const prompt = recording ? (nextPrompt(a.missingKeys, patient) || historyPrompt) : null;
   const promptQuestion = recording && !prompt ? openQuestions[0] : null;
 
   // The large CTAS/direction cards (tablet and desktop) and the compact strip in the
@@ -1340,6 +1404,10 @@ export default function Triage() {
             missingKeys={a.missingKeys}
             total={REQUIRED_FIELDS.length}
             more={more}
+            complaintSlot={cc.complaints.length >= 2
+              ? <ComplaintChips cc={cc} onMakePrimary={makePrimaryComplaint} onRemove={removeComplaint} />
+              : null}
+            historySlot={hasData ? <HistoryChips cc={cc} onRemoveCondition={removeCondition} /> : null}
           />
         </>
       )}
