@@ -67,6 +67,8 @@ export {
   MAX_QUESTIONS,
   resolveCtasDestination,
   CTAS_DESTINATIONS,
+  pedsObservationCase,
+  PEDS_ROUTING_GUIDE_VERSION,
 } from './ctas/modifierEngine.js';
 export {
   buildKnownFacts,

@@ -1074,6 +1074,7 @@ export default function Triage() {
     modifierEvaluation,
     answers: clarifyingAnswers,
     visualTriage,
+    complaints: cc.complaints,
   }, { CTAS_REQUIRED_FIELDS: REQUIRED_FIELDS, resolveCtasDestination });
   const shownLevel = a.level;
   const directionAi = a.direction;

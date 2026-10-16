@@ -134,6 +134,45 @@ function chartDestination(level, pediatric, answers = {}) {
 }
 
 /**
+ * Paediatric ED Triage Routing Guide v1.0 (14 Oct 2026) — case types that go to
+ * Observation at CTAS 4–5. Only the rows approved so far are active.
+ */
+export const PEDS_ROUTING_GUIDE_VERSION = '1.0 (2026-10-14)';
+const PEDS_OBSERVATION_CASES = [
+  {
+    id: 'peds_obs_wound',
+    keys: ['laceration', 'puncture', 'abrasion'],
+    text: /wound|lacerat\w*|\bcut\b|puncture|جرح|جروح|تمزق|ثقب|قطع\s*(?:في|ب)/i,
+    label_ar: 'جرح',
+    label_en: 'Wound',
+  },
+  {
+    id: 'peds_obs_bleeding',
+    keys: ['epistaxis', 'vaginal_bleed', 'vaginal_bleeding', 'blood_in_stools', 'active_bleeding', 'gi_bleed'],
+    text: /bleed\w*|ha?emorrhag\w*|nose\s*bleed|epistaxis|نزيف|ينزف|رعاف|دم\s*(?:مع|في)\s*(?:البراز|الاستفراغ)/i,
+    label_ar: 'نزيف',
+    label_en: 'Bleeding',
+  },
+];
+
+/**
+ * Which approved paediatric Observation case type (if any) the complaints match.
+ * @param {Array<{key?: string|null, text?: string, label_en?: string, label_ar?: string}>} complaints
+ */
+export function pedsObservationCase(complaints = []) {
+  for (const rule of PEDS_OBSERVATION_CASES) {
+    const hit = (complaints || []).some((c) => {
+      if (!c) return false;
+      if (c.key && rule.keys.includes(c.key)) return true;
+      const text = [c.text, c.label_en, c.label_ar].filter(Boolean).join(' ');
+      return rule.text.test(text);
+    });
+    if (hit) return rule;
+  }
+  return null;
+}
+
+/**
  * Resolve post-CTAS ED zone from acuity, age, direction hints, and visual isolation.
  * @param {object} [opts]
  * @param {number} [opts.level]
@@ -142,6 +181,7 @@ function chartDestination(level, pediatric, answers = {}) {
  * @param {string|Record<string, unknown>|null} [opts.visualDestination]
  * @param {Array<Record<string, unknown>>} [opts.applied]
  * @param {Array<Record<string, unknown>>} [opts.directionApplied]
+ * @param {Array<{key?: string|null, text?: string, label_en?: string, label_ar?: string}>} [opts.complaints]
  */
 export function resolveCtasDestination({
   level,
@@ -150,6 +190,7 @@ export function resolveCtasDestination({
   visualDestination = null,
   applied = [],
   directionApplied = [],
+  complaints = [],
 } = {}) {
   const lvl = Number(level) || 5;
   const pediatric = isPediatricDestinationAge(age);
@@ -167,6 +208,18 @@ export function resolveCtasDestination({
   // Infectious protocol from visual triage holds unless resus won above.
   if (visualCode === 'RESPIRATORY') {
     return { ...CTAS_DESTINATIONS.RESPIRATORY, from_isolation_hold: true };
+  }
+
+  // Paediatric routing guide: wounds and bleeding go to Observation, even when a minor
+  // procedure (suturing) would otherwise send the child to Fast Track.
+  if (pediatric && lvl >= 4) {
+    const rule = pedsObservationCase(complaints);
+    if (rule) {
+      return {
+        ...CTAS_DESTINATIONS.PEDIATRIC_OBSERVATION,
+        from_routing_guide: { id: rule.id, label_ar: rule.label_ar, label_en: rule.label_en, version: PEDS_ROUTING_GUIDE_VERSION },
+      };
+    }
   }
 
   const aliased = aliasDestinationHint(dirHint, pediatric);

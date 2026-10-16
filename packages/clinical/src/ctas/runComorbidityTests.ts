@@ -10,6 +10,8 @@ import { extractFieldsFromTranscript, mapSttSessionToPatientUpdates, findVitalCo
 import { evaluateModifierEngine, detectKnownModifier } from './modifierEngine.js';
 import { buildKnownFacts } from './knownFactsEngine.js';
 import { getActiveModifiers } from './modifierLibrary.js';
+import { resolveCtasDestination } from './ctasDestination.js';
+import { detectRedFlags } from '../alerts/redFlagEngine.js';
 import { resolveClinicalPathway } from './resolveClinicalPathway.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
@@ -260,5 +262,31 @@ export function runComorbidityTests(assert: Assert) {
     const pw = (t: string) => resolveClinicalPathway({ patient: { chief_complaint: '' }, transcript: t }).pathway;
     assert(pw('جرح، درجة الحرارة 36') !== 'fever' && pw('عنده حرارة من يومين') === 'fever',
       'CR-44', '«درجة الحرارة ٣٦» (a reading) is not a fever complaint; «عنده حرارة» is', JSON.stringify([pw('جرح، درجة الحرارة 36'), pw('عنده حرارة من يومين')]));
+  }
+
+  // Approved 2026-10-16: bleeding alert = CTAS 2 (1 only with shock / hypotension for age);
+  // paediatric wounds and bleeding → Observation (routing guide v1.0).
+  {
+    const t = 'جرح في القدم. النزيف لا يتوقف. Bleeding huge and uncontrolled';
+    const lvl = (p: Record<string, unknown>, a: Record<string, unknown> = {}) => detectRedFlags(p, a)?.ctas_level ?? null;
+    const got = [
+      lvl({ age: '5', bp_systolic: '110', transcription: t }),
+      lvl({ age: '5', bp_systolic: '75', transcription: t }),
+      lvl({ age: '5', bp_systolic: '110', transcription: `${t}. pale and clammy` }),
+      lvl({ age: '5', bp_systolic: '110', transcription: t }, { uncontrolled_bleeding: 'لا' }),
+    ];
+    assert(JSON.stringify(got) === JSON.stringify([2, 1, 1, null]), 'CR-45',
+      'uncontrolled-bleeding alert: CTAS 2; 1 with hypotension for age or shock signs; none when the nurse answers No', JSON.stringify(got));
+    const dest = (level: number, age: string, complaints: Array<Record<string, unknown>>, answers: Record<string, unknown> = {}) =>
+      (resolveCtasDestination({ level, age, answers, complaints }) as { destination: string }).destination;
+    const r = [
+      dest(4, '5', [{ key: 'laceration', text: 'جرح في القدم' }], { minor_procedure: 'نعم' }),
+      dest(5, '7', [{ key: null, text: 'nose bleed' }]),
+      dest(4, '5', [{ key: 'urti_complaints', text: 'cough' }]),
+      dest(4, '30', [{ key: 'laceration', text: 'cut' }]),
+      dest(2, '5', [{ key: 'laceration', text: 'cut' }]),
+    ];
+    assert(JSON.stringify(r) === JSON.stringify(['PEDIATRIC_OBSERVATION', 'PEDIATRIC_OBSERVATION', 'PEDIATRIC_CLINIC', 'FM_IM', 'PEDIATRIC_RESUS']), 'CR-46',
+      'child CTAS 4–5 wound or bleeding → Observation (even if suturing); cough → Clinic; adults and CTAS 1–2 unchanged', JSON.stringify(r));
   }
 }

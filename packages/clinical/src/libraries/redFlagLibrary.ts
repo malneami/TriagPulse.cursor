@@ -36,7 +36,8 @@ export const DEFAULT_RED_FLAG_TEXT_RULES: RedFlagTextRule[] = [
   {
     id: 'rf_bleeding',
     terms: ['uncontrolled bleeding', 'نزيف شديد', 'نزيف لا يتوقف', 'major bleeding'],
-    level: 1,
+    // CTAS 2; raised to 1 only with shock signs or hypotension for age (approved 2026-10-16).
+    level: 2,
     label_ar: 'نزيف شديد غير مسيطر عليه',
     label_en: 'Uncontrolled major bleeding',
     active: true,

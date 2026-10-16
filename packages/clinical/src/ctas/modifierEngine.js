@@ -18,7 +18,7 @@ import {
 import { resolveCtasDestination } from './ctasDestination.js';
 
 export const MAX_QUESTIONS = 3;
-export { resolveCtasDestination, CTAS_DESTINATIONS } from './ctasDestination.js';
+export { resolveCtasDestination, CTAS_DESTINATIONS, pedsObservationCase, PEDS_ROUTING_GUIDE_VERSION } from './ctasDestination.js';
 
 function buildContextText(patient = {}, answers = {}, transcript = '') {
   const parts = [

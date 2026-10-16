@@ -46,6 +46,7 @@ export function isPediatricAge(age) {
  */
 export function deriveAssessment({
   patient, liveLevel = null, evalLevel = null, modifierEvaluation = null, answers = {}, visualTriage = null,
+  complaints = null,
 }, clinical) {
   // Most urgent wins between the live rules result and the modifier engine.
   const levels = [liveLevel, evalLevel].filter((n) => n != null);
@@ -71,11 +72,16 @@ export function deriveAssessment({
         visualDestination: visualTriage,
         applied: modifierEvaluation?.applied_modifiers || [],
         directionApplied: modifierEvaluation?.direction_applied || [],
+        // Every complaint heard (not only the primary one) counts for the routing guide.
+        complaints: complaints?.length
+          ? complaints
+          : [{ key: patient.confirmed_complaint_key || null, text: patient.chief_complaint || '' }],
       })
     : null;
   const rule = (modifierEvaluation?.direction_applied || []).find((d) => d.destination_hint);
   const directionReason = !direction ? null
     : direction.from_isolation_hold ? 'عزل تنفسي من الفرز البصري · Respiratory isolation from visual triage'
+      : direction.from_routing_guide ? `دليل توجيه الأطفال: ${direction.from_routing_guide.label_ar} → الملاحظة · Paediatric routing guide: ${direction.from_routing_guide.label_en} → Observation`
       : direction.from_direction_rule && rule ? (rule.label_ar || rule.label_en)
         : `CTAS ${level} · ${pediatric ? 'مسار الأطفال · pediatric routing' : 'مسار البالغين · adult routing'}`;
 
