@@ -167,7 +167,10 @@ export function normalizeSpokenNumbers(text: string): string {
 }
 
 function normalizeDigits(text: string): string {
-  return normalizeSpokenNumbers(String(text).replace(/[٠-٩]/g, (d) => ARABIC_DIGITS[d] ?? d));
+  // Arabic decimal separator «٫» (and the comma between digits) is a decimal point: «٣٧٫٥» = 37.5.
+  return normalizeSpokenNumbers(String(text)
+    .replace(/[٠-٩]/g, (d) => ARABIC_DIGITS[d] ?? d)
+    .replace(/(\d)\s*٫\s*(\d)/g, '$1.$2'));
 }
 
 function parseSpokenNumberWord(word: string): number | null {

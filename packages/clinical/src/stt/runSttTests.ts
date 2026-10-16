@@ -644,4 +644,9 @@ export function runSttTests(
     walk(LLM_CTAS_JSON_SCHEMA, 'schema');
     assert(problems.length === 0, 'CASE-13', 'LLM schema is valid for strict structured output', problems.join('; '));
   }
+  {
+    // Speechmatics writes Arabic numerals with the Arabic decimal separator.
+    const { updates } = mapSttSessionToPatientUpdates(extractFieldsFromTranscript('الحرارة ٣٧٫٥، النبض ١٨٠', createEmptySttFields()));
+    assert(String(updates.temperature) === '37.5' && String(updates.hr) === '180', 'STT-36', 'Arabic decimal «٣٧٫٥» is read as 37.5', JSON.stringify(updates));
+  }
 }

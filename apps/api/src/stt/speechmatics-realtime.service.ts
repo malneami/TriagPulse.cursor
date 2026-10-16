@@ -29,6 +29,8 @@ interface SmSession {
   itemNo: number;
   ended: boolean;
   config: { language: string; domain: string | null; model: string };
+  lastPartial: string;
+  idleTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface Attempt { language: string; domain: string | null; model: string }
@@ -155,7 +157,7 @@ export class SpeechmaticsRealtimeService {
     const ws = new WebSocket(this.url(), { headers: { Authorization: `Bearer ${apiKey}` } });
     const session: SmSession = {
       sessionId, ws, emit, closed: false, ready: false, seqNo: 0,
-      utterance: '', itemNo: 0, ended: false, config: attempt,
+      utterance: '', itemNo: 0, ended: false, config: attempt, lastPartial: '', idleTimer: null,
     };
     this.sessions.set(sessionId, session);
 
@@ -223,19 +225,33 @@ export class SpeechmaticsRealtimeService {
     });
   }
 
+  /**
+   * Partials carry `stable_text` = the words Speechmatics has finalised (never revised). The
+   * client fills the boxes from that, so a half-heard number ("heart rate 18…") never lands in a
+   * box or raises an alert, while the boxes still fill as the nurse speaks.
+   */
+  private emitPartial(s: SmSession, text: string) {
+    if (!text || text === s.lastPartial) return; // repeats would only reset the client's timer
+    s.lastPartial = text;
+    s.emit('transcript_partial', {
+      sessionId: s.sessionId, item_id: `sm-${s.itemNo}`, text, stable_text: s.utterance, isFinal: false,
+    });
+  }
+
   private handle(s: SmSession, type: string, msg: Record<string, any>) {
     if (type === 'AddPartialTranscript') {
-      const partial = String(msg.metadata?.transcript || '');
-      const text = joinFragments(s.utterance, partial);
-      if (text) s.emit('transcript_partial', { sessionId: s.sessionId, item_id: `sm-${s.itemNo}`, text, isFinal: false });
+      this.emitPartial(s, joinFragments(s.utterance, String(msg.metadata?.transcript || '')));
       return;
     }
     if (type === 'AddTranscript') {
       const fragment = String(msg.metadata?.transcript || '');
       if (!fragment.trim()) return;
       s.utterance = joinFragments(s.utterance, fragment);
-      s.emit('transcript_partial', { sessionId: s.sessionId, item_id: `sm-${s.itemNo}`, text: s.utterance, isFinal: false });
-      if (s.utterance.length >= MAX_UTTERANCE_CHARS) this.flush(s);
+      this.emitPartial(s, s.utterance);
+      if (s.utterance.length >= MAX_UTTERANCE_CHARS) { this.flush(s); return; }
+      // Release the line after a short quiet spell even if no EndOfUtterance arrives.
+      if (s.idleTimer) clearTimeout(s.idleTimer);
+      s.idleTimer = setTimeout(() => this.flush(s), Number(env('SPEECHMATICS_LINE_IDLE_MS', '1800')));
       return;
     }
     if (type === 'EndOfUtterance') { this.flush(s); return; }
@@ -245,9 +261,11 @@ export class SpeechmaticsRealtimeService {
 
   /** Release the gathered utterance as one final. */
   private flush(s: SmSession) {
+    if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null; }
     const text = s.utterance.trim();
     s.utterance = '';
-    if (!text) return;
+    s.lastPartial = '';
+    if (!text || s.closed) return;
     s.emit('transcript_final', { sessionId: s.sessionId, item_id: `sm-${s.itemNo}`, text, isFinal: true, confidence: 0.9 });
     s.itemNo += 1;
   }
@@ -282,6 +300,7 @@ export class SpeechmaticsRealtimeService {
   private cleanupLocal(sessionId: string, closeSocket: boolean) {
     const s = this.sessions.get(sessionId);
     if (!s) return;
+    if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null; }
     s.closed = true;
     if (closeSocket && (s.ws.readyState === WebSocket.OPEN || s.ws.readyState === WebSocket.CONNECTING)) {
       try { s.ws.close(); } catch { /* ignore */ }

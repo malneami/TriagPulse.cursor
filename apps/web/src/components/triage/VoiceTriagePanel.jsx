@@ -107,6 +107,9 @@ export default function VoiceTriagePanel({
   const interimTextRef = useRef('');
   const recordingRef = useRef(false);
   const runExtractRef = useRef(null);
+  const pendingExtractRef = useRef(null);
+  const extractSeqRef = useRef(0);
+  const extractAppliedRef = useRef(0);
   const useRealtimeRef = useRef(false);
   const realtimeFailureCountRef = useRef(0);
   const startFallbackRef = useRef(null);
@@ -231,7 +234,10 @@ export default function VoiceTriagePanel({
       clearSilenceWatchdog();
       stopBrowserCaptions();
       realtimeFailureCountRef.current = 0;
-      runExtractRef.current?.(getLiveTranscript(finalLinesRef.current, text), false);
+      // Fill the boxes from the words already finalised (Speechmatics sends them as
+      // stable_text) so a half-heard number never lands in a box; OpenAI partials have none.
+      const forBoxes = payload?.stable_text != null ? conservativeTranscriptCleanup(payload.stable_text) : text;
+      if (forBoxes) runExtractRef.current?.(getLiveTranscript(finalLinesRef.current, forBoxes), false);
     }
   }, [clearSilenceWatchdog, stopBrowserCaptions]);
 
@@ -329,14 +335,34 @@ export default function VoiceTriagePanel({
     if (!sid) return;
     const cleaned = conservativeTranscriptCleanup(transcript);
     if (!cleaned) return;
-    clearTimeout(extractDebounceRef.current);
-    const doExtract = () => {
-      extractTranscript(sid, cleaned, isFinal, forceLlm)
-        .then((payload) => pushSessionRef.current?.(payload))
+    const doExtract = (text) => {
+      // Requests can return out of order; never let an older (shorter) transcript win.
+      const seq = ++extractSeqRef.current;
+      extractTranscript(sid, text, isFinal, forceLlm)
+        .then((payload) => {
+          if (seq < extractAppliedRef.current) return;
+          extractAppliedRef.current = seq;
+          pushSessionRef.current?.(payload);
+        })
         .catch((e) => { if (isFinal) setSttError(e.message); });
     };
-    if (isFinal || forceLlm) doExtract();
-    else extractDebounceRef.current = setTimeout(doExtract, 1500);
+    if (isFinal || forceLlm) {
+      clearTimeout(extractDebounceRef.current);
+      extractDebounceRef.current = null;
+      pendingExtractRef.current = null;
+      doExtract(cleaned);
+      return;
+    }
+    // Live text: at most one extraction per second, using the latest words. A debounce
+    // here was reset by every new partial, so nothing filled until the nurse stopped talking.
+    pendingExtractRef.current = cleaned;
+    if (extractDebounceRef.current) return;
+    extractDebounceRef.current = setTimeout(() => {
+      extractDebounceRef.current = null;
+      const latest = pendingExtractRef.current;
+      pendingExtractRef.current = null;
+      if (latest) doExtract(latest);
+    }, 1000);
   }, []);
 
   runExtractRef.current = runExtract;
@@ -654,6 +680,8 @@ export default function VoiceTriagePanel({
     if (rollingIntervalRef.current) clearInterval(rollingIntervalRef.current);
     rollingIntervalRef.current = null;
     clearTimeout(extractDebounceRef.current);
+    extractDebounceRef.current = null;
+    pendingExtractRef.current = null;
     segmentStopRef.current = false;
     pendingSegmentRef.current = false;
     recordingRef.current = false;
