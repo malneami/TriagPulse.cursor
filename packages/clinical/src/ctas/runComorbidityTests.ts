@@ -10,6 +10,7 @@ import { extractFieldsFromTranscript, mapSttSessionToPatientUpdates, findVitalCo
 import { evaluateModifierEngine, detectKnownModifier } from './modifierEngine.js';
 import { buildKnownFacts } from './knownFactsEngine.js';
 import { getActiveModifiers } from './modifierLibrary.js';
+import { resolveClinicalPathway } from './resolveClinicalPathway.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -239,5 +240,25 @@ export function runComorbidityTests(assert: Assert) {
     const age = (t: string) => (mapSttSessionToPatientUpdates(extractFieldsFromTranscript(t)).updates as Record<string, string>).age;
     const got = ['طفل عمره سنتين، عنده حرارة', 'طفل عمره سنة، عنده كحة', 'عمره سنة و نص', 'منذ سنة يعاني من الربو، عمره 40 سنة'].map(age);
     assert(JSON.stringify(got) === JSON.stringify(['2', '1', '1.5', '40']), 'CR-40', 'Arabic «سنتين» / «سنة» / «سنة و نص» ages', JSON.stringify(got));
+  }
+
+  // The wound case (2026-10-16): uncontrolled bleeding in Arabic/English, contradictions, «درجة الحرارة».
+  {
+    const sel = (t: string) => selectMissingModifiers({
+      pathway: 'general', level: 4, patient: { age: '5', chief_complaint: 'Bleeding', transcription: t }, answers: {}, transcript: t, maxQuestions: 3,
+    }) as { autoAnswers: Record<string, unknown>; questions: Array<{ field: string }> };
+    const last = 'خمس سنوات يشتكي من جرح في القدم مع نزيف النزيف لا يتوقف. ييرجد أنه لا يمكن التحكم فيه. Bleeding huge and uncontrolled';
+    assert(sel(last).autoAnswers.uncontrolled_bleeding === 'نعم' && applyModifierLibraryEffects({ uncontrolled_bleeding: 'نعم' }, 5).level === 2,
+      'CR-41', '«النزيف لا يتوقف» / "bleeding huge and uncontrolled" → uncontrolled bleeding (CTAS 2)', JSON.stringify(sel(last).autoAnswers));
+    const both = sel('wound in the foot, no bleeding. Patient still bleeding, needs suturing');
+    assert(both.autoAnswers.uncontrolled_bleeding == null && both.questions[0]?.field === 'uncontrolled_bleeding',
+      'CR-42', '"no bleeding … still bleeding" asks whether bleeding is controlled (not read as No)', JSON.stringify({ a: both.autoAnswers, q: both.questions.map((q) => q.field) }));
+    const mod = getActiveModifiers().find((m: { field: string }) => m.field === 'uncontrolled_bleeding');
+    const v = (t: string) => detectKnownModifier(mod, { patient: {}, answers: {}, transcript: t }).value ?? null;
+    assert(v('الألم لا يمكن التحكم فيه') == null && v('bleeding stopped with pressure') == null && v('no active bleeding') === 'لا',
+      'CR-43', 'uncontrolled pain, stopped bleeding and "no active bleeding" are not uncontrolled bleeding', JSON.stringify([v('الألم لا يمكن التحكم فيه'), v('bleeding stopped with pressure'), v('no active bleeding')]));
+    const pw = (t: string) => resolveClinicalPathway({ patient: { chief_complaint: '' }, transcript: t }).pathway;
+    assert(pw('جرح، درجة الحرارة 36') !== 'fever' && pw('عنده حرارة من يومين') === 'fever',
+      'CR-44', '«درجة الحرارة ٣٦» (a reading) is not a fever complaint; «عنده حرارة» is', JSON.stringify([pw('جرح، درجة الحرارة 36'), pw('عنده حرارة من يومين')]));
   }
 }

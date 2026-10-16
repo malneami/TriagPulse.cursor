@@ -572,13 +572,19 @@ export const CTAS_MODIFIER_LIBRARY = [
     ],
     age_applicability: 'both',
     field: 'uncontrolled_bleeding',
+    // "Uncontrolled" said either way round, in English or Arabic (same wording the
+    // red-flag alert listens for, so the alert and CTAS agree).
     detect_patterns: [
-      /uncontrolled\s+bleed|heavy\s+bleed|soaking|hemorrhage|active\s+bleed/i,
-      /نزيف\s*(?:غير\s*)?مسيطر|نزيف\s*غزير|ينزف\s*الآن/i,
+      /uncontrolled\s+bleed\w*|(?:heavy|massive|profuse|major|severe)\s+bleed\w*|soaking|ha?emorrhag\w*|active(?:ly)?\s+bleed\w*/i,
+      /bleed\w*\s+(?:is\s+|was\s+)?(?:\w+\s+(?:and\s+)?)?(?:uncontrolled|not\s+stopping|won'?t\s+stop|does\s*n[o']t\s+stop|not\s+controlled|profuse|massive|heavy)/i,
+      /(?:can'?t|cannot|unable\s+to|could\s*n[o']t)\s+(?:stop|control)\s+(?:the\s+)?bleed\w*/i,
+      /نزيف\s*(?:غير\s*)?مسيطر|نزيف\s*(?:غزير|شديد|قوي|كثير)|ينزف\s*(?:الآن|بغزارة|بشدة)/i,
+      /(?:ال)?نزيف\s+(?:لا|ما|مو)\s*(?:يتوقف|يوقف|وقف|توقف|يقف)|نزيف[^.!?؟]{0,40}?(?:لا|ما)\s*(?:يمكن|نقدر|قدرنا|قدرت)\s*(?:ال)?(?:تحكم|سيطرة|نوقف|نوقفه|أوقف)/i,
     ],
+    // Any complaint: bleeding mentioned asks whether it is controlled.
     cross_pathway_when: [
-      /uncontrolled\s+bleed|heavy\s+bleed|soaking|hemorrhage|haemorrhage|active\s+bleed/i,
-      /نزيف\s*(?:غير\s*)?مسيطر|نزيف\s*غزير|ينزف\s*الآن/i,
+      /bleed\w*|ha?emorrhag\w*|soaking/i,
+      /نزيف|ينزف|تنزف|دم\s*(?:ما|لا)\s*(?:يوقف|وقف)/i,
     ],
     question_ar: 'هل النزيف غير مسيطر عليه حالياً؟',
     question_en: 'Is bleeding currently uncontrolled?',

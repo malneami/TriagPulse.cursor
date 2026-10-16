@@ -60,7 +60,8 @@ export function resolveClinicalPathway({
 
   // Vital/transcript rescues run even when free-text complaint is garbled/unmapped
   if ((temp != null && temp >= 38.0)
-    || /\bfever\b|febrile|حمى|سخون|حرارة\s*(?:عالي|مرتفعة)?/i.test(tx)) {
+    // «حرارة» alone is not fever: «درجة الحرارة ٣٦» is the temperature reading.
+    || /\bfever\b|febrile|حمى|حمّى|سخون|(?:عنده|عندها|عندو|فيه|فيها|معه|معها|من|مع)\s+(?:ال)?حرارة|حرارة\s+(?:عالي|عالية|مرتفعة|شديدة)|ارتفاع\s+(?:في\s+)?(?:درجة\s+)?(?:ال)?حرارة/i.test(tx)) {
     return { pathway: 'fever', source: temp != null && temp >= 38.0 ? 'vital_fever' : 'transcript', match: null, resolution };
   }
 

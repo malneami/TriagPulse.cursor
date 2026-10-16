@@ -9,7 +9,7 @@ import {
 } from './clarifyingQuestionBank.js';
 import { applyModifierLibraryEffects, getActiveModifiers } from './modifierLibrary.js';
 import { computeLiveCTAS } from './vitalRanges.js';
-import { negatedFindingRegex } from './negation.js';
+import { findingStatus } from './negation.js';
 import {
   buildKnownFacts,
   shouldSuppressQuestion,
@@ -133,15 +133,16 @@ export function detectKnownModifier(modifier, { patient = {}, answers = {}, tran
   const graded = Array.isArray(modifier.options) && modifier.options.length > 0
     && !modifier.options.some((o) => o.value === 'نعم');
   for (const re of modifier.detect_patterns || []) {
-    if (re.test(ctx)) {
-      const negated = negatedFindingRegex(re.source);
-      if (negated.test(ctx)) {
-        return { known: true, value: 'لا', source: 'transcript_negated', status: 'known_negative', confidence: 0.9 };
-      }
-      // Graded questions (seizure ongoing / post-ictal / resolved) are asked, not guessed.
-      if (graded) return { known: false, status: 'unknown' };
-      return { known: true, value: 'نعم', source: 'transcript', status: 'known_positive', confidence: 0.88 };
+    const st = findingStatus(re, ctx);
+    if (!st) continue;
+    if (st === 'negative') {
+      return { known: true, value: 'لا', source: 'transcript_negated', status: 'known_negative', confidence: 0.9 };
     }
+    // Denied and stated in the same conversation ("no bleeding … still bleeding"): ask.
+    if (st === 'both') return { known: false, status: 'unknown', conflicting: true };
+    // Graded questions (seizure ongoing / post-ictal / resolved) are asked, not guessed.
+    if (graded) return { known: false, status: 'unknown' };
+    return { known: true, value: 'نعم', source: 'transcript', status: 'known_positive', confidence: 0.88 };
   }
 
   for (const re of modifier.related_medications || []) {

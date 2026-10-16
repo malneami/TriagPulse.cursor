@@ -16,3 +16,20 @@ export function negatedFindingRegex(patternSource) {
   const prefix = '(?:non[-\\s]?|غير\\s+)';
   return new RegExp(`(?:(?:^|[\\s,.،؛:;(])${neg}\\s+(?:[^\\s.,،؛;!?]+\\s+){0,3}?|(?:^|[\\s,.،؛:;(])${prefix})(?:${patternSource})`, 'i');
 }
+
+/**
+ * How a finding is stated in the conversation:
+ * 'positive' (only stated), 'negative' (only denied), 'both' (denied AND stated, e.g.
+ * "no bleeding … patient still bleeding") or null (not mentioned). 'both' is asked,
+ * never resolved to "no" silently.
+ * @param {RegExp} re
+ * @param {string} ctx
+ * @returns {'positive'|'negative'|'both'|null}
+ */
+export function findingStatus(re, ctx) {
+  if (!re.test(ctx)) return null;
+  const neg = negatedFindingRegex(re.source);
+  if (!neg.test(ctx)) return 'positive';
+  const rest = ctx.replace(new RegExp(neg.source, 'gi'), ' ');
+  return re.test(rest) ? 'both' : 'negative';
+}

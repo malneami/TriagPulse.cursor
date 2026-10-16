@@ -16,7 +16,7 @@
  * }} KnownFact
  */
 
-import { negatedFindingRegex } from './negation.js';
+import { findingStatus } from './negation.js';
 
 const YES = 'نعم';
 const NO = 'لا';
@@ -172,15 +172,12 @@ export function buildKnownFacts({
     const graded = Array.isArray(mod.options) && mod.options.length > 0
       && !mod.options.some((o) => o.value === YES);
     for (const re of mod.detect_patterns || []) {
-      if (re.test(ctx)) {
-        const negated = negatedFindingRegex(re.source);
-        if (negated.test(ctx)) {
-          hit = { known: true, value: NO, source: 'transcript_negated' };
-        } else if (!graded) {
-          hit = { known: true, value: YES, source: 'transcript' };
-        }
-        break;
-      }
+      const st = findingStatus(re, ctx);
+      if (!st) continue;
+      // Denied and stated in the same conversation: ask, never settle on "no".
+      if (st === 'negative') hit = { known: true, value: NO, source: 'transcript_negated' };
+      else if (st === 'positive' && !graded) hit = { known: true, value: YES, source: 'transcript' };
+      break;
     }
     if (!hit) {
       for (const re of mod.related_medications || []) {
