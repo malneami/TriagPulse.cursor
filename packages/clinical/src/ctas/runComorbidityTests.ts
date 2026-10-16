@@ -307,4 +307,26 @@ export function runComorbidityTests(assert: Assert) {
     const cough = sel('child with cough', 'cough');
     assert(!cough.questions.some((q) => q.field === 'wound_high_risk'), 'CR-48', 'no wound check without a wound');
   }
+
+  // 2026-10-16: direction follows the shown CTAS; all procedures → Observation;
+  // "No" to a safety question never alerts; «مئة عشرة» = 110.
+  {
+    const d = (level: number, answers: Record<string, unknown>, directionApplied: Array<Record<string, unknown>> = []) =>
+      (resolveCtasDestination({ level, age: '5', answers, directionApplied, complaints: [{ key: 'urti_complaints', text: 'cough' }] }) as { destination: string }).destination;
+    const ft = [{ destination_hint: 'PEDS_FAST_TRACK' }];
+    const got = [d(3, {}, ft), d(4, { minor_procedure: 'نعم' }), d(5, { minor_procedure: 'نعم' }), d(4, {})];
+    assert(JSON.stringify(got) === JSON.stringify(['PEDIATRIC_OBSERVATION', 'PEDIATRIC_OBSERVATION', 'PEDIATRIC_OBSERVATION', 'PEDIATRIC_CLINIC']),
+      'CR-49', 'CTAS 3 never goes to Fast Track/Clinic; any procedure → Observation; CTAS 4 without one → Clinic', JSON.stringify(got));
+    const no = applyModifierLibraryEffects({ uncontrolled_bleeding: 'لا', ongoing_seizure: 'انتهت / Resolved' }, 5);
+    assert(no.safety_applied.length === 0 && no.level === 5, 'CR-50', '"No" / "Resolved" to a safety question raises no alert', JSON.stringify(no.safety_applied));
+    const bp = (mapSttSessionToPatientUpdates(extractFieldsFromTranscript('الضغط مئة عشرة على ستين، النبض مية خمسين')).updates as Record<string, string>);
+    assert(bp.bp_systolic === '110' && bp.hr === '150', 'CR-51', '«مئة عشرة» = 110 and «مية خمسين» = 150 (no «و»)', JSON.stringify(bp));
+  }
+
+  {
+    const cc = (t: string) => (mapSttSessionToPatientUpdates(extractFieldsFromTranscript(t)).updates as Record<string, string>).chief_complaint;
+    const got = [cc('يشتكي من جرح القدم مع نزيف درجة الألم خمسة، النبض مئة'), cc('complains of chest pain heart rate 110'), cc('complains of abdominal pain pain score 6')];
+    assert(JSON.stringify(got) === JSON.stringify(['جرح القدم مع نزيف', 'chest pain', 'abdominal pain']), 'CR-52',
+      'the complaint stops where the vitals start («… درجة الألم خمسة», "heart rate", "pain score")', JSON.stringify(got));
+  }
 }

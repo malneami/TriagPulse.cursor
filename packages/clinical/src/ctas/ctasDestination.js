@@ -125,7 +125,8 @@ function chartDestination(level, pediatric, answers = {}) {
   if (pediatric) {
     if (lvl <= 2) return CTAS_DESTINATIONS.PEDIATRIC_RESUS;
     if (lvl === 3) return CTAS_DESTINATIONS.PEDIATRIC_OBSERVATION;
-    if (lvl === 4 && isYes(answers.minor_procedure)) return CTAS_DESTINATIONS.PEDS_FAST_TRACK;
+    // All procedures are done in Observation (approved 2026-10-16).
+    if (isYes(answers.minor_procedure)) return CTAS_DESTINATIONS.PEDIATRIC_OBSERVATION;
     return CTAS_DESTINATIONS.PEDIATRIC_CLINIC;
   }
   if (lvl <= 2) return CTAS_DESTINATIONS.RESUSCITATION;
@@ -223,7 +224,9 @@ export function resolveCtasDestination({
   }
 
   const aliased = aliasDestinationHint(dirHint, pediatric);
-  if (aliased) {
+  // Clinic / Fast Track take CTAS 4–5 only: a hint never sends a CTAS 3 patient there.
+  const lowAcuityZone = aliased && ['PEDS_FAST_TRACK', 'PEDIATRIC_CLINIC', 'FM_IM'].includes(aliased.destination);
+  if (aliased && !(lowAcuityZone && lvl <= 3)) {
     return { ...aliased, from_direction_rule: true };
   }
 

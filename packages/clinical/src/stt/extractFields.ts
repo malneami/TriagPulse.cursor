@@ -149,7 +149,9 @@ export function normalizeSpokenNumbers(text: string): string {
         // hundreds (ثلاث مية). Otherwise a new number starts: «أربعة وتسعين سبعة وتسعين»
         // is 94 then 97, not 191.
         const last = values[values.length - 1];
-        const continues = word.startsWith('و') || (next.value === 10 && last < 10) || (next.value === 100 && last < 10);
+        // Spoken without «و» after a hundred: «مئة عشرة» = 110, «مية خمسين» = 150.
+        const afterHundred = last >= 100 && last % 100 === 0 && next.value < 100;
+        const continues = word.startsWith('و') || (next.value === 10 && last < 10) || (next.value === 100 && last < 10) || afterHundred;
         if (!continues) break;
       }
       values.push(next.value);
@@ -449,6 +451,9 @@ function parseChiefComplaint(rawText: string): { value: string; span: string; co
     if (m) {
       let value = (m[1] || m[0]).trim();
       value = value.split(/\bfor\b|\bsince\b|\bمنذ\b|\bمن\b/i)[0].trim();
+      // A complaint said without a pause runs into the vitals («جرح القدم مع نزيف درجة
+      // الألم خمسة»): stop at the first vital-sign or history label.
+      value = value.split(/\s(?:درجة\s+(?:الألم|الالم|الحرارة)|(?:الألم|الالم)\s+\d|النبض|نبض|الضغط|ضغط\s+الدم|الأكسجين|الاكسجين|التنفس|الحرارة|حرارة\s+\S*\d|الوعي|مستوى\s+الوعي|الوزن|وزنه|وزنها|pain\s+(?:score|is\s+\d|\d)|heart\s+rate|\bhr\b|\bbp\b|blood\s+pressure|spo2|oxygen|resp(?:iratory)?\s+rate|\brr\b|temp(?:erature)?\b|gcs\b|weight\b)/i)[0].trim() || value;
       return { value, span: m[0], confidence: 0.86 };
     }
   }

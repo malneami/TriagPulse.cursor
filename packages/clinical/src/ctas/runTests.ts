@@ -805,9 +805,9 @@ for (const testCase of CTAS_TEST_CASES) {
   assert(dest({ level: 2, age: 8 }) === 'PEDIATRIC_RESUS', 'DEST-06', 'age 8 CTAS 2 → PEDIATRIC_RESUS');
   assert(dest({ level: 3, age: 8 }) === 'PEDIATRIC_OBSERVATION', 'DEST-07', 'age 8 CTAS 3 → PEDIATRIC_OBSERVATION');
   assert(
-    dest({ level: 4, age: 8, answers: { minor_procedure: 'نعم' } }) === 'PEDS_FAST_TRACK',
+    dest({ level: 4, age: 8, answers: { minor_procedure: 'نعم' } }) === 'PEDIATRIC_OBSERVATION',
     'DEST-08',
-    'age 8 CTAS 4 + minor procedure → PEDS_FAST_TRACK',
+    'age 8 CTAS 4 + procedure → PEDIATRIC_OBSERVATION (all procedures in Observation, 2026-10-16)',
   );
   assert(dest({ level: 5, age: 8 }) === 'PEDIATRIC_CLINIC', 'DEST-09', 'age 8 CTAS 5 → PEDIATRIC_CLINIC');
   assert(
@@ -932,13 +932,13 @@ for (const testCase of CTAS_TEST_CASES) {
   });
   const pedsDest = (enginePeds.suggested_destination as { destination?: string } | null)?.destination;
   assert(
-    pedsDest === 'PEDS_FAST_TRACK'
+    pedsDest === 'PEDIATRIC_OBSERVATION'
       && (enginePeds.direction_applied || []).some((a) => a.field === 'minor_procedure')
       && !(enginePeds.applied_modifiers || []).some(
         (a) => a.field === 'minor_procedure' && a.ctas_effect != null,
       ),
     'DEST-21',
-    'engine: peds CTAS 4 + minor procedure → PEDS_FAST_TRACK without CTAS effect',
+    'engine: peds CTAS 4 + procedure → PEDIATRIC_OBSERVATION without CTAS effect',
     `dest=${pedsDest} level=${enginePeds.updated_ctas}`,
   );
 

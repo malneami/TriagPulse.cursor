@@ -417,20 +417,21 @@ export const CTAS_MODIFIER_LIBRARY = [
     question_en: 'Does the child need a minor procedure (sutures, splint, foreign-body removal)?',
     answer_type: 'yes_no',
     options: [
-      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', destination_hint: 'PEDS_FAST_TRACK' },
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', destination_hint: 'PEDIATRIC_OBSERVATION' },
       { value: 'لا', label_ar: 'لا', label_en: 'No' },
       { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
     ],
     ctas_effect_yes: null,
-    destination_effect: 'PEDS_FAST_TRACK',
+    destination_effect: 'PEDIATRIC_OBSERVATION',
     critical_alert: false,
     team_leader_review: false,
     question_category: 'patient_direction',
     potential_ctas_effect: null,
-    potential_destination_effect: 'PEDS_FAST_TRACK',
+    potential_destination_effect: 'PEDIATRIC_OBSERVATION',
     safety_alert_effect: false,
-    clinical_explanation_ar: 'CTAS 4 مع إجراء بسيط → المسار السريع للأطفال — دون تغيير مستوى CTAS',
-    clinical_explanation_en: 'CTAS 4 with a minor procedure → pediatric Fast Track — does not change CTAS',
+    // All procedures are done in Observation (approved 2026-10-16).
+    clinical_explanation_ar: 'يحتاج إجراء (خياطة، تجبير، إزالة جسم غريب…) → ملاحظة الأطفال — دون تغيير مستوى CTAS',
+    clinical_explanation_en: 'Needs a procedure (suturing, splint, foreign-body removal…) → Paediatric Observation — does not change CTAS',
     priority: 18,
     active: true,
     protocol_source: 'ED pediatric journey chart',
@@ -839,7 +840,8 @@ export function applyModifierLibraryEffects(answers = {}, levelIn = 5) {
     const effect = opt?.ctas_effect
       ?? (isYes ? mod.ctas_effect_yes : null);
     if (effect == null) {
-      if (category === 'safety_escalation' && (isYes || mod.critical_alert)) {
+      // Only a positive answer alerts: "No" / "Unknown" / "Resolved" never do.
+      if (category === 'safety_escalation' && isYes) {
         safetyApplied.push({
           id: mod.id,
           field,
