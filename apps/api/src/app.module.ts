@@ -7,6 +7,7 @@ import { TriageModule } from './triage/triage.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { SttModule } from './stt/stt.module';
 import { ClinicalLibrariesModule } from './clinical-libraries/clinical-libraries.module';
+import { RoutingConfigModule } from './routing-config/routing-config.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { HealthController } from './health.controller';
 import { validateEnv } from './auth/jwt-config';
@@ -32,6 +33,7 @@ export const ENV_FILE_PATHS = ['../../.env', '.env'];
     TrackingModule,
     SttModule,
     ClinicalLibrariesModule,
+    RoutingConfigModule,
     AnalyticsModule,
   ],
   controllers: [HealthController],

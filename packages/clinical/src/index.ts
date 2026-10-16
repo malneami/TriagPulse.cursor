@@ -67,8 +67,6 @@ export {
   MAX_QUESTIONS,
   resolveCtasDestination,
   CTAS_DESTINATIONS,
-  pedsObservationCase,
-  PEDS_ROUTING_GUIDE_VERSION,
 } from './ctas/modifierEngine.js';
 export {
   buildKnownFacts,
@@ -187,3 +185,19 @@ export type {
   CaseComplaint,
   CaseCondition,
 } from './stt/types';
+export {
+  DEFAULT_ROUTING_CONFIG,
+  ROUTING_ENGINE_VERSION,
+  ZONE_KINDS,
+  resolveDirection,
+  validateRoutingConfig,
+  setActiveRoutingConfig,
+  getActiveRoutingConfig,
+  resetRoutingConfigToBuiltin,
+  setZoneStatus,
+  getZoneStatus,
+  departmentFor,
+  ruleMatches,
+  overflowNote,
+  localMinutes,
+} from './routing/routingConfig.js';

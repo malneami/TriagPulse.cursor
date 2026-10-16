@@ -81,9 +81,13 @@ export function deriveAssessment({
   const rule = (modifierEvaluation?.direction_applied || []).find((d) => d.destination_hint);
   const directionReason = !direction ? null
     : direction.from_isolation_hold ? 'عزل تنفسي من الفرز البصري · Respiratory isolation from visual triage'
-      : direction.from_routing_guide ? `دليل توجيه الأطفال: ${direction.from_routing_guide.label_ar} → الملاحظة · Paediatric routing guide: ${direction.from_routing_guide.label_en} → Observation`
+      : direction.reason_ar ? `${direction.reason_ar} · ${direction.reason_en || ''}`
       : direction.from_direction_rule && rule ? (rule.label_ar || rule.label_en)
         : `CTAS ${level} · ${pediatric ? 'مسار الأطفال · pediatric routing' : 'مسار البالغين · adult routing'}`;
+
+  // Closed / busy zone → overflow: say so next to the reason.
+  const overflow = direction && clinical.overflowNote ? clinical.overflowNote(direction) : null;
+  const reasonWithOverflow = overflow ? [directionReason, `${overflow.ar} · ${overflow.en}`].filter(Boolean).join(' — ') : directionReason;
 
   return {
     engineLevel,
@@ -95,7 +99,7 @@ export function deriveAssessment({
     coreMissing,
     pediatric,
     direction,
-    directionReason,
+    directionReason: reasonWithOverflow,
     critical: (level != null && level <= 2) || !!modifierEvaluation?.critical_alert,
   };
 }

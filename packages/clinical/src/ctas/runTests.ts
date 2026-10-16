@@ -17,6 +17,7 @@ import {
 } from './modifierEngine.js';
 import { CTAS_MODIFIER_LIBRARY } from './modifierLibrary.js';
 import { runComorbidityTests } from './runComorbidityTests.js';
+import { runRoutingTests } from './runRoutingTests.js';
 import { runSttTests } from '../stt/runSttTests.js';
 import { runFeverValidationSuite } from './ctasFeverValidation.js';
 import { runClarifyingQuestionPipeline } from './questionPipeline.js';
@@ -794,7 +795,7 @@ for (const testCase of CTAS_TEST_CASES) {
 
 // ── Post-CTAS destinations (adult / pediatric journey charts) ───────────────
 {
-  const dest = (opts: Record<string, unknown>) => resolveCtasDestination(opts).destination;
+  const dest = (opts: Record<string, unknown>) => resolveCtasDestination(opts)?.destination;
 
   assert(dest({ level: 1, age: 40 }) === 'RESUSCITATION', 'DEST-01', 'adult CTAS 1 → RESUSCITATION');
   assert(dest({ level: 2, age: 40 }) === 'RESUSCITATION', 'DEST-02', 'adult CTAS 2 → RESUSCITATION');
@@ -829,16 +830,16 @@ for (const testCase of CTAS_TEST_CASES) {
   const obsHint = dest({
     level: 4,
     age: 45,
-    directionApplied: [{ destination_hint: 'URGENT_CARE' }],
+    answers: { recent_abdominal_surgery: 'نعم' },
   });
-  assert(obsHint === 'ADULT_OBSERVATION', 'DEST-12', 'URGENT_CARE hint remaps to adult observation', `got ${obsHint}`);
+  assert(obsHint === 'ADULT_OBSERVATION', 'DEST-12', 'recent surgery → adult observation (center rule in the default configuration)', `got ${obsHint}`);
 
   const acuteHint = dest({
     level: 5,
     age: 45,
-    directionApplied: [{ destination_hint: 'ACUTE_CARE' }],
+    answers: { return_visit_72h: 'نعم' },
   });
-  assert(acuteHint === 'ADULT_OBSERVATION', 'DEST-13', 'ACUTE_CARE hint remaps to adult observation', `got ${acuteHint}`);
+  assert(acuteHint === 'ADULT_OBSERVATION', 'DEST-13', 'return visit within 72 h → adult observation (center rule in the default configuration)', `got ${acuteHint}`);
 
   const ftHint = dest({
     level: 4,
@@ -977,6 +978,7 @@ runSttTests(assert);
 
 // ── Chronic illness rules, bedside tests, hydration, direction answers ─────
 runComorbidityTests(assert);
+runRoutingTests(assert);
 
 console.log(`\nCTAS tests: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

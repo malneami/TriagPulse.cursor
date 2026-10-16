@@ -12,10 +12,12 @@ import VisualTriage from './pages/VisualTriage';
 import PatientTracking from './pages/PatientTracking';
 import TrackingWall from './pages/TrackingWall';
 import ClinicalLibrariesAdmin from './pages/ClinicalLibrariesAdmin';
+import RoutingAdmin from './pages/RoutingAdmin';
 import ClinicalAnalytics from './pages/ClinicalAnalytics';
 import AiEvaluationDashboard from './pages/AiEvaluationDashboard';
 import Login from './pages/Login';
 import { syncClinicalLibrariesFromApi } from '@/lib/clinicalLibrariesSync';
+import { syncRoutingConfigFromApi } from './lib/routingConfigSync';
 
 function HomeRedirect() {
   const location = useLocation();
@@ -34,7 +36,10 @@ const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    if (isAuthenticated) syncClinicalLibrariesFromApi();
+    if (isAuthenticated) {
+      syncClinicalLibrariesFromApi();
+      syncRoutingConfigFromApi();
+    }
   }, [isAuthenticated]);
 
   if (isLoadingAuth) {
@@ -62,6 +67,7 @@ const AuthenticatedApp = () => {
         <Route path="/triage" element={<Guarded permission="perform_triage"><Triage /></Guarded>} />
         <Route path="/tracking" element={<Guarded permission="perform_triage"><PatientTracking /></Guarded>} />
         <Route path="/admin/libraries" element={<Guarded permission="manage_clinical_libraries"><ClinicalLibrariesAdmin /></Guarded>} />
+        <Route path="/admin/routing" element={<Guarded permission="manage_routing"><RoutingAdmin /></Guarded>} />
         <Route path="/admin/analytics" element={<Guarded permission="view_clinical_analytics"><ClinicalAnalytics /></Guarded>} />
         <Route path="/admin/ai-evaluation" element={<Guarded permission="view_clinical_analytics"><AiEvaluationDashboard /></Guarded>} />
       </Route>

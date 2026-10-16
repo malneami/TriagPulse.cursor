@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   view_dashboard: ['nurse', 'physician', 'admin'],
   manage_security: ['admin'],
   manage_clinical_libraries: ['admin'],
+  manage_routing: ['admin'],
+  set_zone_status: ['nurse', 'physician', 'admin'],
   view_clinical_analytics: ['admin', 'physician'],
 };
 

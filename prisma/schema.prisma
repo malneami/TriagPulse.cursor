@@ -44,6 +44,7 @@ model User {
   triageRecords TriageRecord[]  @relation("TriageCreator")
   auditEvents  AuditEvent[]
   libraryPublishes ClinicalLibraryPublish[]
+  routingPublishes RoutingConfigPublish[]
 
   @@map("users")
 }
@@ -205,6 +206,39 @@ model ClinicalLibraryPublish {
   @@index([isActive])
   @@index([publishedById])
   @@map("clinical_library_publishes")
+}
+
+/// Patient direction configuration (zones + direction rules), versioned like the
+/// clinical libraries. One active version per facility.
+model RoutingConfigPublish {
+  id            String   @id @default(uuid())
+  facilityCode  String   @default("default") @map("facility_code")
+  version       String
+  isActive      Boolean  @default(false) @map("is_active")
+  config        Json
+  changelog     String?
+  publishedAt   DateTime @default(now()) @map("published_at")
+  publishedById String   @map("published_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  publishedBy User @relation(fields: [publishedById], references: [id])
+
+  @@index([facilityCode, isActive])
+  @@index([publishedById])
+  @@map("routing_config_publishes")
+}
+
+/// Live zone status (busy switch). Not versioned: it changes during a shift.
+model ZoneStatus {
+  facilityCode   String   @default("default") @map("facility_code")
+  departmentCode String   @map("department_code")
+  zoneCode       String   @map("zone_code")
+  busy           Boolean  @default(false)
+  updatedById    String?  @map("updated_by_id")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@id([facilityCode, departmentCode, zoneCode])
+  @@map("zone_status")
 }
 
 model AuditEvent {

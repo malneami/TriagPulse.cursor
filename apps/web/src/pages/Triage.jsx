@@ -25,6 +25,9 @@ import {
   mapSttSessionToPatientUpdates,
   resolveCtasDestination,
   CTAS_DESTINATIONS,
+  overflowNote,
+  getActiveRoutingConfig,
+  departmentFor,
   getBankQuestionById,
   getActiveModifiers,
   clinicalSafetyDisclaimer as sttSafetyDisclaimer,
@@ -961,6 +964,14 @@ export default function Triage() {
           agreement: nurseValidation?.agreed ?? true,
           override_reason: nurseValidation?.overrideReason || null,
           library_versions: ctasResult?.library_versions || getLibraryVersions(),
+          // Which direction configuration and rule chose the zone (for audit / review).
+          routing: {
+            config_version: getActiveRoutingConfig()?.version || null,
+            suggested_zone: directionAi?.destination || null,
+            rule_id: directionAi?.from_routing_rule?.id || null,
+            overflow: directionAi?.overflow || null,
+            final_zone: finalDirection?.destination || null,
+          },
           triage_duration_min: startedAt ? Math.round((Date.now() - new Date(startedAt).getTime()) / 60000) : null,
           modifier_answers: clarifyingAnswers,
           known_facts: modifierEvaluation?.known_facts || null,
@@ -1075,7 +1086,7 @@ export default function Triage() {
     answers: clarifyingAnswers,
     visualTriage,
     complaints: cc.complaints,
-  }, { CTAS_REQUIRED_FIELDS: REQUIRED_FIELDS, resolveCtasDestination });
+  }, { CTAS_REQUIRED_FIELDS: REQUIRED_FIELDS, resolveCtasDestination, overflowNote });
   const shownLevel = a.level;
   const directionAi = a.direction;
   const directionReason = a.directionReason;
@@ -1232,7 +1243,14 @@ export default function Triage() {
     ...(outstanding.length ? [`ناقص · Missing: ${outstanding.join('، ')}`] : []),
   ];
 
-  const directionOptions = (a.pediatric ? PEDIATRIC_DIRECTIONS : ADULT_DIRECTIONS).map((k) => CTAS_DESTINATIONS[k]);
+  // The nurse may choose any active zone of the patient's department (from the active
+  // direction configuration), shown in the same shape as the suggestion.
+  const routingDept = departmentFor(getActiveRoutingConfig(), patient.age);
+  const directionOptions = routingDept
+    ? routingDept.zones.filter((z) => z.active !== false).map((z) => ({
+        destination: z.code, destination_ar: z.name_ar, destination_en: z.name_en, color: z.color, kind: z.kind,
+      }))
+    : (a.pediatric ? PEDIATRIC_DIRECTIONS : ADULT_DIRECTIONS).map((k) => CTAS_DESTINATIONS[k]);
   const documentInput = {
     patient,
     patientId: urlPid || patient.patient_id || activeJourney?.patient_id,

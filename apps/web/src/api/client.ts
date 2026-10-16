@@ -179,6 +179,17 @@ export const api = {
       request(`/clinical-libraries/${id}/activate`, { method: 'POST', body: '{}' }),
     get: (id) => request(`/clinical-libraries/${id}`),
   },
+  routingConfig: {
+    current: () => request('/routing-config/current'),
+    history: () => request('/routing-config/history'),
+    publish: (body) =>
+      request('/routing-config/publish', { method: 'POST', body: JSON.stringify(body) }),
+    activate: (id) =>
+      request(`/routing-config/${id}/activate`, { method: 'POST', body: '{}' }),
+    useBuiltin: () => request('/routing-config/use-builtin', { method: 'POST', body: '{}' }),
+    setBusy: (department, zone, busy) =>
+      request('/routing-config/zone-status', { method: 'POST', body: JSON.stringify({ department, zone, busy }) }),
+  },
   analytics: {
     agreement: (days = 30) => request(`/analytics/agreement?days=${days}`),
     exportValidated: (limit = 200, flaggedOnly = false) =>
