@@ -136,6 +136,9 @@ export default function Triage() {
   const lastAlertKeyRef = useRef(null);
   const manualEditedFieldsRef = useRef(new Set());
   const sttFieldConfidenceRef = useRef({});
+  // Last value the dictation gave each field. A typed correction is replaced only when
+  // the dictation says something NEW for that field, not when it repeats the old value.
+  const sttLastDictatedRef = useRef({});
   const autoComplaintKeyRef = useRef(null);
   const prevComplaintTextRef = useRef('');
 
@@ -621,8 +624,10 @@ export default function Triage() {
 
   // Auto-trigger modifier engine when complaint + (modifier OR basic vitals)
   const basicVitalsComplete = ['hr', 'bp_systolic', 'spo2', 'rr', 'chief_complaint'].every((k) => patient[k]);
+  // A dictation is enough to start: findings said aloud (stridor, distress…) must count
+  // even when a vital is not taken yet (e.g. no BP in a small child, or typed-text mode).
   const readyForClarifying = Boolean(
-    patient.chief_complaint && (selectedModifier || basicVitalsComplete),
+    patient.chief_complaint && (selectedModifier || basicVitalsComplete || patient.transcription),
   );
   useEffect(() => {
     if (!readyForClarifying || questionsGeneratedRef.current || ctasResult || loadingQuestions) return;
@@ -661,6 +666,14 @@ export default function Triage() {
 
     // With several complaints the primary one is chosen below (most urgent, or the nurse's pick).
     const multiComplaint = (sessionOutput.case_details?.complaints?.length || 0) >= 2;
+    // Each update re-reads the WHOLE transcript, so earlier readings come back every time.
+    // Only a value that differs from what the dictation said before is a new reading.
+    const newlyDictated = new Set();
+    for (const [key, value] of Object.entries(updates)) {
+      const last = sttLastDictatedRef.current[key];
+      if (last === undefined || String(last) !== String(value)) newlyDictated.add(key);
+      sttLastDictatedRef.current[key] = value;
+    }
     update((prev) => {
       const next = { ...prev };
       if (sessionOutput.case_details) {
@@ -688,9 +701,10 @@ export default function Triage() {
         const nextConf = fieldConfidence[key] ?? 0;
         const ctasKey = key === 'weight' ? 'weight' : key === 'bp_diastolic' ? 'bp_systolic' : key;
         const gapBoost = mentionedGap.includes(ctasKey) || mentionedGap.includes(key);
-        // Voice correction: a new distinct value from re-dictation overwrites, even if
-        // confidence is equal or the field was previously typed.
-        if (!force && manualEditedFieldsRef.current.has(key) && !valueChanged) continue;
+        // Voice correction: a NEW dictated value overwrites, even if the field was typed.
+        // The same old reading coming back with the rest of the transcript never undoes
+        // the nurse's typed correction.
+        if (!force && manualEditedFieldsRef.current.has(key) && (!valueChanged || !newlyDictated.has(key))) continue;
         if (!force && !gapBoost && !valueChanged && hasPrev && nextConf <= prevConf) continue;
         next[key] = value;
         if (valueChanged) manualEditedFieldsRef.current.delete(key);
@@ -1101,7 +1115,9 @@ export default function Triage() {
   function levelReason() {
     const L = nurseValidation?.nurseLevel ?? shownLevel;
     if (L == null || nurseValidation) return null;
-    if (conflictFloor === L) {
+    // Only when the unconfirmed reading is what raises the level (not merely equal to it).
+    const withoutConflict = [liveResult?.level, complaintFloor, comorb.floor, evalLevel].filter((n) => n != null);
+    if (conflictFloor === L && (!withoutConflict.length || Math.min(...withoutConflict) > L)) {
       const c = openConflicts.find((x) => x.values.some((v) => {
         try { return computeLiveCTAS(withReading(patient, x, v), answersWithModifier)?.level === L; } catch { return false; }
       }));

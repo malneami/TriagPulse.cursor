@@ -86,7 +86,7 @@ export interface CaseDetails {
   no_known_history: boolean;
   history_asked: boolean;
   llm_rejected: number;
-  vital_conflicts?: Array<{ field: 'hr' | 'spo2' | 'rr' | 'temperature' | 'gcs' | 'bp'; values: string[]; evidence: string }>;
+  vital_conflicts?: Array<{ field: 'hr' | 'spo2' | 'rr' | 'temperature' | 'gcs' | 'bp' | 'pain_score'; values: string[]; evidence: string }>;
   bedside?: {
     glucose: { value: number; evidence: string; converted_from_mgdl: boolean } | null;
     ketones: { value: 'positive' | 'negative'; evidence: string } | null;

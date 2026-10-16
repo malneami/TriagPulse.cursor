@@ -669,7 +669,7 @@ function parseVitals(text: string): { value: VitalSignEntry[]; span: string; con
  * Each entry lists the distinct values in the order they were said.
  */
 export interface VitalConflict {
-  field: 'hr' | 'spo2' | 'rr' | 'temperature' | 'gcs' | 'bp';
+  field: 'hr' | 'spo2' | 'rr' | 'temperature' | 'gcs' | 'bp' | 'pain_score';
   values: string[];
   evidence: string;
 }
@@ -711,6 +711,18 @@ export function findVitalConflicts(text: string): VitalConflict[] {
     bpSpans.push(m[0].trim());
   }
   if (bps.length > 1) out.push({ field: 'bp', values: bps, evidence: bpSpans.join(' … ').slice(0, 160) });
+  // Pain score: only a number tied to the scale ("pain 4 out of 10", "الألم 9 من 10",
+  // "pain score 7"), so "pain started 2 hours ago" is never read as a score.
+  const painRe = /(?:pain\s*score|pain(?:\s+(?:is|at|now|is\s+now|now\s+is))?|درجة\s*الألم|الألم|الالم|ألم)\s*(?:is|at|of|now|الحين|الآن|صار|[:=])?\s*(\d{1,2})\s*(?:out\s*of\s*(?:10|ten)|\/\s*10|من\s*10|من\s*عشرة)|pain\s*score\s*(?:is|of|[:=])?\s*(\d{1,2})\b/gi;
+  const pains: string[] = [];
+  const painSpans: string[] = [];
+  for (const m of t.matchAll(painRe)) {
+    const n = Number(m[1] ?? m[2]);
+    if (!(n >= 0 && n <= 10)) continue;
+    if (!pains.includes(String(n))) pains.push(String(n));
+    painSpans.push(m[0].trim());
+  }
+  if (pains.length > 1) out.push({ field: 'pain_score', values: pains, evidence: painSpans.join(' … ').slice(0, 160) });
   return out;
 }
 

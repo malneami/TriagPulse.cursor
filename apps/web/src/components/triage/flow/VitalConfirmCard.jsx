@@ -7,6 +7,7 @@ const LABEL = {
   temperature: { ar: 'الحرارة', en: 'Temperature' },
   gcs: { ar: 'الوعي (GCS)', en: 'GCS' },
   bp: { ar: 'الضغط', en: 'Blood pressure' },
+  pain_score: { ar: 'درجة الألم', en: 'Pain score' },
 };
 export const vitalLabel = (field) => LABEL[field] || { ar: field, en: field };
 
