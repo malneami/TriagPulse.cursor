@@ -531,6 +531,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     ageGroup,
     isPediatric,
     chronicityStable: !!normalized.flags.chronic_stable_vitals,
+    age: patient.age,
   });
 
   const feverAdult = (!isPediatric && hasFever)

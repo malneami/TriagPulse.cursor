@@ -15,6 +15,7 @@ import { detectRedFlags } from '../alerts/redFlagEngine.js';
 import { resolveClinicalPathway } from './resolveClinicalPathway.js';
 import { detectSymptomChronicity } from './detectSymptomChronicity.js';
 import { findComplaintMentions } from './resolveChiefComplaint.js';
+import { computeLiveCTAS } from './vitalRanges.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -368,5 +369,37 @@ export function runComorbidityTests(assert: Assert) {
       JSON.stringify([st('لا يوجد أي مشاكل مزمنة أو أدوية'), st('no chronic illness'), st('known diabetic, chronic disease'), st('chronic back pain for years')]));
     assert(cc('اشتكي من ألم واحمرار في العين') === 'ألم واحمرار في العين' && cc('المريض يشتكي أيضا من احمرار حول العين') === 'احمرار حول العين',
       'CR-59', '«اشتكي من…» is a complaint; «يشتكي أيضا من…» drops «أيضا»', JSON.stringify([cc('اشتكي من ألم واحمرار في العين'), cc('المريض يشتكي أيضا من احمرار حول العين')]));
+  }
+
+  // ── Tachycardia / bradycardia for age (approved T1–T6, 2026-10-16) ──
+  {
+    const base = { chief_complaint: 'epigastric pain', bp_systolic: '120', spo2: '98', rr: '18', temperature: '37', gcs: '15', pain_score: 5 };
+    const lvl = (p: Record<string, unknown>, a: Record<string, unknown> = {}) => (computeLiveCTAS as any)({ ...base, ...p }, a).level;
+    const alert = (p: Record<string, unknown>) => (detectRedFlags({ ...base, ...p }, {}) as any)?.ctas_level ?? null;
+    assert(lvl({ age: '55', hr: '180' }) === 2, 'CR-60', 'Adult epigastric pain + HR 180, normal BP → CTAS 2 (T1)', String(lvl({ age: '55', hr: '180' })));
+    assert(lvl({ age: '55', hr: '130' }) === 2 && lvl({ age: '55', hr: '40' }) === 2, 'CR-61', 'Adult HR 130 and HR 40 → CTAS 2 (T1)');
+    assert(lvl({ age: '55', hr: '180', bp_systolic: '85' }) === 1 && lvl({ age: '55', hr: '180', gcs: '14' }) === 1, 'CR-62', 'Severe rate + SBP < 90 or GCS < 15 → CTAS 1 (T2)');
+    assert(lvl({ age: '55', hr: '118', temperature: '38.6' }, { expected_tachycardia: 'نعم' }) === 3 && lvl({ age: '55', hr: '125' }) === 3, 'CR-63', 'Adult HR 110–129 stays CTAS 3 (T3)', `${lvl({ age: '55', hr: '118', temperature: '38.6' })}`);
+    assert(lvl({ age: '2', hr: '165' }) === 2 && lvl({ age: '2', hr: '155' }) === 3 && lvl({ age: '8', hr: '145' }) === 2, 'CR-64', 'Children use age limits: 2 y HR 165 → 2, 155 → 3; 8 y HR 145 → 2 (T4)');
+    let agree = true; const bad: string[] = [];
+    for (const age of ['0.1', '0.5', '2', '4', '8', '15', '30', '70']) {
+      for (const hr of ['35', '50', '60', '90', '128', '130', '145', '160', '175', '195']) {
+        const a = alert({ age, hr }); const L = lvl({ age, hr });
+        if (a != null && L > a) { agree = false; bad.push(`${age}y HR ${hr}: alert ${a} CTAS ${L}`); }
+      }
+    }
+    assert(agree, 'CR-65', 'A heart-rate alert never shows with a less urgent CTAS (T5)', bad.slice(0, 4).join('; '));
+    assert(alert({ age: '2', hr: '140' }) === null && alert({ age: '55', hr: '140' }) === 2, 'CR-66', 'HR alert is age-aware: 2 y HR 140 no alert; adult HR 140 → 2');
+  }
+  {
+    const p = (age: string, cc: string, tx = cc) => ({ age, chief_complaint: cc, transcription: tx, hr: '90', bp_systolic: '130', spo2: '98', rr: '18', temperature: '37', gcs: '15', pain_score: 5 });
+    const asks = (pt: Record<string, unknown>, a: Record<string, unknown> = {}) => ((evaluateModifierEngine as any)({ patient: pt, answers: a, pathway: 'abdominal_pain', initialLevel: 4 }).questions || []).map((q: any) => q.field);
+    assert(asks(p('55', 'epigastric pain')).includes('epigastric_cardiac_features') && asks(p('55', 'ألم في فم المعدة')).includes('epigastric_cardiac_features'), 'CR-67', 'Adult > 40 with epigastric pain is asked about cardiac features (T6)');
+    assert(!asks(p('35', 'epigastric pain')).includes('epigastric_cardiac_features') && !asks(p('55', 'lower abdominal pain')).includes('epigastric_cardiac_features'), 'CR-68', 'Not asked under 40 or for lower abdominal pain');
+    const yes = (evaluateModifierEngine as any)({ patient: p('55', 'epigastric pain'), answers: { epigastric_cardiac_features: 'نعم' }, pathway: 'abdominal_pain', initialLevel: 4 }).updated_ctas;
+    const said = (evaluateModifierEngine as any)({ patient: p('55', 'epigastric pain', 'epigastric pain with sweating since one hour'), answers: {}, pathway: 'abdominal_pain', initialLevel: 4 }).updated_ctas;
+    assert(yes === 2 && said === 2, 'CR-69', 'Cardiac features (answered or said: sweating) → CTAS 2', `${yes} ${said}`);
+    const mention = findComplaintMentions('epigastric pain') as any[];
+    assert((computeLiveCTAS as any)(p('55', 'gastric pain'), {}).assessment_trail.step1_chief_complaint.complaint.name_en === 'Abdominal Pain', 'CR-70', '"gastric / epigastric pain" is recognised as abdominal pain', JSON.stringify(mention?.[0] || null).slice(0, 80));
   }
 }

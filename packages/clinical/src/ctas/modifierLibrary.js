@@ -15,6 +15,7 @@ import { getRuntimeModifiers } from '../libraries/runtime.js';
  *   name_ar: string,
  *   pathways: string[],
  *   age_applicability: AgeApplicability,
+ *   min_age_years?: number,          // ask only when age is known and above this
  *   field: string,
  *   detect_patterns: RegExp[],
  *   related_medications?: RegExp[],
@@ -327,6 +328,45 @@ export const CTAS_MODIFIER_LIBRARY = [
     protocol_source: 'CTAS 2025 Abdominal',
     version: '1.0.0',
     review_date: '2026-08-05',
+  },
+  {
+    // Approved 2026-10-16 (T6): epigastric pain in an adult over 40 may be cardiac.
+    id: 'mod_epigastric_cardiac',
+    name: 'Epigastric pain with cardiac features (adult > 40)',
+    name_ar: 'ألم شرسوفي مع علامات قلبية (بالغ فوق 40)',
+    pathways: ['abdominal_pain', 'abdominal_pain_unspecified'],
+    age_applicability: 'adult',
+    min_age_years: 40,
+    field: 'epigastric_cardiac_features',
+    detect_positive_only: true,
+    detect_patterns: [
+      /(?:sweat\w*|diaphore\w*|clammy)[^.]{0,60}(?:pain|epigastr)|(?:pain|epigastr\w*)[^.]{0,60}(?:sweat\w*|diaphore\w*|clammy)|radiat\w*\s+(?:to\s+)?(?:the\s+)?(?:left\s+)?(?:arm|jaw|neck|shoulder|chest)|(?:pressure|tightness|heaviness)\s+(?:in|on)\s+(?:the\s+)?(?:chest|upper\s+abdomen|epigastri\w*)|(?:pain|epigastr\w*)[^.]{0,40}(?:on|with)\s+exertion/i,
+      /(?:تعرق|عرق|يعرق|متعرق)[^.]{0,60}(?:ألم|الم|وجع)|(?:ألم|الم|وجع)[^.]{0,60}(?:تعرق|عرق|يعرق|متعرق)|(?:ينتشر|يمتد|منتشر|ممتد)\s+(?:إلى|الى|ل)\s*(?:ال)?(?:يد|ذراع|كتف|فك|رقبة|صدر)|(?:ثقل|ضغط|ضيقة)\s+(?:في|على)\s+(?:ال)?(?:صدر|معدة)|(?:مع|عند)\s+(?:ال)?(?:مجهود|جهد|المشي)/i,
+    ],
+    ask_when_patterns: [
+      /epigastr\w*|gastric|upper\s+abdom\w*|upper\s+(?:stomach|belly)|stomach|heartburn|indigestion|dyspeps\w*/i,
+      /المعدة|معدة|معدته|معدتها|شرسوف\w*|أعلى\s*البطن|اعلى\s*البطن|فوق\s*السرة|حرقة|حموضة|عسر\s*هضم/i,
+    ],
+    short_ar: 'ألم شرسوفي مع علامات قلبية',
+    short_en: 'Epigastric pain, cardiac features',
+    question_ar: 'هل توجد علامات قلبية مع ألم أعلى البطن: تعرق، ضيق نفس، ألم يمتد للذراع أو الفك أو الظهر، ألم مع المجهود، أو تاريخ أمراض قلب أو سكري؟',
+    question_en: 'Any cardiac features with the upper abdominal pain: sweating, breathlessness, pain spreading to the arm, jaw or back, pain on exertion, or known heart disease or diabetes?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 2 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 2,
+    critical_alert: true,
+    question_category: 'safety_escalation',
+    clinical_explanation_ar: 'ألم شرسوفي فوق 40 سنة مع علامات قلبية → مسار ألم الصدر القلبي → CTAS 2 وتخطيط قلب خلال 10 دقائق',
+    clinical_explanation_en: 'Epigastric pain over 40 with cardiac features → cardiac chest-pain pathway → CTAS 2, ECG within 10 minutes',
+    priority: 13,
+    active: true,
+    protocol_source: 'CTAS 2025 Chest pain — cardiac features (atypical presentation); approved by Dr. Alnami 2026-10-16',
+    version: '1.0.0',
+    review_date: '2026-10-16',
   },
   {
     id: 'mod_abd_recent_surgery',
@@ -899,7 +939,7 @@ function enrichModifier(mod) {
   };
 }
 
-export const MODIFIER_LIBRARY_VERSION = '1.4.0';
+export const MODIFIER_LIBRARY_VERSION = '1.5.0';
 
 export function getActiveModifiers() {
   const runtime = getRuntimeModifiers();

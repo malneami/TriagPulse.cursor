@@ -61,7 +61,10 @@ const EXTRA_SYNONYMS = {
   headache: ['headache', 'head pain', 'migraine', 'صداع', 'وجع رأس'],
   abdominal_pain: [
     'abdominal pain', 'stomach pain', 'belly pain', 'flank pain', 'loin pain',
+    'epigastric pain', 'epigastric', 'gastric pain', 'upper abdominal pain', 'stomach ache', 'stomachache', 'tummy pain',
     'ألم بطني', 'ألم في البطن', 'بطن', 'ألم خاصرة', 'خاصرة',
+    'ألم في المعدة', 'ألم المعدة', 'وجع المعدة', 'وجع في المعدة', 'ألم فم المعدة', 'ألم في فم المعدة', 'فم المعدة',
+    'ألم أعلى البطن', 'ألم في أعلى البطن', 'ألم شرسوفي', 'مغص',
   ],
   uti: [
     'uti', 'dysuria', 'urinary symptoms', 'burning urine', 'flank pain uti',

@@ -60,6 +60,8 @@ function pathwayMatches(modifier, pathway, text = '') {
 function ageMatches(modifier, patient = {}) {
   const age = parseFloat(patient.age);
   const pediatric = Number.isFinite(age) && age < 14;
+  // Optional age limit ("adults over 40"): asked only when the age is known and above it.
+  if (modifier.min_age_years != null && !(Number.isFinite(age) && age > modifier.min_age_years)) return false;
   if (modifier.age_applicability === 'both' || !modifier.age_applicability) return true;
   if (modifier.age_applicability === 'pediatric') return pediatric;
   if (modifier.age_applicability === 'adult') {

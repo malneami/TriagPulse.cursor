@@ -3,6 +3,8 @@ import { getRedFlagLibrary } from '../libraries/runtime';
 import { detectKnownModifier } from '../ctas/modifierEngine.js';
 // @ts-ignore — plain JS module
 import { getActiveModifiers } from '../ctas/modifierLibrary.js';
+// @ts-ignore — plain JS module
+import { severeHeartRate } from '../ctas/rules/hemodynamicRules.js';
 
 const YES_RE = /^(نعم|yes|true|1)$/i;
 const NO_RE = /^(لا|no|false|0)$/i;
@@ -97,14 +99,24 @@ export function detectRedFlags(
       `SBP ${sbp} — hemodynamic instability`,
     );
   }
-  if (hr !== null && hr > th.hr_severe) {
-    add(2, `نبض ${hr} — تسرع شديد`, `HR ${hr} — severe tachycardia`);
+  // Same age table as the CTAS rule (T1–T5), so the alert and the level agree.
+  const ageYears = toNumber(patient.age);
+  const severeRate = severeHeartRate(hr, ageYears) as { kind: string; limit: number } | null;
+  if (hr !== null && severeRate) {
+    const unstable = hypotensiveForAge(sbp, ageYears)
+      || (gcs !== null && gcs < 15)
+      || SHOCK_SIGNS.test([patient.chief_complaint, patient.transcription, answers?.notes].filter(Boolean).join(' '));
+    if (severeRate.kind === 'tachycardia') {
+      add(unstable ? 1 : 2, `نبض ${hr} — تسرع شديد للعمر`, `HR ${hr} — severe tachycardia for age`);
+    } else {
+      add(unstable ? 1 : 2, `نبض ${hr} — بطء شديد للعمر`, `HR ${hr} — severe bradycardia for age`);
+    }
   }
   if (rr !== null && rr > th.rr_severe) {
     add(2, `تنفس ${rr}/دقيقة — ضائقة تنفسية`, `RR ${rr}/min — respiratory distress`);
   }
 
-  const age = toNumber(patient.age);
+  const age = ageYears;
   for (const rule of lib.text_rules) {
     if (rule.active === false) continue;
     if (rule.id === 'rf_bleeding') {

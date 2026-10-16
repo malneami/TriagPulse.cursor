@@ -60,8 +60,7 @@ const SCENARIOS = [
   // ── Children (age-adjusted vitals) ────────────────────────────────
   { id: 'P1', name: 'Toddler 2 y, fever 39.5, HR 180, RR 50',
     patient: { ...base, age: '2', gender: 'female', chief_complaint: 'fever', pain_score: 0, hr: '180', bp_systolic: '95', spo2: '95', rr: '50', temperature: '39.5', weight: '12' },
-    expect: { maxLevel: 2, direction: 'PEDIATRIC_RESUS' },
-    knownIssue: 'Fever with HR 180 and RR 50 at 2 y meets pediatric SIRS; the engine treats the tachycardia as expected with fever and waits for appearance (CTAS 3).' },
+    expect: { maxLevel: 2, direction: 'PEDIATRIC_RESUS' } },
   { id: 'P2', name: 'Child 8 y, HR 110 (normal for age), mild cough',
     patient: { ...base, age: '8', gender: 'male', chief_complaint: 'cough', pain_score: 0, hr: '110', bp_systolic: '100', spo2: '98', rr: '22', temperature: '37.4', weight: '26' },
     expect: { maxLevel: 5, minLevel: 4 } },
