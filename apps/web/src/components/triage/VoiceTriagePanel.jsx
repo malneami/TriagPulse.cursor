@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mic, Square, Loader2, AlertTriangle, Keyboard } from 'lucide-react';
 import {
-  detectTranscriptLanguage,
   conservativeTranscriptCleanup,
   mergeTranscriptLines,
   getLiveTranscript,
@@ -458,16 +457,10 @@ export default function VoiceTriagePanel({
           runExtractRef.current?.(getLiveTranscript(next, ''), true);
           return next;
         });
-        // Web Speech takes exactly one language, so the best it can do is follow the
-        // dominant one. It cannot code-switch — that is why it only runs without a key.
-        const profile = detectTranscriptLanguage(line);
-        if (profile.detected_language === 'english' && lang !== 'en-US') {
-          setRecognitionLang('en-US');
-          restartRecognitionRef.current?.('en-US');
-        } else if (profile.detected_language === 'arabic' && lang !== 'ar-SA') {
-          setRecognitionLang('ar-SA');
-          restartRecognitionRef.current?.('ar-SA');
-        }
+        // Web Speech takes exactly one language and cannot code-switch. It used to flip
+        // to English after one English word ("complaint…"), and the Arabic that followed
+        // came out as English-sounding nonsense. The nurse now chooses the language
+        // (Arabic by default) with the switch under the transcript.
       } else if (interim.trim() && sessionIdRef.current) {
         const live = getLiveTranscript(finalLinesRef.current, conservativeTranscriptCleanup(interim));
         runExtractRef.current?.(live, false);
@@ -775,7 +768,7 @@ export default function VoiceTriagePanel({
     checking: 'جارٍ التحقق · Checking',
     realtime: 'عربي + English · live',
     openai: 'عربي + English',
-    openai_error: 'الخادم غير متاح · Server STT unavailable',
+    openai_error: 'الصوت ثنائي اللغة غير متاح · Bilingual speech unavailable',
     browser_batch: 'عربي + English',
     browser: 'لغة واحدة · Single language',
     manual: 'إدخال يدوي · Manual',
@@ -803,11 +796,27 @@ export default function VoiceTriagePanel({
 
   const notices = (
     <>
-      {browserOnly && (
-        <p className="text-sm text-graphite flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+      {(browserOnly || sttMode === 'openai_error' || sttMode === 'browser_batch') && (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-graphite">
+          <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span>التعرف الصوتي بلغة واحدة (المتصفح) · Browser speech: one language at a time</span>
-        </p>
+          <span className="inline-flex rounded-xl border border-mist overflow-hidden" role="group" aria-label="لغة التعرف / Speech language">
+            {[['ar-SA', 'عربي'], ['en-US', 'English']].map(([code, label]) => (
+              <button
+                key={code}
+                type="button"
+                aria-pressed={recognitionLang === code}
+                onClick={() => {
+                  setRecognitionLang(code);
+                  if (recordingRef.current && browserCaptionActiveRef.current) restartRecognitionRef.current?.(code);
+                }}
+                className={`min-h-[36px] px-3 text-sm font-semibold ${recognitionLang === code ? 'bg-ink text-white' : 'bg-white text-ink'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </span>
+        </div>
       )}
       {sttError && (
         <div role="status" className="bg-paper border border-mist rounded-xl px-3 py-2 text-sm text-ink flex items-start justify-between gap-2">

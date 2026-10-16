@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { BILLING_MESSAGE, clearOpenAiBillingBlocked, markOpenAiBillingBlocked, openAiBillingBlocked } from './stt-billing';
 import { randomUUID } from 'crypto';
 import {
   CLINICAL_STT_VOCABULARY,
@@ -280,6 +281,7 @@ export class SttService {
     realtime: boolean;
     realtime_model: string;
     lastError?: string;
+    billing?: boolean;
   }> {
     const apiKey = process.env.OPENAI_API_KEY?.trim();
     const model = process.env.OPENAI_STT_MODEL || 'gpt-transcribe';
@@ -292,6 +294,19 @@ export class SttService {
         realtime: false,
         realtime_model,
         lastError: 'OPENAI_API_KEY not set',
+      };
+    }
+
+    // No credits: listing models still works, so the probe below would say "ready".
+    if (openAiBillingBlocked()) {
+      return {
+        configured: true,
+        model,
+        reachable: false,
+        realtime: false,
+        realtime_model,
+        lastError: BILLING_MESSAGE,
+        billing: true,
       };
     }
 
@@ -416,6 +431,7 @@ export class SttService {
         const data = (await res.json()) as { text?: string };
         const text = conservativeTranscriptCleanup(data.text || '');
         this.lastOpenAiError = null;
+        clearOpenAiBillingBlocked();
         return {
           text,
           confidence: text ? 0.88 : 0,
@@ -427,6 +443,7 @@ export class SttService {
       const err = await res.text();
       if (res.status === 429 || /no credits|insufficient.?quota|billing|payment.?required/i.test(err)) {
         lastError = 'OpenAI account has no credits remaining — add billing credits or use browser speech.';
+        markOpenAiBillingBlocked();
         this.lastOpenAiError = lastError;
         this.logger.warn(lastError);
         break;
