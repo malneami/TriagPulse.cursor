@@ -2,6 +2,8 @@
  * Conversation-first symptom chronicity detection.
  * States: new | acute_on_chronic | worse_than_baseline | chronic_unchanged | uncertain
  */
+import { findingStatus } from './negation.js';
+
 
 /** @typedef {'new'|'acute_on_chronic'|'worse_than_baseline'|'chronic_unchanged'|'uncertain'} SymptomChronicity */
 
@@ -88,11 +90,16 @@ function detectFromText(text) {
     {
       status: 'chronic_unchanged',
       confidence: 0.7,
-      re: /\bchronic\b(?!\s*on)|longstanding|long[- ]standing|مزمن(?!\s*على)/i,
+      // The SYMPTOM is chronic ("chronic pain", «ألم مزمن»), not the patient's
+      // illnesses: «لا يوجد أي مشاكل مزمنة» / "no chronic illness" said the opposite and
+      // lowered acute pain to CTAS 5.
+      re: /\bchronic\s+(?:pain|cough|headache|back\s*pain|abdominal\s*pain|symptom\w*|rash|itch\w*)|(?:pain|cough|headache|symptoms?)\s+(?:is|are|has\s+been)\s+(?:chronic|longstanding)|long[- ]?standing\s+(?:pain|cough|headache|symptom\w*)|(?:ألم|الألم|الم|كحة|سعال|صداع|حكة)\s+مزمن\S*|(?:الألم|الكحة|السعال|الصداع)\s+(?:من\s+)?(?:زمان|فترة\s+طويلة|سنين|سنوات)/i,
     },
   ];
 
   for (const rule of rules) {
+    const st = findingStatus(rule.re, tx);
+    if (st !== 'positive') continue;
     const m = tx.match(rule.re);
     if (m) return { status: rule.status, confidence: rule.confidence, matched: m[0] };
   }

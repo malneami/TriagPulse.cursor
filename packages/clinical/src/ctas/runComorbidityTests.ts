@@ -13,6 +13,7 @@ import { getActiveModifiers } from './modifierLibrary.js';
 import { resolveCtasDestination } from './ctasDestination.js';
 import { detectRedFlags } from '../alerts/redFlagEngine.js';
 import { resolveClinicalPathway } from './resolveClinicalPathway.js';
+import { detectSymptomChronicity } from './detectSymptomChronicity.js';
 import { findComplaintMentions } from './resolveChiefComplaint.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
@@ -356,5 +357,16 @@ export function runComorbidityTests(assert: Assert) {
     const pw = (t: string) => resolveClinicalPathway({ patient: { chief_complaint: '' }, transcript: t }).pathway;
     assert(pw('rash for 3 days, no fever') !== 'fever' && pw('عنده حساسية من المكسرات') !== 'multisystem_trauma_blunt',
       'CR-57', '"no fever" is not a fever pathway; «المكسرات» (nuts) is not a fracture', JSON.stringify([pw('rash for 3 days, no fever'), pw('عنده حساسية من المكسرات')]));
+  }
+
+  {
+    const st = (t: string) => (detectSymptomChronicity({ patient: {}, answers: {}, transcript: t }) as { status: string }).status;
+    const cc = (t: string) => (mapSttSessionToPatientUpdates(extractFieldsFromTranscript(t)).updates as Record<string, string>).chief_complaint;
+    assert(st('لا يوجد أي مشاكل مزمنة أو أدوية') !== 'chronic_unchanged' && st('no chronic illness') !== 'chronic_unchanged'
+      && st('known diabetic, chronic disease') !== 'chronic_unchanged' && st('chronic back pain for years') === 'chronic_unchanged',
+      'CR-58', '"no chronic problems" / chronic illnesses do not make the pain chronic; "chronic back pain" does',
+      JSON.stringify([st('لا يوجد أي مشاكل مزمنة أو أدوية'), st('no chronic illness'), st('known diabetic, chronic disease'), st('chronic back pain for years')]));
+    assert(cc('اشتكي من ألم واحمرار في العين') === 'ألم واحمرار في العين' && cc('المريض يشتكي أيضا من احمرار حول العين') === 'احمرار حول العين',
+      'CR-59', '«اشتكي من…» is a complaint; «يشتكي أيضا من…» drops «أيضا»', JSON.stringify([cc('اشتكي من ألم واحمرار في العين'), cc('المريض يشتكي أيضا من احمرار حول العين')]));
   }
 }

@@ -440,7 +440,7 @@ function parseChiefComplaint(rawText: string): { value: string; span: string; co
   const text = positiveClauses(rawText);
   if (!text) return null;
   const patterns = [
-    /(?:chief complaint|complaint|complain(?:s|ing)?(?:\s+(?:about|of|from))?|presenting with|presents with|c\/o|came with|شكوى|الشكوى(?: الرئيسية)?|كومبلين|يشكو(?: من)?|يشتكي(?: من)?|يعاني من)\s*(?:is|of|:)?\s*([^.،;\n]+)/i,
+    /(?:chief complaint|complaint|complain(?:s|ing)?(?:\s+(?:about|of|from))?|presenting with|presents with|c\/o|came with|شكوى|الشكوى(?: الرئيسية)?|كومبلين|(?:يشكو|يشتكي|اشتكي|أشتكي|تشتكي|تشكو|يشكي)(?:\s+(?:أيضا|أيضاً|ايضا|كمان))?(?: من)?|يعاني من)\s*(?:is|of|:)?\s*([^.،;\n]+)/i,
     /(?:,\s*|\s)(chest pain|abdominal pain|headache|dyspnea|shortness of breath|fever|syncope|bleeding|back pain|nausea|vomiting|diarrhea|cough)(?:\s|,|$)/i,
     /(?:,\s*|\s)(ألم صدر|ألم بطن|صداع|ضيق تنفس|حمى|غثيان|قيء|إسهال|سعال)(?:\s|,|$)/i,
     /\b(chest pain|abdominal pain|headache|dyspnea|shortness of breath|fever|syncope|bleeding)\b/i,
