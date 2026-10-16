@@ -175,7 +175,10 @@ export function buildKnownFacts({
       const st = findingStatus(re, ctx);
       if (!st) continue;
       // Denied and stated in the same conversation: ask, never settle on "no".
-      if (st === 'negative') hit = { known: true, value: NO, source: 'transcript_negated' };
+      if (st === 'negative') {
+        if (mod.detect_positive_only) continue;
+        hit = { known: true, value: NO, source: 'transcript_negated' };
+      }
       else if (st === 'positive' && !graded) hit = { known: true, value: YES, source: 'transcript' };
       break;
     }

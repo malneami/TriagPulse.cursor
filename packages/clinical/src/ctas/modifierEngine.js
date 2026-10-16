@@ -136,6 +136,8 @@ export function detectKnownModifier(modifier, { patient = {}, answers = {}, tran
     const st = findingStatus(re, ctx);
     if (!st) continue;
     if (st === 'negative') {
+      // A check that bundles several features is not ruled out by one denied word.
+      if (modifier.detect_positive_only) continue;
       return { known: true, value: 'لا', source: 'transcript_negated', status: 'known_negative', confidence: 0.9 };
     }
     // Denied and stated in the same conversation ("no bleeding … still bleeding"): ask.

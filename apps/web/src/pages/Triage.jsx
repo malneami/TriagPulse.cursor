@@ -1135,7 +1135,12 @@ export default function Triage() {
       if (lvl === L && L < 5) {
         const short = (t) => String(t || '').replace(/\s*\(.*?\)\s*/g, ' ').replace(/[؟?]\s*$/, '').trim();
         const opt = (t) => String(t || '').split(' · ')[0].split(':')[0].trim();
-        return { ar: `${short(ans.text_ar) || ans.field}: ${opt(ans.label)}`, en: `${short(ans.text_en) || ans.field}: ${opt(ans.value_en || ans.label)}` };
+        // A long question can carry a short name for this line ("Wound check: Yes").
+        const mod = (getActiveModifiers?.() || []).find((x) => x.field === ans.field);
+        return {
+          ar: `${mod?.short_ar || short(ans.text_ar) || ans.field}: ${opt(ans.label)}`,
+          en: `${mod?.short_en || short(ans.text_en) || ans.field}: ${opt(ans.value_en || ans.label)}`,
+        };
       }
     }
     const vital = (liveResult?.assessment_trail?.step4_final?.candidates || [])

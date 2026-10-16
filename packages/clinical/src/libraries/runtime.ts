@@ -65,6 +65,7 @@ export function serializeModifier(mod: {
   related_medications?: Array<string | RegExp>;
   ask_when_patterns?: Array<string | RegExp>;
   cross_pathway_when?: Array<string | RegExp>;
+  detect_positive_only?: boolean;
   question_ar: string;
   question_en: string;
   answer_type: string;
@@ -93,6 +94,7 @@ export function serializeModifier(mod: {
     detect_patterns: (mod.detect_patterns || []).map((p) => (p instanceof RegExp ? p.source : String(p))),
     related_medications: (mod.related_medications || []).map((p) => (p instanceof RegExp ? p.source : String(p))),
     ...(mod.ask_when_patterns?.length ? { ask_when_patterns: mod.ask_when_patterns.map((p) => (p instanceof RegExp ? p.source : String(p))) } : {}),
+    ...(mod.detect_positive_only ? { detect_positive_only: true } : {}),
     ...(mod.cross_pathway_when?.length ? { cross_pathway_when: mod.cross_pathway_when.map((p) => (p instanceof RegExp ? p.source : String(p))) } : {}),
     question_ar: mod.question_ar,
     question_en: mod.question_en,

@@ -289,4 +289,22 @@ export function runComorbidityTests(assert: Assert) {
     assert(JSON.stringify(r) === JSON.stringify(['PEDIATRIC_OBSERVATION', 'PEDIATRIC_OBSERVATION', 'PEDIATRIC_CLINIC', 'FM_IM', 'PEDIATRIC_RESUS']), 'CR-46',
       'child CTAS 4–5 wound or bleeding → Observation (even if suturing); cough → Clinic; adults and CTAS 1–2 unchanged', JSON.stringify(r));
   }
+
+  // Wound check (approved 2026-10-16): asked for any wound; a stated feature answers Yes → CTAS 3.
+  {
+    const sel = (t: string, cc = 'laceration') => selectMissingModifiers({
+      pathway: 'general', level: 4, patient: { age: '5', chief_complaint: cc, transcription: t }, answers: {}, transcript: t, maxQuestions: 3,
+    }) as { autoAnswers: Record<string, unknown>; questions: Array<{ field: string }> };
+    const asked = sel('wound in the foot, needs suturing');
+    const neg = sel('wound in the foot, no numbness');
+    const ar = sel('جرح في القدم، خدر في الأصابع');
+    const en = sel('deep cut on the hand, cannot move the fingers');
+    assert(asked.questions[0]?.field === 'wound_high_risk' && neg.questions.some((q) => q.field === 'wound_high_risk')
+      && ar.autoAnswers.wound_high_risk === 'نعم' && en.autoAnswers.wound_high_risk === 'نعم'
+      && applyModifierLibraryEffects({ wound_high_risk: 'نعم' }, 5).level === 3,
+      'CR-47', 'wound check asked for any wound ("no numbness" alone does not answer it); numbness / cannot move fingers / deep wound → CTAS 3',
+      JSON.stringify({ asked: asked.questions.map((q) => q.field), neg: neg.autoAnswers.wound_high_risk ?? null, ar: ar.autoAnswers.wound_high_risk, en: en.autoAnswers.wound_high_risk }));
+    const cough = sel('child with cough', 'cough');
+    assert(!cough.questions.some((q) => q.field === 'wound_high_risk'), 'CR-48', 'no wound check without a wound');
+  }
 }

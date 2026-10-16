@@ -607,6 +607,46 @@ export const CTAS_MODIFIER_LIBRARY = [
     review_date: '2026-08-05',
   },
 
+  // ── Wound check: features that make a wound CTAS 3 (approved 2026-10-16) ─
+  {
+    id: 'mod_wound_high_risk',
+    name: 'Wound: neurovascular / deep / bleeding-risk features',
+    name_ar: 'الجرح: علامات عصبية وعائية / عمق / خطر نزيف',
+    pathways: ['laceration', 'puncture', 'abrasion', 'active_bleeding', 'upper_extremity_injury', 'lower_extremity_injury'],
+    age_applicability: 'both',
+    field: 'wound_high_risk',
+    // Only a stated feature answers it; "no numbness" alone does not rule out the others.
+    detect_positive_only: true,
+    detect_patterns: [
+      /numb\w*|tingling|pins\s+and\s+needles|(?:cold|pale|white|blue)\s+(?:foot|feet|hand|hands|finger\w*|toe\w*|limb)|(?:can'?t|cannot|unable\s+to)\s+(?:move|bend|feel)\s+(?:the\s+|his\s+|her\s+)?(?:finger\w*|toe\w*|thumb|foot|hand)|tendon|(?:bone|joint)\s+(?:is\s+)?(?:visible|exposed|showing)|open\s+fracture|gaping|deep\s+(?:wound|cut|lacer\w*)|ha?emophilia|bleeding\s+disorder|(?:on|takes?)\s+(?:warfarin|blood\s*thinn\w*|anticoagul\w*|apixaban|rivaroxaban)/i,
+      /خدر|تنميل|(?:برود|شحوب|ازرقاق)\S*\s+(?:في\s+)?(?:القدم|اليد|الأصابع|الاصابع|الطرف)|(?:لا|ما)\s*(?:يقدر|يستطيع|تقدر|تستطيع)\s*(?:ي|ت)?(?:حرك|يحرك|تحرك|ثني|يثني)\S*\s*(?:أصابع|اصابع|القدم|اليد)|وتر|العظم\s*(?:ظاهر|بارز|مكشوف)|كسر\s*مفتوح|جرح\s*(?:عميق|كبير|مفتوح\s*واسع)|هيموفيليا|سيولة\s*(?:في\s*)?(?:ال)?دم|اضطراب\s*(?:في\s*)?(?:ال)?تخثر|مميع|وارفارين/i,
+    ],
+    // Any complaint: a wound mentioned asks this check.
+    cross_pathway_when: [
+      /wound|lacerat\w*|\bcut\b|puncture|gash/i,
+      /جرح|جروح|تمزق|ثقب|شق\s*(?:في|ب)/i,
+    ],
+    short_ar: 'فحص الجرح',
+    short_en: 'Wound check',
+    question_ar: 'فحص الجرح — هل يوجد أيٌّ مما يلي: خدر أو برودة/شحوب بعد الجرح، عدم القدرة على تحريك الأصابع، جرح عميق (وتر/عظم/مفصل ظاهر) أو كبير مفتوح، اضطراب تخثر أو مميّع دم؟',
+    question_en: 'Wound check — any of: numbness, cold or pale beyond the wound; cannot move fingers/toes; deep wound (tendon, bone or joint visible) or large gaping wound; bleeding disorder or blood thinner?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 3 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 3,
+    question_category: 'safety_escalation',
+    clinical_explanation_ar: 'جرح مع خلل عصبي وعائي أو عمق (وتر/عظم/مفصل) أو اضطراب تخثر → CTAS 3',
+    clinical_explanation_en: 'Wound with neurovascular compromise, deep structures (tendon/bone/joint) or a bleeding disorder → CTAS 3',
+    priority: 8,
+    active: true,
+    protocol_source: 'CTAS 2025 Laceration/Puncture + bleeding-disorder modifier',
+    version: '1.0.0',
+    review_date: '2026-10-16',
+  },
+
   // ── Respiratory distress grade (child with a breathing complaint) ─────────
   {
     id: 'mod_peds_resp_distress',
@@ -741,7 +781,7 @@ function enrichModifier(mod) {
   };
 }
 
-export const MODIFIER_LIBRARY_VERSION = '1.2.0';
+export const MODIFIER_LIBRARY_VERSION = '1.3.0';
 
 export function getActiveModifiers() {
   const runtime = getRuntimeModifiers();
