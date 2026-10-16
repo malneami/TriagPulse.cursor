@@ -485,8 +485,32 @@ export function findComplaintMentions(text) {
       });
     }
   }
+  // An allergic reaction happening NOW is a complaint, not history: "allergic reaction",
+  // hives / urticaria, anaphylaxis, or a rash / swelling soon after a food, medicine,
+  // injection or sting (approved 2026-10-16). "Allergic to penicillin" stays history.
+  if (!seen.has('allergic_reaction')) {
+    const t = normalizeText(text);
+    const statedNow = ACUTE_ALLERGY.test(t) && !/(?:no|not|denies|without|لا|بدون|ما\s*في)\s+(?:\S+\s+){0,2}?(?:allergic\s+reaction|hives|urticaria|تفاعل\s+تحسسي|شرى)/i.test(t);
+    const afterExposure = RASH_OR_SWELLING.test(t) && EXPOSURE_TRIGGER.test(t);
+    const entry = [...LEXICON.values()].find((e) => e.complaintKey === 'allergic_reaction');
+    if (entry && (statedNow || afterExposure)) {
+      out.push({
+        complaintKey: entry.complaintKey,
+        categoryKey: entry.categoryKey,
+        label_en: entry.label_en,
+        label_ar: entry.label_ar,
+        default_ctas: entry.default_ctas,
+        term: statedNow ? 'allergic reaction' : 'rash after exposure',
+        clause: t.slice(0, 120),
+      });
+    }
+  }
   return out;
 }
+
+const ACUTE_ALLERGY = /allergic\s+reaction|hives|urticaria|anaphyla\w*|تفاعل\s+تحسسي|شرى|ارتكاريا|صدمة\s+تحسسية|تأق/i;
+const RASH_OR_SWELLING = /rash|eruption|hives|wheals?|swelling|itch\w*|طفح|حبوب|حكة|حكه|هرش|تورم|انتفاخ/i;
+const EXPOSURE_TRIGGER = /after\s+(?:eating|taking|the\s+)?\s*(?:injection|vaccine|medicine|medication|antibiotic|food|nuts?|peanuts?|egg|milk|fish|shellfish|sting|bite|dose|\w+\s+injection)|after\s+(?:an?\s+)?injection|following\s+(?:an?\s+)?(?:injection|dose|vaccine)|بعد\s+(?:ما\s+)?(?:أكل|اكل|تناول|أخذ|اخذ|الإبرة|الابرة|إبرة|ابرة|حقنة|الحقنة|التطعيم|تطعيم|الدواء|دواء|المضاد|مضاد|لدغة|قرصة|المكسرات|الفول)/i;
 
 /**
  * Flat list of all complaints for search UI.

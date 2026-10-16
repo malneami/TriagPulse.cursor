@@ -13,6 +13,7 @@ import { getActiveModifiers } from './modifierLibrary.js';
 import { resolveCtasDestination } from './ctasDestination.js';
 import { detectRedFlags } from '../alerts/redFlagEngine.js';
 import { resolveClinicalPathway } from './resolveClinicalPathway.js';
+import { findComplaintMentions } from './resolveChiefComplaint.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -328,5 +329,32 @@ export function runComorbidityTests(assert: Assert) {
     const got = [cc('يشتكي من جرح القدم مع نزيف درجة الألم خمسة، النبض مئة'), cc('complains of chest pain heart rate 110'), cc('complains of abdominal pain pain score 6')];
     assert(JSON.stringify(got) === JSON.stringify(['جرح القدم مع نزيف', 'chest pain', 'abdominal pain']), 'CR-52',
       'the complaint stops where the vitals start («… درجة الألم خمسة», "heart rate", "pain score")', JSON.stringify(got));
+  }
+
+  // Allergic reaction (approved 2026-10-16): A1 complaint, A2 severe history → 2, A3 systemic → 2, A4 rapid onset → 3.
+  {
+    const keys = (t: string) => (findComplaintMentions(t) as Array<{ complaintKey: string }>).map((m) => m.complaintKey);
+    assert(keys('طفح بعد الإبرة بنص ساعة').includes('allergic_reaction') && keys('allergic reaction after eating nuts').includes('allergic_reaction')
+      && !keys('allergic to penicillin, cough for 2 days').includes('allergic_reaction'),
+      'CR-53', 'a reaction happening now is the allergic-reaction complaint; "allergic to penicillin" stays history');
+    const sel = (t: string) => selectMissingModifiers({
+      pathway: 'allergic_reaction', level: 5, patient: { age: '5', chief_complaint: 'rash', transcription: t }, answers: {}, transcript: t, maxQuestions: 4,
+    }) as { autoAnswers: Record<string, unknown>; questions: Array<{ field: string }> };
+    const lvl = (a: Record<string, unknown>) => applyModifierLibraryEffects(a, 5).level;
+    const user = sel('Skin rash eruption within thirty minutes after injection, allergic to nuts, known allergic reaction');
+    assert(user.autoAnswers.allergy_rapid_onset === 'نعم' && lvl(user.autoAnswers) === 3
+      && user.questions[0]?.field === 'allergy_systemic' && user.questions.some((q) => q.field === 'allergy_severe_history'),
+      'CR-54', 'rash 30 min after an injection → at least CTAS 3; systemic signs asked first, severe history asked', JSON.stringify({ a: user.autoAnswers, q: user.questions.map((q) => q.field) }));
+    const icu = sel('طفح بعد الإبرة بنص ساعة، دخل العناية المركزة قبل سنة بسبب الحساسية');
+    const ward = sel('rash after injection, admitted to the ward last year for allergy');
+    assert(lvl(icu.autoAnswers) === 2 && ward.autoAnswers.allergy_severe_history == null,
+      'CR-55', 'previous ICU / anaphylaxis / adrenaline → CTAS 2; a ward admission alone does not count', JSON.stringify([icu.autoAnswers, ward.autoAnswers]));
+    const lips = sel('hives after peanuts, lips swollen');
+    const noVom = sel('hives after amoxicillin, no vomiting');
+    assert(lvl(lips.autoAnswers) === 2 && noVom.autoAnswers.allergy_systemic == null && noVom.questions[0]?.field === 'allergy_systemic',
+      'CR-56', 'lip swelling → CTAS 2; "no vomiting" alone does not answer the systemic-signs question', JSON.stringify([lips.autoAnswers, noVom.autoAnswers]));
+    const pw = (t: string) => resolveClinicalPathway({ patient: { chief_complaint: '' }, transcript: t }).pathway;
+    assert(pw('rash for 3 days, no fever') !== 'fever' && pw('عنده حساسية من المكسرات') !== 'multisystem_trauma_blunt',
+      'CR-57', '"no fever" is not a fever pathway; «المكسرات» (nuts) is not a fracture', JSON.stringify([pw('rash for 3 days, no fever'), pw('عنده حساسية من المكسرات')]));
   }
 }

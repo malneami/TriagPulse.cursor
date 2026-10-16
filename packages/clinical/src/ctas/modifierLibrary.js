@@ -648,6 +648,123 @@ export const CTAS_MODIFIER_LIBRARY = [
     review_date: '2026-10-16',
   },
 
+  // ── Allergic reaction (approved 2026-10-16) ───────────────────────────────
+  {
+    id: 'mod_allergy_systemic',
+    name: 'Allergic reaction: systemic signs (possible anaphylaxis)',
+    name_ar: 'تفاعل تحسسي: علامات جهازية (اشتباه تأق)',
+    pathways: ['allergic_reaction', 'rash'],
+    age_applicability: 'both',
+    field: 'allergy_systemic',
+    detect_positive_only: true,
+    detect_patterns: [
+      /(?:lip|lips|tongue|face|facial|eye\w*|throat)\s+(?:is\s+|are\s+)?(?:swell\w*|swollen|oedema|edema)|(?:swell\w*|swollen)\s+(?:of\s+)?(?:the\s+)?(?:lip\w*|tongue|face|throat)|angio-?o?edema|wheez\w*|hoarse\w*|difficult(?:y)?\s+(?:in\s+)?breathing|short(?:ness)?\s+of\s+breath|throat\s+tight\w*|vomit\w*|fain\w*|dizz\w*|collaps\w*|anaphyla\w*\s+(?:now|currently)/i,
+      /تورم\S*\s+(?:في\s+)?(?:ال)?(?:شف\S*|لسان|وجه|عين\S*|حلق)|(?:شف\S*|لسان|وجه)\S*\s+(?:متورم\S*|منتفخ\S*)|أزيز|ازيز|صفير|بحة|ضيق\s*(?:في\s*)?(?:ال)?(?:تنفس|نفس)|صعوبة\s*(?:في\s*)?(?:ال)?تنفس|استفراغ|يستفرغ|قيء|ترجيع|دوخة|دايخ|إغماء|اغماء|أغمي|اغمي/i,
+    ],
+    cross_pathway_when: [
+      // A reaction happening now — not "allergic to penicillin" in the history.
+      /allergic\s+reaction|hives|urticaria|anaphyla\w*|(?:rash|hives|swelling|itch\w*)[^.]{0,40}after\s+(?:an?\s+|the\s+)?(?:injection|vaccine|eating|medicine|medication|antibiotic|sting|bite|nuts?|peanuts?|food)/i,
+      /تفاعل\s+تحسسي|شرى|ارتكاريا|تأق|صدمة\s+تحسسية|(?:طفح|حبوب|حكة|تورم)[^.]{0,40}بعد\s+(?:ما\s+)?(?:أكل|اكل|الإبرة|الابرة|إبرة|ابرة|حقنة|الحقنة|التطعيم|الدواء|دواء|المضاد|لدغة|قرصة|المكسرات)/i,
+    ],
+    short_ar: 'علامات تحسس جهازية',
+    short_en: 'Systemic allergy signs',
+    question_ar: 'هل يوجد أيٌّ مما يلي: تورم الشفايف أو اللسان أو الوجه، صعوبة تنفس أو صفير، بحة في الصوت، استفراغ أو ألم بطن، دوخة أو إغماء؟',
+    question_en: 'Any of: lip, tongue or face swelling; difficulty breathing or wheeze; hoarse voice; vomiting or abdominal pain; dizziness or fainting?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 2, destination_hint: 'RESUSCITATION' },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 2,
+    destination_effect: 'RESUSCITATION',
+    question_category: 'safety_escalation',
+    critical_alert: true,
+    team_leader_review: true,
+    clinical_explanation_ar: 'تفاعل تحسسي مع علامات جهازية (اشتباه تأق) → CTAS 2',
+    clinical_explanation_en: 'Allergic reaction with systemic signs (possible anaphylaxis) → CTAS 2',
+    priority: 3,
+    active: true,
+    protocol_source: 'CTAS 2025 Allergic reaction',
+    version: '1.0.0',
+    review_date: '2026-10-16',
+  },
+  {
+    id: 'mod_allergy_severe_history',
+    name: 'Previous severe allergic reaction',
+    name_ar: 'تفاعل تحسسي شديد سابق',
+    pathways: ['allergic_reaction', 'rash'],
+    age_applicability: 'both',
+    field: 'allergy_severe_history',
+    // Only ICU admission, anaphylaxis or adrenaline count (2026-10-16), not a ward admission.
+    detect_positive_only: true,
+    detect_patterns: [
+      /anaphyla\w*|epi-?pen|adrenalin\w*|epinephrin\w*|\b(?:p?icu)\b|intensive\s+care/i,
+      /تأق|صدمة\s+تحسسية|أدرينالين|ادرينالين|أدرنالين|ادرنالين|إبينفرين|ابينفرين|عناية\s+مركزة|العناية\s+المركزة|العناية\s+المركّزة|قلم\s+(?:ال)?(?:أدرينالين|ادرينالين|حساسية)/i,
+    ],
+    cross_pathway_when: [
+      // A reaction happening now — not "allergic to penicillin" in the history.
+      /allergic\s+reaction|hives|urticaria|anaphyla\w*|(?:rash|hives|swelling|itch\w*)[^.]{0,40}after\s+(?:an?\s+|the\s+)?(?:injection|vaccine|eating|medicine|medication|antibiotic|sting|bite|nuts?|peanuts?|food)/i,
+      /تفاعل\s+تحسسي|شرى|ارتكاريا|تأق|صدمة\s+تحسسية|(?:طفح|حبوب|حكة|تورم)[^.]{0,40}بعد\s+(?:ما\s+)?(?:أكل|اكل|الإبرة|الابرة|إبرة|ابرة|حقنة|الحقنة|التطعيم|الدواء|دواء|المضاد|لدغة|قرصة|المكسرات)/i,
+    ],
+    short_ar: 'تفاعل تحسسي شديد سابق',
+    short_en: 'Previous severe reaction',
+    question_ar: 'هل سبق أن أصيب بتفاعل تحسسي شديد: تأق، أو احتاج أدرينالين/إبي-بن، أو دخل العناية المركزة؟',
+    question_en: 'Previous severe allergic reaction: anaphylaxis, needed adrenaline/EpiPen, or ICU admission?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 2 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 2,
+    question_category: 'ctas_modifier',
+    clinical_explanation_ar: 'تفاعل تحسسي مع تاريخ تفاعل شديد (تأق / أدرينالين / عناية مركزة) → CTAS 2',
+    clinical_explanation_en: 'Allergic reaction with a previous severe reaction (anaphylaxis / adrenaline / ICU) → CTAS 2',
+    priority: 4,
+    active: true,
+    protocol_source: 'CTAS 2025 Allergic reaction — previous severe reaction',
+    version: '1.0.0',
+    review_date: '2026-10-16',
+  },
+  {
+    id: 'mod_allergy_rapid_onset',
+    name: 'Rash/reaction within 2 hours of an exposure',
+    name_ar: 'طفح/تفاعل خلال ساعتين من التعرض',
+    pathways: ['allergic_reaction', 'rash'],
+    age_applicability: 'both',
+    field: 'allergy_rapid_onset',
+    detect_positive_only: true,
+    detect_patterns: [
+      /within\s+(?:\w+\s+){0,2}min\w*|(?:\d+|few|ten|fifteen|twenty|thirty|forty)\s+min\w*\s+after|immediately\s+after|right\s+after|soon\s+after|within\s+(?:an?|one|1|half\s+an?|two|2)\s+hours?|(?:half\s+an?|an?|one)\s+hour\s+after/i,
+      /(?:خلال|بعد|ب)\s*(?:نص|نصف|ربع)\s*ساعة|(?:خلال|بعد|ب)\s*(?:\d+|كم|دقائق|دقيقة|عشر|عشرين|ثلاثين)\s*(?:دقيقة|دقائق|دقايق)?(?:\s+من)?|مباشرة\s+بعد|على\s+طول\s+بعد|خلال\s+ساعة|بعد\s+ساعة|خلال\s+ساعتين/i,
+    ],
+    cross_pathway_when: [
+      // A reaction happening now — not "allergic to penicillin" in the history.
+      /allergic\s+reaction|hives|urticaria|anaphyla\w*|(?:rash|hives|swelling|itch\w*)[^.]{0,40}after\s+(?:an?\s+|the\s+)?(?:injection|vaccine|eating|medicine|medication|antibiotic|sting|bite|nuts?|peanuts?|food)/i,
+      /تفاعل\s+تحسسي|شرى|ارتكاريا|تأق|صدمة\s+تحسسية|(?:طفح|حبوب|حكة|تورم)[^.]{0,40}بعد\s+(?:ما\s+)?(?:أكل|اكل|الإبرة|الابرة|إبرة|ابرة|حقنة|الحقنة|التطعيم|الدواء|دواء|المضاد|لدغة|قرصة|المكسرات)/i,
+    ],
+    short_ar: 'بدأ خلال ساعتين من التعرض',
+    short_en: 'Onset within 2 h of exposure',
+    question_ar: 'هل بدأ الطفح أو التفاعل خلال ساعتين من أكل أو دواء أو إبرة أو لدغة؟',
+    question_en: 'Did the rash or reaction start within 2 hours of a food, medicine, injection or sting?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 3 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 3,
+    question_category: 'ctas_modifier',
+    clinical_explanation_ar: 'طفح/تفاعل خلال ساعتين من التعرض → CTAS 3 على الأقل (قد يتطور إلى تأق)',
+    clinical_explanation_en: 'Rash/reaction within 2 hours of an exposure → at least CTAS 3 (may progress to anaphylaxis)',
+    priority: 5,
+    active: true,
+    protocol_source: 'CTAS 2025 Allergic reaction + HMG paediatric routing guide (rash within 1–2 h → Observation)',
+    version: '1.0.0',
+    review_date: '2026-10-16',
+  },
+
   // ── Respiratory distress grade (child with a breathing complaint) ─────────
   {
     id: 'mod_peds_resp_distress',
@@ -782,7 +899,7 @@ function enrichModifier(mod) {
   };
 }
 
-export const MODIFIER_LIBRARY_VERSION = '1.3.0';
+export const MODIFIER_LIBRARY_VERSION = '1.4.0';
 
 export function getActiveModifiers() {
   const runtime = getRuntimeModifiers();
