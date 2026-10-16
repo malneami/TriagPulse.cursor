@@ -11,6 +11,8 @@ import {
 import { Namespace, Server, Socket } from 'socket.io';
 import { SttService } from './stt.service';
 import { SttRealtimeService } from './stt-realtime.service';
+import { SpeechmaticsRealtimeService } from './speechmatics-realtime.service';
+import { openAiBillingBlocked } from './stt-billing';
 import { WsAuthService } from '../auth/ws-auth.service';
 
 /**
@@ -33,12 +35,19 @@ export class SttGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
   server: Server;
 
   private clientSessions = new Map<string, string>();
+  /** Which live provider each session is streaming to. */
+  private providerOf = new Map<string, 'speechmatics' | 'openai'>();
 
   constructor(
     private sttService: SttService,
     private realtimeService: SttRealtimeService,
+    private speechmatics: SpeechmaticsRealtimeService,
     private wsAuth: WsAuthService,
   ) {}
+
+  private live(sessionId: string) {
+    return this.providerOf.get(sessionId) === 'speechmatics' ? this.speechmatics : this.realtimeService;
+  }
 
   afterInit(namespace: Namespace) {
     namespace.use(this.wsAuth.middleware('perform_triage'));
@@ -47,8 +56,10 @@ export class SttGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
   handleConnection(client: Socket) {
     client.emit('stt_ready', {
       model_version: this.sttService.resolveModelVersion(),
-      realtime: this.realtimeService.isConfigured(),
-      realtime_model: this.realtimeService.resolveRealtimeModel(),
+      realtime: this.speechmatics.isConfigured() || this.realtimeService.isConfigured(),
+      realtime_model: this.speechmatics.isConfigured()
+        ? this.speechmatics.resolveRealtimeModel()
+        : this.realtimeService.resolveRealtimeModel(),
       realtime_intent: 'transcription',
     });
   }
@@ -56,7 +67,8 @@ export class SttGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
   async handleDisconnect(client: Socket) {
     const sessionId = this.clientSessions.get(client.id);
     if (sessionId) {
-      await this.realtimeService.stopSession(sessionId);
+      await this.live(sessionId).stopSession(sessionId);
+      this.providerOf.delete(sessionId);
       this.clientSessions.delete(client.id);
     }
   }
@@ -88,17 +100,27 @@ export class SttGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
   ) {
     if (!this.ownsSession(client, data?.sessionId)) return;
     this.bind(client, data.sessionId);
-    try {
-      await this.realtimeService.startSession(data.sessionId, (event, payload) => {
-        this.server.to(data.sessionId).emit(event, payload);
-        if (event === 'stt_error') client.emit(event, payload);
-      });
-      client.emit('realtime_ack', { ok: true, sessionId: data.sessionId });
-    } catch {
-      const message = 'Failed to start live transcription';
-      client.emit('stt_error', { message, realtime: true });
-      client.emit('realtime_ack', { ok: false, sessionId: data.sessionId, message });
+    const emit = (event: string, payload: unknown) => {
+      this.server.to(data.sessionId).emit(event, payload);
+      if (event === 'stt_error') client.emit(event, payload);
+    };
+    // Speechmatics (Arabic + English in one model) first; OpenAI only if it is not set up or fails.
+    const order: Array<'speechmatics' | 'openai'> = [];
+    if (this.speechmatics.isConfigured()) order.push('speechmatics');
+    if (this.realtimeService.isConfigured() && !openAiBillingBlocked()) order.push('openai');
+    for (const provider of order) {
+      try {
+        this.providerOf.set(data.sessionId, provider);
+        await this.live(data.sessionId).startSession(data.sessionId, emit);
+        client.emit('realtime_ack', { ok: true, sessionId: data.sessionId, provider });
+        return;
+      } catch {
+        this.providerOf.delete(data.sessionId);
+      }
     }
+    const message = 'Failed to start live transcription';
+    client.emit('stt_error', { message, realtime: true });
+    client.emit('realtime_ack', { ok: false, sessionId: data.sessionId, message });
   }
 
   @SubscribeMessage('pcm_chunk')
@@ -108,7 +130,7 @@ export class SttGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
   ) {
     const audio = data?.audioBase64 || data?.audio;
     if (!audio || !this.ownsSession(client, data?.sessionId)) return;
-    this.realtimeService.appendPcm(data.sessionId, audio);
+    this.live(data.sessionId).appendPcm(data.sessionId, audio);
     client.emit('pcm_ack', { ok: true, bytes: audio.length });
   }
 
@@ -118,7 +140,8 @@ export class SttGateway implements OnGatewayInit, OnGatewayConnection, OnGateway
     @MessageBody() data: { sessionId: string },
   ) {
     if (!this.ownsSession(client, data?.sessionId)) return;
-    await this.realtimeService.stopSession(data.sessionId);
+    await this.live(data.sessionId).stopSession(data.sessionId);
+    this.providerOf.delete(data.sessionId);
     client.emit('realtime_stopped', { sessionId: data.sessionId });
   }
 

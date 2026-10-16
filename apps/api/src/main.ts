@@ -22,6 +22,7 @@ function logConfigSources() {
     console.log('[config] NOTE: multiple .env files found. For any key defined in more than one,'
       + ' the FIRST file listed above wins — including when its value is blank.');
   }
+  console.log(`[config] SPEECHMATICS_API_KEY: ${process.env.SPEECHMATICS_API_KEY?.trim() ? 'loaded — live speech uses Speechmatics (Arabic + English)' : 'not set'}`);
   const configured = !!process.env.OPENAI_API_KEY?.trim();
   console.log(`[config] OPENAI_API_KEY: ${configured ? 'loaded' : 'NOT SET — STT falls back to browser speech + manual entry'}`);
   if (configured) {
