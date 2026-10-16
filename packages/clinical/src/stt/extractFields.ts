@@ -199,6 +199,15 @@ function parseAgeInSmallUnits(text: string): { value: number; span: string; conf
     if (val != null) return { value: val, span: dual[0], confidence: 0.93 };
   }
 
+  // Arabic years said as a dual or a bare singular: «عمره سنتين» = 2, «عمره سنة» = 1.
+  const yearWord = t.match(
+    new RegExp(`(?:${cue}|طفل(?:ة)?|بنت|ولد|رضيع(?:ة)?)\\s*${fillers}\\s*(سنتين|سنتان|سنة|سنه|عام|عامين|عامان)(?![\\u0621-\\u064A])(\\s*و\\s*نص)?`, 'i'),
+  );
+  if (yearWord) {
+    const val = clampAge((/سنتين|سنتان|عامين|عامان/.test(yearWord[1]) ? 2 : 1) + (yearWord[2] ? 0.5 : 0));
+    if (val != null) return { value: val, span: yearWord[0], confidence: 0.9 };
+  }
+
   // N + months/weeks/days (digits or spoken words)
   const unitMatch = t.match(
     new RegExp(

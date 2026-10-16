@@ -209,4 +209,35 @@ export function runComorbidityTests(assert: Assert) {
     assert(v('chest pain non cardiac') === 'لا' && v('non-cardiac chest pain') === 'لا',
       'CR-32', '"non cardiac" / "non-cardiac" negate a cardiac finding', JSON.stringify([v('chest pain non cardiac'), v('non-cardiac chest pain')]));
   }
+
+  // Safety findings count whatever the complaint is (approved 2026-10-16).
+  {
+    const sel = (age: string, cc: string, pathway: string, t: string) => selectMissingModifiers({
+      pathway, level: 4, patient: { age, chief_complaint: cc, transcription: t }, answers: {}, transcript: t, maxQuestions: 3,
+    }) as { autoAnswers: Record<string, unknown>; questions: Array<{ field: string }> };
+    const a = sel('3', 'cough', 'general', 'child 3 years, cough. now stridor at rest and severe retractions');
+    assert(a.autoAnswers.stridor === 'نعم' && applyModifierLibraryEffects({ stridor: 'نعم' }, 5).level === 1
+      && a.questions.some((q) => q.field === 'resp_distress_grade'),
+      'CR-33', 'stridor said with a cough complaint → stridor Yes (CTAS 1) and the distress grade is asked', JSON.stringify(a.autoAnswers));
+    const b = sel('3', 'cough', 'general', 'child 3 years, cough, no stridor');
+    assert(b.autoAnswers.stridor === 'لا', 'CR-34', '"no stridor" with a cough complaint stays No', JSON.stringify(b.autoAnswers));
+    const c = sel('40', 'abdominal pain', 'abdominal_pain', 'abdominal pain, heavy bleeding per rectum');
+    assert(c.autoAnswers.uncontrolled_bleeding === 'نعم', 'CR-35', 'heavy bleeding counts with an abdominal-pain complaint', JSON.stringify(c.autoAnswers));
+    const d = sel('40', 'abdominal pain', 'abdominal_pain', 'abdominal pain, had a seizure in the waiting area');
+    assert(d.autoAnswers.ongoing_seizure == null && d.questions[0]?.field === 'ongoing_seizure',
+      'CR-36', 'a seizure mentioned with another complaint asks ongoing / post-ictal / resolved (not guessed)', JSON.stringify({ auto: d.autoAnswers, q: d.questions.map((q) => q.field) }));
+    const e = sel('30', 'seizure', 'seizure', 'seizure at home, now drowsy');
+    assert(e.autoAnswers.ongoing_seizure == null && e.questions.some((q) => q.field === 'ongoing_seizure'),
+      'CR-37', 'the word "seizure" no longer silently answers the seizure-status question', JSON.stringify(e.autoAnswers));
+    const f = sel('8', 'ضيق تنفس', 'shortness_of_breath', 'طفل 8 سنوات عنده نوبة ربو وكتمة');
+    assert(!f.questions.some((q) => q.field === 'ongoing_seizure'), 'CR-38', '«نوبة ربو» (asthma attack) is not a seizure');
+    const g = sel('2', 'حرارة', 'fever', 'طفل عمره سنتين حرارة وعنده صرير');
+    assert(g.autoAnswers.stridor === 'نعم', 'CR-39', '«صرير» with a fever complaint counts', JSON.stringify(g.autoAnswers));
+  }
+
+  {
+    const age = (t: string) => (mapSttSessionToPatientUpdates(extractFieldsFromTranscript(t)).updates as Record<string, string>).age;
+    const got = ['طفل عمره سنتين، عنده حرارة', 'طفل عمره سنة، عنده كحة', 'عمره سنة و نص', 'منذ سنة يعاني من الربو، عمره 40 سنة'].map(age);
+    assert(JSON.stringify(got) === JSON.stringify(['2', '1', '1.5', '40']), 'CR-40', 'Arabic «سنتين» / «سنة» / «سنة و نص» ages', JSON.stringify(got));
+  }
 }

@@ -349,7 +349,9 @@ export default function Triage() {
   const chiefWasRemoved = (patient.case_details?.complaints || [])
     .filter((c) => (patient.dismissed_complaints || []).includes(c.key || c.text))
     .some((c) => [c.text, c.label_en, c.label_ar].map(normC).includes(normC(patient.chief_complaint)));
-  const ccPrimaryText = cc.complaints.length >= 2 || chiefWasRemoved ? (cc.primary?.text ?? '') : null;
+  // Also fills an empty chief complaint from the one complaint heard (e.g. «عنده صرير»).
+  const fillsEmptyChief = !patient.chief_complaint && cc.complaints.length === 1;
+  const ccPrimaryText = cc.complaints.length >= 2 || chiefWasRemoved || fillsEmptyChief ? (cc.primary?.text ?? '') : null;
   useEffect(() => {
     if (ccPrimaryText == null) return;
     // A complaint typed by the nurse is kept unless she picks one of the chips (or removed it).

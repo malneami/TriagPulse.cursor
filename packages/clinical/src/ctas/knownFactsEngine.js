@@ -167,12 +167,16 @@ export function buildKnownFacts({
       continue;
     }
     let hit = null;
+    // A graded question (e.g. seizure: ongoing / post-ictal / resolved) is not answered
+    // by the word alone: "seizure" says it happened, not which grade. Ask instead.
+    const graded = Array.isArray(mod.options) && mod.options.length > 0
+      && !mod.options.some((o) => o.value === YES);
     for (const re of mod.detect_patterns || []) {
       if (re.test(ctx)) {
         const negated = negatedFindingRegex(re.source);
         if (negated.test(ctx)) {
           hit = { known: true, value: NO, source: 'transcript_negated' };
-        } else {
+        } else if (!graded) {
           hit = { known: true, value: YES, source: 'transcript' };
         }
         break;

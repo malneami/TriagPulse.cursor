@@ -245,6 +245,8 @@ export const CTAS_MODIFIER_LIBRARY = [
     age_applicability: 'both',
     field: 'stridor',
     detect_patterns: [/stridor|noisy\s+breathing|airway\s+(?:threat|compromise)/i, /صرير|سترايدر|استرايدر|سترايدور|ستريدور|تنفس\s*مزعج|انسداد\s*مجرى/i],
+    // Counts with any complaint when mentioned (approved 2026-10-16).
+    cross_pathway_when: [/stridor|airway\s+(?:threat|compromise)/i, /صرير|سترايدر|استرايدر|سترايدور|ستريدور|انسداد\s*مجرى/i],
     question_ar: 'هل يوجد صرير (صوت تنفس عالي النبرة)؟',
     question_en: 'Is there stridor (high-pitched breathing noise)?',
     answer_type: 'yes_no',
@@ -574,6 +576,10 @@ export const CTAS_MODIFIER_LIBRARY = [
       /uncontrolled\s+bleed|heavy\s+bleed|soaking|hemorrhage|active\s+bleed/i,
       /نزيف\s*(?:غير\s*)?مسيطر|نزيف\s*غزير|ينزف\s*الآن/i,
     ],
+    cross_pathway_when: [
+      /uncontrolled\s+bleed|heavy\s+bleed|soaking|hemorrhage|haemorrhage|active\s+bleed/i,
+      /نزيف\s*(?:غير\s*)?مسيطر|نزيف\s*غزير|ينزف\s*الآن/i,
+    ],
     question_ar: 'هل النزيف غير مسيطر عليه حالياً؟',
     question_en: 'Is bleeding currently uncontrolled?',
     answer_type: 'yes_no',
@@ -604,6 +610,11 @@ export const CTAS_MODIFIER_LIBRARY = [
     age_applicability: 'pediatric',
     field: 'resp_distress_grade',
     detect_patterns: [],
+    // Any complaint: asked when the conversation mentions breathing difficulty.
+    cross_pathway_when: [
+      /short(?:ness)?\s+of\s+breath|\bsob\b|breathless|difficult(?:y)?\s+(?:in\s+)?breathing|respiratory\s+distress|retraction\w*|recession\w*|nasal\s+flaring|grunting|wheez\w*|tachypn\w*|fast\s+breathing|chest\s+tightness|cyanos\w*|cyanot\w*|stridor/i,
+      /ضيق\s*(?:في\s*)?(?:ال)?(?:تنفس|نفس)|صعوبة\s*(?:في\s*)?(?:ال)?تنفس|كتمة|سحب\s*(?:صدر|بين|تحت|في)|انسحاب\s*(?:صدر|بين|تحت)|رفرفة|شخير|أزيز|ازيز|صفير|تنفس\s*سريع|ازرقاق|زرقة|صرير|سترايدر/i,
+    ],
     question_ar: 'ما درجة الضائقة التنفسية؟ (السحب، رفرفة الأنف، الشخير، الكلام/الرضاعة، اللون، الوعي)',
     question_en: 'Respiratory distress? (retractions, nasal flaring, grunting, speech/feeding, colour, alertness)',
     answer_type: 'options',
@@ -666,6 +677,11 @@ export const CTAS_MODIFIER_LIBRARY = [
     detect_patterns: [
       /seiz(?:ure|ing)|convuls\w*|status\s+epileptic|post[- ]?ictal/i,
       /نوبة|تشنج|صرع|بعد\s*النوبة/i,
+    ],
+    // Any complaint: a seizure mentioned anywhere asks for its status.
+    cross_pathway_when: [
+      /seiz(?:ure|ing)|convuls\w*|status\s+epileptic|post[- ]?ictal|fitting/i,
+      /نوبة\s*(?:صرع|تشنج)|تشنج|صرع|بعد\s*النوبة|رجفة\s*وتشنج/i,
     ],
     question_ar: 'هل النوبة مستمرة أو المريض لا يزال بعد النوبة؟',
     question_en: 'Is the seizure ongoing or is the patient still post-ictal?',

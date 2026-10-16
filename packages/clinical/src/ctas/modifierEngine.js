@@ -43,8 +43,11 @@ function buildContextText(patient = {}, answers = {}, transcript = '') {
  * Exact / alias match first; family match only when both sides share the same
  * normalized family (so head LOC modifiers do not match limb_pain).
  */
-function pathwayMatches(modifier, pathway) {
+function pathwayMatches(modifier, pathway, text = '') {
   if (!modifier.pathways?.length || modifier.pathways.includes('*')) return true;
+  // Safety findings count whatever the complaint is: when the conversation mentions one
+  // (e.g. stridor while the complaint is cough), the modifier applies or is asked.
+  if (text && (modifier.cross_pathway_when || []).some((rx) => rx.test(text))) return true;
   if (modifier.pathways.includes(pathway)) return true;
   if (modifier.pathways.some((p) => pathwaysAreAliases(p, pathway))) return true;
   const family = normalizePathwayFamily(pathway);
@@ -127,12 +130,16 @@ export function detectKnownModifier(modifier, { patient = {}, answers = {}, tran
   const ctx = buildContextText(patient, answers, transcript);
   if (!ctx.trim()) return { known: false, status: 'unknown' };
 
+  const graded = Array.isArray(modifier.options) && modifier.options.length > 0
+    && !modifier.options.some((o) => o.value === 'نعم');
   for (const re of modifier.detect_patterns || []) {
     if (re.test(ctx)) {
       const negated = negatedFindingRegex(re.source);
       if (negated.test(ctx)) {
         return { known: true, value: 'لا', source: 'transcript_negated', status: 'known_negative', confidence: 0.9 };
       }
+      // Graded questions (seizure ongoing / post-ictal / resolved) are asked, not guessed.
+      if (graded) return { known: false, status: 'unknown' };
       return { known: true, value: 'نعم', source: 'transcript', status: 'known_positive', confidence: 0.88 };
     }
   }
@@ -187,8 +194,9 @@ export function selectMissingModifiers({
     modifiers,
   });
 
+  const crossText = [transcript, patient?.transcription, patient?.chief_complaint].filter(Boolean).join(' \n ');
   const candidates = modifiers
-    .filter((m) => pathwayMatches(m, pathway))
+    .filter((m) => pathwayMatches(m, pathway, crossText))
     .filter((m) => ageMatches(m, patient))
     .filter((m) => askWhenMatches(m, patient, transcript))
     .filter((m) => ctasLevelMatches(m, level))
