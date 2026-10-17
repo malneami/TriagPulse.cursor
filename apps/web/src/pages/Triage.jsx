@@ -1587,8 +1587,8 @@ export default function Triage() {
         />
       )}
 
-      {/* Header: identification, triage clock, new patient */}
-      <div className="flex items-center gap-2">
+      {/* Header: identification, triage clock, new patient. Stays in view while scrolling. */}
+      <div className="sticky top-0 z-30 -mx-3 sm:-mx-6 px-3 sm:px-6 py-2 bg-paper/95 backdrop-blur flex items-center gap-2">
         <div className="flex-1 min-w-0">
           <PatientSelectorStrip
             currentPid={urlPid}
@@ -1604,7 +1604,7 @@ export default function Triage() {
           type="button"
           onClick={startNewPatient}
           aria-label="مريض جديد / New patient"
-          className="h-11 px-3 flex items-center gap-2 border border-mist bg-white text-ink rounded-2xl text-[15px] font-medium hover:border-ink shrink-0 shadow-sm"
+          className="h-12 px-3 flex items-center gap-2 border border-mist bg-white text-ink rounded-2xl text-[15px] font-medium hover:border-ink shrink-0 shadow-sm"
         >
           <Plus className="w-4 h-4" aria-hidden="true" /> <span className="hidden sm:inline">مريض جديد</span>
         </button>

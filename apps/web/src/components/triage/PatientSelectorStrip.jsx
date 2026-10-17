@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
-import { ChevronDown, X, Plus, Camera, Link2 } from 'lucide-react';
+import { ChevronDown, X, Camera, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EncounterDialog } from '@/components/journey/EncounterLink';
 import { ticketCode } from '@/lib/ticket';
@@ -18,7 +17,6 @@ function waitMins(iso) {
  * otherwise it is kept and saved with the new patient when the triage is saved.
  */
 export default function PatientSelectorStrip({ currentPid, onSwitch, journey = null, pendingEncounter = '', onPendingEncounter, onLinked }) {
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [patients, setPatients] = useState([]);
   const [encOpen, setEncOpen] = useState(false);
@@ -56,7 +54,7 @@ export default function PatientSelectorStrip({ currentPid, onSwitch, journey = n
 
   return (
     <div className="relative">
-      <div className="w-full h-11 bg-white border border-mist text-ink rounded-2xl shadow-sm flex items-center hover:border-ink">
+      <div className="w-full h-12 bg-white border border-mist text-ink rounded-2xl shadow-sm flex items-center hover:border-ink">
       <button
         onClick={() => setOpen(v => !v)}
         type="button"
@@ -77,7 +75,7 @@ export default function PatientSelectorStrip({ currentPid, onSwitch, journey = n
         type="button"
         onClick={() => setEncOpen(true)}
         title={encounter ? 'رقم العملية / Transaction No.' : 'قراءة رقم العملية بالكاميرا / Read the Transaction No. with the camera'}
-        className={`h-8 me-1.5 px-3 rounded-xl flex items-center gap-1.5 text-sm font-semibold shrink-0 ${
+        className={`h-10 me-1 px-3 rounded-xl flex items-center gap-1.5 text-sm font-semibold shrink-0 ${
           encounter ? 'border border-mist text-ink' : 'bg-ink text-white'
         }`}
       >
@@ -134,15 +132,9 @@ export default function PatientSelectorStrip({ currentPid, onSwitch, journey = n
           })}
 
           {others.length === 0 && !current && (
-            <div className="px-4 py-4 text-center text-xs text-graphite">لا يوجد مرضى في انتظار الفرز</div>
+            <div className="px-4 py-4 text-center text-sm text-graphite">لا يوجد مرضى في انتظار الفرز · No patients waiting — use «مريض جديد»</div>
           )}
 
-          <button
-            onClick={() => { setOpen(false); navigate('/visual-triage'); }}
-            className="w-full px-4 py-3 flex items-center gap-2 text-sm font-semibold text-ink hover:bg-paper border-t border-mist"
-          >
-            <Plus className="w-3.5 h-3.5" /> مريض جديد / New Patient
-          </button>
         </div>
       )}
     </div>
