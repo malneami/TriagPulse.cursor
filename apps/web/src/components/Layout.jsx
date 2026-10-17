@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
-import { Activity, LogOut, Eye, Users, Library, Signpost, BarChart3, ShieldCheck, UserCheck } from 'lucide-react';
+import { Activity, LogOut, Eye, Users, Library, Signpost, BarChart3, ShieldCheck, UserCheck, ClipboardCheck } from 'lucide-react';
 import PatientStrip from '@/components/PatientStrip';
 import Wordmark from '@/components/Wordmark';
 import { canAccess } from '@/lib/security/roles';
@@ -38,6 +38,7 @@ export default function Layout({ children }) {
     ...(canAccess(user, 'view_clinical_analytics')
       ? [
           { path: '/admin/analytics', label: 'التحليل', labelEn: 'Analytics', Icon: BarChart3 },
+          { path: '/admin/triage-review', label: 'مراجعة الفرز', labelEn: 'Triage review', Icon: ClipboardCheck },
           { path: '/admin/ai-evaluation', label: 'تقييم AI', labelEn: 'AI evaluation', Icon: ShieldCheck },
         ]
       : []),

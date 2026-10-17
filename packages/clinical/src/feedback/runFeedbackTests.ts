@@ -1,5 +1,5 @@
 import {
-  buildCases, caseStatus, learningCases, monthKey, previousMonth, summarise, ageBand,
+  buildCases, caseStatus, departmentBreakdown, reasonText, learningCases, monthKey, previousMonth, summarise, ageBand,
   FEEDBACK_MIN_CASES, type FeedbackRecordRow, type FeedbackReviewRow,
 } from './nurseFeedback.js';
 
@@ -40,5 +40,18 @@ export function runFeedbackTests(assert: Assert) {
   const changed = buildCases([rec('x', 10, 3, 3, now)], [{ ...rev('rx', 'x', 2, false, 'deteriorated'), conditionChanged: true }], [], { now });
   const cs = summarise('2026-10', changed.cases, changed.aiAgree, changed.aiCompared);
   assert(changed.cases[0].status === 'condition_changed' && cs.reviewed === 0 && cs.underTriage === 0 && learningCases(changed.cases).length === 0, 'FB-12', 'Condition changed after triage: shown, not counted against the nurse');
+  const deptRecs = [rec('d1', 10, 3, 3, now), rec('d2', 10, 4, 2, now), rec('d3', 10, 2, 2, now), rec('d4', 10, 3, 3, now), rec('d5', 10, 3, 3, now), rec('d6', 1, 3, 3, now)];
+  const deptRevs = [
+    rev('v1', 'd1', 3, true),
+    rev('v2', 'd2', 2, false, reasonText(['Vital signs', 'Pain'], 'HR 130')),
+    rev('v3', 'd3', 4, false, reasonText([], 'looked well')),
+    { ...rev('v4', 'd4', 1, false, 'seizure in waiting room'), conditionChanged: true },
+  ];
+  const dc = buildCases(deptRecs, deptRevs, [{ reviewId: 'v2', action: 'disputed', comment: 'x', createdAt: now }], { now });
+  const b = departmentBreakdown(dc.cases);
+  assert(b.matrix[2][2] === 1 && b.matrix[3][1] === 1 && b.matrix[1][3] === 1 && b.highRiskUnder === 1 && b.conditionChanged === 1 && b.coveragePct === 80,
+    'FB-13', 'Department matrix, high-risk under-triage (physician 1–2, nurse 3–5), condition-changed apart, review coverage', JSON.stringify(b));
+  assert(b.reasons.length === 3 && b.reasons.every((r) => r.count === 1) && b.reasons.some((r) => r.reason === 'Other') && b.responses.disputed === 1 && b.responses.pending === 1,
+    'FB-14', 'Reasons counted from the quick picks (free text → Other); responses counted', JSON.stringify({ r: b.reasons, s: b.responses }));
   assert(monthKey('2026-10-31T22:30:00Z') === '2026-11' && previousMonth('2026-01') === '2025-12' && ageBand(0.5) === '< 1 y', 'FB-11', 'Month in Riyadh time; previous month; age bands');
 }
