@@ -24,9 +24,12 @@ import ChangePassword from './pages/ChangePassword';
 import { syncClinicalLibrariesFromApi } from '@/lib/clinicalLibrariesSync';
 import { syncRoutingConfigFromApi } from './lib/routingConfigSync';
 
+/** Start screen by role: physicians work from the tracking board, nurses start a triage. */
 function HomeRedirect() {
   const location = useLocation();
-  return <Navigate to={`/visual-triage${location.search || ''}`} replace />;
+  const { user } = useAuth();
+  const home = user?.role === 'physician' ? '/tracking' : '/visual-triage';
+  return <Navigate to={`${home}${location.search || ''}`} replace />;
 }
 
 function Guarded({ permission, children }) {
@@ -88,7 +91,7 @@ const AuthenticatedApp = () => {
       </Route>
       {/* Wall display: full screen, no app chrome, ticket codes only. */}
       <Route path="/tracking/wall" element={<Guarded permission="perform_triage"><TrackingWall /></Guarded>} />
-      <Route path="/login" element={<Navigate to="/visual-triage" replace />} />
+      <Route path="/login" element={<HomeRedirect />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

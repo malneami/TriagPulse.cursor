@@ -62,7 +62,7 @@ export default function Login() {
   }, []);
 
   if (isAuthenticated) {
-    navigate('/visual-triage');
+    navigate('/');
     return null;
   }
 
@@ -73,7 +73,7 @@ export default function Login() {
     try {
       await login(email.trim(), password);
       toast.success('تم تسجيل الدخول / Logged in');
-      navigate('/visual-triage');
+      navigate('/');
     } catch (err) {
       const msg = err.message || 'Login failed';
       setError(msg);

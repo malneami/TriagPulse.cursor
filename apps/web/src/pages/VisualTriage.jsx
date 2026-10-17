@@ -1,9 +1,9 @@
 // @ts-nocheck
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import { assignDestination } from '@triagepulse/clinical';
-import { Plus, Users } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import SectionA from '@/components/visualTriage/SectionA';
 import SectionB from '@/components/visualTriage/SectionB';
 import DestinationScreen from '@/components/journey/DestinationScreen';
@@ -54,18 +54,9 @@ export default function VisualTriage() {
   const [journeyId, setJourneyId] = useState(null);
   const [directedTime, setDirectedTime] = useState('');
   const [saving, setSaving] = useState(false);
-  const [waitingCount, setWaitingCount] = useState(0);
 
   const isPediatric = !!patientAge && parseFloat(patientAge) < 14;
 
-  useEffect(() => {
-    api.journeys.listActive().then((all) => {
-      const waiting = all.filter((p) =>
-        ['registration', 'ctas_pending', 'ctas_in_progress', 'awaiting_ctas'].includes(p.current_status)
-      );
-      setWaitingCount(waiting.length);
-    }).catch(() => setWaitingCount(0));
-  }, [destination]);
 
   // Weighted score: exposure = 3 if any; clinical = sum based on age group
   const CLINICAL_WEIGHTS = { fever: { adult: 2, ped: 1 }, cough: { adult: 2, ped: 1 }, dyspnea: { adult: 2, ped: 1 }, gi: { adult: 1, ped: 0 }, comorbid: { adult: 1, ped: 0 } };
@@ -222,19 +213,6 @@ export default function VisualTriage() {
         </div>
       </div>
 
-      {waitingCount > 0 && (
-        <button
-          type="button"
-          onClick={() => navigate('/tracking')}
-          className="w-full flex items-center justify-between px-4 h-12 bg-white border border-mist rounded-xl hover:border-ink"
-        >
-          <span className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <Users className="w-4 h-4" aria-hidden="true" />
-            بانتظار CTAS: <span className="tabular-nums">{waitingCount}</span>
-          </span>
-          <span className="text-sm text-graphite">لوحة التتبع ←</span>
-        </button>
-      )}
 
       {/* Patient identity */}
       <section aria-labelledby="vt-identity" className="bg-white rounded-2xl border border-mist px-5 py-4">

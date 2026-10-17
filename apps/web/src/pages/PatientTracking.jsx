@@ -93,7 +93,7 @@ function PatientCard({ patient, now, onOpen, onSeen, onReview, physician }) {
           <button
             type="button"
             onClick={() => onOpen(patient)}
-            className="flex-1 h-11 rounded-lg bg-ink text-white text-sm font-medium"
+            className="flex-1 h-12 rounded-lg bg-ink text-white text-sm font-medium"
           >
             {patient.current_status === 'ctas_in_progress' ? 'متابعة الفرز' : 'بدء فرز CTAS'}
           </button>
@@ -104,7 +104,7 @@ function PatientCard({ patient, now, onOpen, onSeen, onReview, physician }) {
               type="button"
               onClick={() => onReview(patient, 'seen')}
               aria-label={`مراجعة المستوى وتسجيل فحص ${patientName(patient)}`}
-              className={`flex-1 h-11 rounded-lg text-sm font-medium ${late ? 'bg-white text-ink' : 'bg-ink text-white'}`}
+              className={`flex-1 h-12 rounded-lg text-sm font-medium ${late ? 'bg-white text-ink' : 'bg-ink text-white'}`}
             >
               فحصه الطبيب / Seen
             </button>
@@ -112,7 +112,7 @@ function PatientCard({ patient, now, onOpen, onSeen, onReview, physician }) {
               type="button"
               onClick={() => onReview(patient, 'retriage')}
               aria-label={`إعادة فرز ${patientName(patient)}`}
-              className={`h-11 px-3 rounded-lg text-sm font-medium ${late ? 'border border-white/60 text-white' : 'border border-mist text-ink hover:bg-paper'}`}
+              className={`h-12 px-3 rounded-lg text-sm font-medium ${late ? 'border border-white/60 text-white' : 'border border-mist text-ink hover:bg-paper'}`}
             >
               إعادة الفرز
             </button>
@@ -123,7 +123,7 @@ function PatientCard({ patient, now, onOpen, onSeen, onReview, physician }) {
             type="button"
             onClick={() => (confirming ? (setConfirming(false), onSeen(patient)) : setConfirming(true))}
             aria-label={confirming ? `تأكيد أن الطبيب فحص ${patientName(patient)}` : `تم فحص ${patientName(patient)} من الطبيب`}
-            className={`flex-1 h-11 rounded-lg text-sm font-medium ${
+            className={`flex-1 h-12 rounded-lg text-sm font-medium ${
               confirming
                 ? (late ? 'bg-white text-ink' : 'bg-ink text-white')
                 : (late ? 'border border-white/60 text-white' : 'border border-mist text-ink hover:bg-paper')
