@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { draftKey, saveDraft, loadDraft, clearDraft, hasTriageWork } from '@/lib/triageDraft';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import { useAuth } from '@/lib/AuthContext';
@@ -164,6 +165,26 @@ export default function Triage() {
         destination_en: activeJourney.vt_destination_en,
       }
     : null;
+
+  // ── Draft autosave (review H6): a refresh, a screen error or the idle lock no longer
+  // loses the triage in progress. Kept per nurse and patient in this tab only.
+  const dKey = draftKey(user?.id, urlPid);
+  const [restoredDraft, setRestoredDraft] = useState(null);
+  const draftCheckedRef = useRef(null);
+  useEffect(() => {
+    if (!user?.id || draftCheckedRef.current === dKey) return;
+    draftCheckedRef.current = dKey;
+    const d = loadDraft(dKey);
+    if (!d || !hasTriageWork(d.patient, d.clarifyingAnswers)) return;
+    setPatient((prev) => ({ ...prev, ...d.patient }));
+    setClarifyingAnswers(d.clarifyingAnswers || {});
+    setAnsweredLog(d.answeredLog || []);
+    setUnknownAnswers(d.unknownAnswers || {});
+    unknownRef.current = d.unknownAnswers || {};
+    manualEditedFieldsRef.current = new Set(d.manualEdited || []);
+    sttLastDictatedRef.current = d.lastDictated || {};
+    setRestoredDraft({ at: d.at });
+  }, [dKey, user?.id]);
 
   // Pre-populate patient demographics from the linked journey record
   useEffect(() => {
@@ -1278,6 +1299,24 @@ export default function Triage() {
   const transcript = sttSessionOutput?.full_transcript || patient.transcription || '';
   const hasData = !!(transcript || CORE_KEYS.some((k) => patient[k] !== '' && patient[k] != null));
   const done = !!savedRecord;
+  useEffect(() => {
+    if (!user?.id || draftCheckedRef.current !== dKey) return undefined;
+    if (done) { clearDraft(dKey); return undefined; }
+    if (!hasTriageWork(patient, clarifyingAnswers)) return undefined;
+    const t = setTimeout(() => saveDraft(dKey, {
+      patient,
+      clarifyingAnswers,
+      answeredLog,
+      unknownAnswers,
+      manualEdited: [...manualEditedFieldsRef.current],
+      lastDictated: sttLastDictatedRef.current,
+    }), 800);
+    return () => clearTimeout(t);
+  }, [dKey, user?.id, done, patient, clarifyingAnswers, answeredLog, unknownAnswers]);
+  const discardDraft = () => {
+    clearDraft(dKey);
+    window.location.reload();
+  };
 
   // ── Session effects ──────────────────────────────────────────────────
   const handleRecordingChange = useCallback((rec) => setRecording(rec), []);
@@ -1513,9 +1552,26 @@ export default function Triage() {
           currentPid={urlPid}
           currentName={patient.patient_name_ar || patient.patient_name_en}
           onCancel={() => setShowNewPatientConfirm(false)}
+          onLeave={() => { if (!urlPid) clearDraft(dKey); }}
         />
       )}
       <UrgentAlert alert={urgentAlert} onDismiss={acknowledgeUrgentAlert} />
+      {restoredDraft && !done && (
+        <div role="status" className="tp-card px-4 py-3 flex flex-wrap items-center justify-between gap-2 border border-amber-300 bg-amber-50">
+          <p className="text-sm text-ink">
+            استُعيد الفرز غير المحفوظ ({new Date(restoredDraft.at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })})
+            <span className="text-graphite"> · Unsaved triage restored — check the details before confirming</span>
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setRestoredDraft(null)} className="rounded-lg border border-mist px-3 py-1.5 text-sm font-semibold">
+              متابعة · Continue
+            </button>
+            <button type="button" onClick={discardDraft} className="rounded-lg border border-red-300 text-red-700 px-3 py-1.5 text-sm font-semibold">
+              تجاهل · Discard
+            </button>
+          </div>
+        </div>
+      )}
       {showChange && (
         <ChangeSheet
           aiLevel={shownLevel}

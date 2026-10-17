@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/api/client';
 
-export default function NewPatientConfirm({ currentPid, currentName, onCancel }) {
+export default function NewPatientConfirm({ currentPid, currentName, onCancel, onLeave }) {
   const navigate = useNavigate();
 
   const handleSaveAndNew = async () => {
@@ -18,6 +18,7 @@ export default function NewPatientConfirm({ currentPid, currentName, onCancel })
         return;
       }
     }
+    onLeave?.();
     navigate('/visual-triage');
   };
 

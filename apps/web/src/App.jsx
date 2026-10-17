@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import Layout from './components/Layout';
 import RoleGuard from '@/components/auth/RoleGuard';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import Triage from './pages/Triage';
 import VisualTriage from './pages/VisualTriage';
 import PatientTracking from './pages/PatientTracking';
@@ -25,9 +26,10 @@ function HomeRedirect() {
 }
 
 function Guarded({ permission, children }) {
+  const location = useLocation();
   return (
     <RoleGuard permission={permission}>
-      {children}
+      <ErrorBoundary key={location.pathname}>{children}</ErrorBoundary>
     </RoleGuard>
   );
 }
