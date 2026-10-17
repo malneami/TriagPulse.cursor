@@ -10,6 +10,7 @@ import DestinationScreen from '@/components/journey/DestinationScreen';
 import JourneyProgress from '@/components/journey/JourneyProgress';
 import { toast } from 'sonner';
 import { ctasFill } from '@/lib/ctasStyle';
+import { EncounterField, cleanEncounter, encounterLooksRight } from '@/components/journey/EncounterLink';
 
 const defaultSectionA = { breathing: null, consciousness: null, bleeding: null, skin: null, mobility: null };
 
@@ -39,6 +40,8 @@ export default function VisualTriage() {
   const [patientNameEn, setPatientNameEn] = useState('');
   const [patientIdNumber, setPatientIdNumber] = useState('');
   const [patientAge, setPatientAge] = useState('');
+  const [encounterNo, setEncounterNo] = useState('');
+  const [notRegistered, setNotRegistered] = useState(false);
   const [sectionA, setSectionA] = useState(defaultSectionA);
   const [symptoms, setSymptoms] = useState({});
   const [noSymptoms, setNoSymptoms] = useState(false);
@@ -79,6 +82,10 @@ export default function VisualTriage() {
 
   const sectionAComplete = Object.values(sectionA).every(v => v !== null);
   const hasCritical = Object.values(sectionA).some(v => v === 'red');
+  // The encounter number is taken at the start. Only "not registered yet" skips it, and a
+  // patient with critical signs is never held back for it (it is linked later from the board).
+  const encounterOk = encounterLooksRight(encounterNo);
+  const encounterReady = encounterOk || notRegistered || hasCritical;
 
   const detectedSigns = Object.entries(sectionA)
     .filter(([, v]) => v === 'red')
@@ -101,6 +108,7 @@ export default function VisualTriage() {
       const directed = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
       const created = await api.journeys.create({
+        encounterNo: encounterOk ? cleanEncounter(encounterNo) : undefined,
         patientNameAr: patientNameAr || undefined,
         patientNameEn: patientNameEn || undefined,
         age: ageInCompletedYears(patientAge),
@@ -154,6 +162,8 @@ export default function VisualTriage() {
     setPatientNameEn('');
     setPatientIdNumber('');
     setPatientAge('');
+    setEncounterNo('');
+    setNotRegistered(false);
     setSectionA(defaultSectionA);
     setSymptoms({});
     setNoSymptoms(false);
@@ -229,6 +239,31 @@ export default function VisualTriage() {
       {/* Patient identity */}
       <section aria-labelledby="vt-identity" className="bg-white rounded-2xl border border-mist px-5 py-4">
         <h2 id="vt-identity" className="text-sm font-semibold text-ink">بيانات أولية للتتبع · Pre-registration identity</h2>
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="text-sm text-graphite">
+            <label htmlFor="vt-encounter" className="font-semibold text-ink">
+              رقم العملية · Transaction No. {!notRegistered && <span aria-hidden="true">*</span>}
+            </label>
+            <EncounterField
+              value={encounterNo}
+              onChange={setEncounterNo}
+              disabled={notRegistered}
+              inputClassName={inputCls}
+            />
+          </div>
+          <label className="flex items-start gap-2 text-sm text-ink md:pt-7">
+            <input
+              type="checkbox"
+              checked={notRegistered}
+              onChange={(e) => { setNotRegistered(e.target.checked); if (e.target.checked) setEncounterNo(''); }}
+              className="mt-1 w-4 h-4"
+            />
+            <span>
+              لم يُسجَّل بعد — يُربط لاحقاً من لوحة التتبع
+              <span className="block text-graphite">Not registered yet — link it later from the tracking board</span>
+            </span>
+          </label>
+        </div>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
           <label className="text-sm text-graphite md:col-span-1">
             الاسم (عربي)
@@ -290,13 +325,18 @@ export default function VisualTriage() {
           ) : (
             <p className="text-sm text-graphite">أكمل القسم أ لعرض الوجهة · Complete Section A ({answered}/5)</p>
           )}
+          {sectionAComplete && !encounterReady && (
+            <p className="text-sm font-semibold text-ink mt-1">
+              أدخل رقم العملية أو اختر «لم يُسجَّل بعد» · Enter the Transaction No., or tick “Not registered yet”
+            </p>
+          )}
         </div>
         <button
           type="button"
           onClick={handleConfirm}
-          disabled={!sectionAComplete || saving}
+          disabled={!sectionAComplete || !encounterReady || saving}
           className={`min-h-[56px] px-6 rounded-xl text-base font-semibold transition-colors ${
-            sectionAComplete && !saving
+            sectionAComplete && encounterReady && !saving
               ? hasCritical
                 ? 'bg-[#D3242C] text-white hover:bg-[#B81E25]'
                 : 'bg-ink text-white hover:bg-ink-deep'

@@ -14,6 +14,8 @@ class CreateJourneyDto {
   @IsOptional() @IsEnum(Gender) gender?: Gender;
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() modeOfArrival?: string;
+  /** HIS encounter number, scanned or typed when the patient is started. */
+  @IsOptional() @IsString() @MaxLength(40) encounterNo?: string;
 }
 
 class VisualTriageDto {

@@ -20,11 +20,14 @@ export class JourneysService {
       gender?: Gender;
       phone?: string;
       modeOfArrival?: string;
+      encounterNo?: string;
     },
     user: { id: string; full_name?: string; email?: string },
   ) {
+    const encounterNo = data.encounterNo ? await this.checkEncounter(data.encounterNo) : null;
     const journey = await this.prisma.patientJourney.create({
       data: {
+        ...(encounterNo ? { encounterNo, encounterLinkedAt: new Date(), encounterLinkedById: user.id } : {}),
         patientId: randomUUID(),
         createdById: user.id,
         patientNameAr: data.patientNameAr,
@@ -37,7 +40,7 @@ export class JourneysService {
         currentLocation: 'ARRIVAL',
       },
     });
-    await this.audit.log('PatientJourney', journey.id, 'journey_created', user, { patientId: journey.patientId });
+    await this.audit.log('PatientJourney', journey.id, 'journey_created', user, { patientId: journey.patientId, encounterLinked: !!encounterNo });
     return journey;
   }
 
@@ -156,7 +159,24 @@ export class JourneysService {
   // ── HIS encounter number (Stage A) ─────────────────────────────────────
   /** Format of a scanned or typed encounter number. Override with ENCOUNTER_PATTERN. */
   private encounterPattern(): RegExp {
-    try { return new RegExp(process.env.ENCOUNTER_PATTERN || '^[A-Za-z0-9][A-Za-z0-9-]{3,24}$'); } catch { return /^[A-Za-z0-9][A-Za-z0-9-]{3,24}$/; }
+    // Default: the HIS "Transaction No." on the visit ticket (9–10 digits). This refuses the
+    // 7-digit patient file number (the ticket's barcode) and the 8-digit appointment number.
+    try { return new RegExp(process.env.ENCOUNTER_PATTERN || '^\\d{9,10}$'); } catch { return /^\d{9,10}$/; }
+  }
+
+  /** Cleans and checks an encounter number; 400 if malformed, 409 if another patient has it. */
+  private async checkEncounter(raw: string, journeyId?: string): Promise<string> {
+    const encounterNo = String(raw || '').trim().replace(/\s+/g, '').toUpperCase();
+    if (!this.encounterPattern().test(encounterNo)) {
+      throw new BadRequestException(/^\d{6,7}$/.test(encounterNo)
+        ? 'This is the patient file number (MRN), not the Transaction No. Use the Transaction No. on the visit ticket.'
+        : 'Enter the Transaction No. from the visit ticket (9–10 digits).');
+    }
+    const other = await this.prisma.patientJourney.findUnique({ where: { encounterNo } });
+    if (other && other.id !== journeyId) {
+      throw new ConflictException(`Encounter ${encounterNo} is already linked to ticket T${String(other.ticketNo % 1000).padStart(3, '0')}.`);
+    }
+    return encounterNo;
   }
 
   /**
@@ -164,17 +184,10 @@ export class JourneysService {
    * clerk at the desk), audit-logged. The same number cannot sit on two patients.
    */
   async linkEncounter(id: string, raw: string, user: { id: string; role: string; full_name?: string; email?: string }) {
-    const encounterNo = String(raw || '').trim().toUpperCase();
-    if (!this.encounterPattern().test(encounterNo)) {
-      throw new BadRequestException('This does not look like an encounter number. Scan again or check the digits.');
-    }
     const journey = await this.prisma.patientJourney.findUnique({ where: { id } });
     if (!journey) throw new NotFoundException('Journey not found');
+    const encounterNo = await this.checkEncounter(raw, id);
     if (journey.encounterNo === encounterNo) return journey;
-    const other = await this.prisma.patientJourney.findUnique({ where: { encounterNo } });
-    if (other && other.id !== id) {
-      throw new ConflictException(`Encounter ${encounterNo} is already linked to ticket T${String(other.ticketNo % 1000).padStart(3, '0')}.`);
-    }
     const updated = await this.prisma.patientJourney.update({
       where: { id },
       data: { encounterNo, encounterLinkedAt: new Date(), encounterLinkedById: user.id },
