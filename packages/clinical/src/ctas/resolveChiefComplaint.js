@@ -40,7 +40,7 @@ const EXTRA_SYNONYMS = {
     'ضربة شمس', 'إجهاد حراري', 'حرارة بيئية',
   ],
   fever: [
-    'fever', 'febrile', 'pyrexia', 'حمى', 'سخونة', 'سخون', 'سخونية',
+    'fever', 'febrile', 'pyrexia', 'حمى', 'سخونة', 'سخون', 'سخونية', 'حرارة',
     'عنده حرارة', 'عندها حرارة', 'ارتفاع حرارة', 'ارتفاع في الحرارة', 'ارتفاع درجة الحرارة',
   ],
   nasal_congestion: [
@@ -72,6 +72,10 @@ const EXTRA_SYNONYMS = {
   ],
   back_pain: ['back pain', 'lumbar pain', 'ألم الظهر', 'ظهر'],
   lower_extremity_injury: [
+    // Limp / joint pain (CTAS has no separate joint-pain complaint yet; nearest is lower extremity).
+    'joint pain', 'joint swelling', 'swollen joint', 'limp', 'limping', 'not bearing weight', 'refuses to walk',
+    'ألم في المفصل', 'ألم المفصل', 'ألم المفاصل', 'ألم في المفاصل', 'تورم المفصل', 'تورم في المفصل',
+    'عرج', 'يعرج', 'عرج في المشي', 'ما يمشي', 'لا يمشي', 'رافض يمشي',
     'leg pain', 'knee pain', 'ankle pain', 'foot pain', 'neck pain',
     'ألم الساق', 'ألم الركبة', 'ألم القدم', 'ألم الرقبة', 'رقبة',
   ],
@@ -142,6 +146,11 @@ const DISAMBIGUATION_BOOSTS = [
 ];
 
 /** Short tokens that over-match — require longer context or reduced weight. */
+const FEVER_WORDS = new Set(['fever', 'حرارة']);
+function feverAsComplaint(clause, at, term) {
+  if (clause.slice(Math.max(0, at - 2), at) === 'ال') return false;
+  return !/\d/.test(clause.slice(at + term.length, at + term.length + 14));
+}
 const SHORT_WEAK = new Set(['صدر', 'بطن', 'ظهر', 'قدم', 'جلد', 'حرارة', 'chest', 'pain', 'fever']);
 
 function normalizeText(s) {
@@ -453,8 +462,13 @@ export function findComplaintMentions(text) {
     const hits = [];
     for (const entry of LEXICON.values()) {
       for (const term of entry.terms) {
-        if (!term || term.length < 3 || SHORT_WEAK.has(term) || termWeight(term) < 0.55) continue;
+        if (!term || term.length < 3) continue;
+        const weak = SHORT_WEAK.has(term) || termWeight(term) < 0.55;
+        if (weak && !FEVER_WORDS.has(term)) continue;
         const at = wordAt(clause, term);
+        // "fever" / «حرارة» on its own is a complaint («وحرارة», "Fever."), but «الحرارة 39»
+        // or "fever 39" is the temperature reading.
+        if (weak && at >= 0 && !feverAsComplaint(clause, at, term)) continue;
         if (at >= 0) hits.push({ entry, term, at, end: at + term.length });
       }
     }

@@ -166,6 +166,24 @@ export function normalizeSpokenNumbers(text: string): string {
   return out.join('');
 }
 
+const NUM_WORD = '(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|a\\s+hundred|صفر|واحد|وحدة|اثنين|اثنان|إثنين|ثنين|ثلاث|ثلاثة|تلات|تلاتة|أربع|اربع|أربعة|اربعة|خمس|خمسة|ست|ستة|سبع|سبعة|ثمان|ثمانية|تمن|تمانية|تسع|تسعة|عشر|عشرة|عشرين|ثلاثين|أربعين|اربعين|خمسين|ستين|سبعين|ثمانين|تسعين|مية|مئة|مائة|ميه)';
+// Label + stop + value: "Pain score. Five" (not number + stop + number: "110. 90" are two readings).
+const STT_GLUE_VALUE = new RegExp(
+  `(?<![\\d٠-٩])([.،,؛:!])\\s+(?=(?:\\d|[٠-٩]|${NUM_WORD})(?=[\\s.،,؛:!?؟/%]|$|\\d))`,
+  'giu',
+);
+// Stop before a pair connector: «90. على. 80», "90. Over 50".
+const STT_GLUE_PAIR = /([.،,؛:!])\s+(?=(?:على|over|out\s+of|\/)(?=[\s.،,؛:!?؟]|$|\d))/giu;
+
+/**
+ * Some speech services (Speechmatics) put a full stop between a label and its value:
+ * "Pain score. Five.", «الضغط. 90. على. 80». Joining them keeps "label value" together.
+ * Only punctuation followed by a space is touched, so 37.5 or 1,500 stay as they are.
+ */
+export function relaxSttPunctuation(text: string): string {
+  return String(text || '').replace(STT_GLUE_PAIR, ' ').replace(STT_GLUE_VALUE, ' ');
+}
+
 function normalizeDigits(text: string): string {
   // Arabic decimal separator «٫» (and the comma between digits) is a decimal point: «٣٧٫٥» = 37.5.
   return normalizeSpokenNumbers(String(text)
@@ -692,7 +710,7 @@ export interface VitalConflict {
 }
 
 export function findVitalConflicts(text: string): VitalConflict[] {
-  const t = normalizeDigits(String(text || ''));
+  const t = normalizeDigits(relaxSttPunctuation(String(text || '')));
   const specs: Array<{ field: VitalConflict['field']; label: string; num: string; ok: (n: number) => boolean }> = [
     { field: 'hr', label: HR_LABEL, num: '\\d{2,3}', ok: (n) => n >= 20 && n <= 300 },
     { field: 'spo2', label: SPO2_LABEL, num: '\\d{2,3}', ok: (n) => n >= SPO2_MIN && n <= SPO2_MAX },
@@ -901,7 +919,7 @@ export function extractFieldsFromTranscript(
   transcript: string,
   existingFields: Record<SttFieldKey, SttFieldSlot> = createEmptySttFields(),
 ): Record<SttFieldKey, SttFieldSlot> {
-  const text = conservativeTranscriptCleanup(transcript);
+  const text = relaxSttPunctuation(conservativeTranscriptCleanup(transcript));
   let fields = { ...existingFields };
 
   const runExtract = (chunk: string) => {

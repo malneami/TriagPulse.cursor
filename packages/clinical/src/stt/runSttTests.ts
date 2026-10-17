@@ -13,7 +13,8 @@ import {
   createRealtimeConfigState,
   reduceRealtimeEvent,
 } from './realtimeEvents.js';
-import { createEmptySttFields, extractFieldsFromTranscript, mapSttSessionToPatientUpdates } from './extractFields.js';
+import { createEmptySttFields, extractFieldsFromTranscript, mapSttSessionToPatientUpdates, findVitalConflicts } from './extractFields.js';
+import { findComplaintMentions } from '../ctas/resolveChiefComplaint.js';
 import { buildCaseDetails, normalizeLlmCaseDetails } from '../ctas/caseDetails.js';
 import { LLM_CTAS_JSON_SCHEMA } from './llmExtractSchema.js';
 
@@ -648,5 +649,18 @@ export function runSttTests(
     // Speechmatics writes Arabic numerals with the Arabic decimal separator.
     const { updates } = mapSttSessionToPatientUpdates(extractFieldsFromTranscript('الحرارة ٣٧٫٥، النبض ١٨٠', createEmptySttFields()));
     assert(String(updates.temperature) === '37.5' && String(updates.hr) === '180', 'STT-36', 'Arabic decimal «٣٧٫٥» is read as 37.5', JSON.stringify(updates));
+  }
+  {
+    // Speechmatics puts full stops between label and value (real transcript, 2026-10-17).
+    const t = 'أمر المريض سنتين. Complain of joint pain. Since three days. Age two years. Weight ten. And limping. Fever. Pain score. Five. الألم. Five. درجة الألم. خمسة. النبض 110. 90. على. 80. او 90. على. 50. الأوكسجين 99. التنفس 25. الحرارة 39. الوعي 15. Blood pressure. Nine. Oh 450. 90. Over 50. الضغط. 90 على. Spo2. 99. Pain. Five';
+    const { updates } = mapSttSessionToPatientUpdates(extractFieldsFromTranscript(t, createEmptySttFields()));
+    const want: Record<string, string> = { age: '2', pain_score: '5', hr: '110', bp_systolic: '90', bp_diastolic: '50', spo2: '99', rr: '25', temperature: '39', gcs: '15', weight: '10' };
+    const miss = Object.entries(want).filter(([k, v]) => String((updates as any)[k]) !== v);
+    assert(miss.length === 0, 'STT-37', 'All boxes fill when a stop separates label and value ("Pain score. Five.")', JSON.stringify(miss));
+    assert(findVitalConflicts(t).length === 0, 'STT-38', '"110. 90" stays two readings (HR then BP), no false HR conflict', JSON.stringify(findVitalConflicts(t)));
+    const keys = findComplaintMentions('Complaint. Fever, joint pain يشتكي من ألم في المفصل. وحرارة. وعرج في المشي.').map((m: any) => m.complaintKey);
+    assert(keys.includes('fever') && keys.includes('lower_extremity_injury'), 'STT-39', 'Fever and joint pain / limp are both listed as complaints', keys.join(','));
+    const none = ['الحرارة 39', 'temperature 39', 'fever 39', 'no fever'].filter((x) => findComplaintMentions(x).length);
+    assert(none.length === 0, 'STT-40', 'A temperature reading or "no fever" is not a fever complaint', none.join(' | '));
   }
 }
