@@ -226,4 +226,19 @@ if (process.env.EXPECT_WEB === '1') {
   check(apiStill.json?.status === 'ok', 'API still answers alongside the web app');
 }
 
+// ── Security headers and sign-in protection (review H2, H4) ─────────
+const hdr = await fetch(`${BASE}/api/health`);
+check(/default-src 'self'/.test(hdr.headers.get('content-security-policy') || ''), 'content security policy header is set');
+check(hdr.headers.get('x-frame-options') === 'SAMEORIGIN' || /frame-ancestors 'none'/.test(hdr.headers.get('content-security-policy') || ''), 'the app cannot be framed');
+check(hdr.headers.get('x-content-type-options') === 'nosniff', 'no MIME sniffing');
+
+// The admin account is not used above, so locking it here affects nothing else.
+const lockEmail = 'admin@triagepulse.local';
+for (let i = 0; i < 5; i += 1) {
+  await call('/auth/login', { method: 'POST', body: { email: lockEmail, password: 'wrong-password' } });
+}
+const locked = await call('/auth/login', { method: 'POST', body: { email: lockEmail, password: DEMO_PASSWORD } });
+check(locked.status === 429, '5 wrong passwords lock the account (correct password refused with 429)', `got ${locked.status}`);
+check(/locked/i.test(locked.text), 'the lock message says the account is locked', locked.text.slice(0, 120));
+
 console.log(`\nAll ${passed} checks passed.`);

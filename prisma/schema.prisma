@@ -37,6 +37,8 @@ model User {
   passwordHash String   @map("password_hash")
   fullName     String   @map("full_name")
   role         UserRole @default(nurse)
+  failedLoginCount Int  @default(0) @map("failed_login_count")
+  lockedUntil  DateTime? @map("locked_until")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
