@@ -10,3 +10,4 @@ coverage/
 reference/
 apps/web/index.html.bak
 apps/web/package.json.ref
+apps/web/public/ocr/

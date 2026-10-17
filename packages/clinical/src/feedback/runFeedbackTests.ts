@@ -2,6 +2,7 @@ import {
   buildCases, caseStatus, departmentBreakdown, reasonText, learningCases, monthKey, previousMonth, summarise, ageBand,
   FEEDBACK_MIN_CASES, type FeedbackRecordRow, type FeedbackReviewRow,
 } from './nurseFeedback.js';
+import { transactionNoFromText } from './ticketText.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -53,5 +54,18 @@ export function runFeedbackTests(assert: Assert) {
     'FB-13', 'Department matrix, high-risk under-triage (physician 1–2, nurse 3–5), condition-changed apart, review coverage', JSON.stringify(b));
   assert(b.reasons.length === 3 && b.reasons.every((r) => r.count === 1) && b.reasons.some((r) => r.reason === 'Other') && b.responses.disputed === 1 && b.responses.pending === 1,
     'FB-14', 'Reasons counted from the quick picks (free text → Other); responses counted', JSON.stringify({ r: b.reasons, s: b.responses }));
+  const ticket = [
+    'OUTPATIENT VISIT TICKET', 'Invoice No.:', 'Transaction No.: 512345678', 'Invoice Date 2026-10-18 14:28:00',
+    'Patient No : 1234567', 'Appointment No. 87654321', 'Insurance ID. 38970000',
+  ].join('\n');
+  const t1 = transactionNoFromText(ticket);
+  const t2 = transactionNoFromText('Transacti0n N0.: 5I2345 67B\nPatient No : 1234567');
+  const t3 = transactionNoFromText('Transaction No.:\n512345678\nPatient No 1234567');
+  const t4 = transactionNoFromText('Patient No : 1234567\nAppointment No. 87654321\nInsurance ID. 389700001');
+  const t5 = transactionNoFromText('random 512345678 text\nPatient No : 1234567');
+  const t6 = transactionNoFromText('a 512345678\nb 612345678');
+  assert(t1?.value === '512345678' && t1.source === 'label', 'FB-15', 'Ticket text: Transaction No. read next to its label', JSON.stringify(t1));
+  assert(t2?.value === '512345678' && t3?.value === '512345678', 'FB-16', 'Ticket text: OCR look-alikes (O/0, I/1, B/8) and the number on the next line', JSON.stringify([t2, t3]));
+  assert(t4 === null && t5 === null && t6 === null, 'FB-17', 'Ticket text: only next to the "Transaction No." label — never the MRN, appointment, insurance or any loose number', JSON.stringify([t4, t5, t6]));
   assert(monthKey('2026-10-31T22:30:00Z') === '2026-11' && previousMonth('2026-01') === '2025-12' && ageBand(0.5) === '< 1 y', 'FB-11', 'Month in Riyadh time; previous month; age bands');
 }

@@ -202,3 +202,4 @@ export {
   localMinutes,
 } from './routing/routingConfig.js';
 export * from './feedback/nurseFeedback.js';
+export * from './feedback/ticketText.js';

@@ -223,6 +223,10 @@ const dupStart = await call('/journeys', { token: nurse, method: 'POST', body: {
 check(dupStart.status === 409, 'starting a second patient with the same encounter number is refused (409)', `got ${dupStart.status}`);
 const badStart = await call('/journeys', { token: nurse, method: 'POST', body: { patientNameEn: 'E2E Bad', encounterNo: 'x!' } });
 check(badStart.status === 400, 'a malformed encounter number at start is refused (400)', `got ${badStart.status}`);
+const byEnc = await call(`/journeys/by-encounter/${encAtStart}`, { token: nurse });
+check(byEnc.status === 200 && byEnc.json?.id === started.json?.id, 'the CTAS page finds the patient by Transaction No.', `status ${byEnc.status}`);
+const byEncMissing = await call('/journeys/by-encounter/700000001', { token: nurse });
+check(byEncMissing.status === 404, 'an unknown Transaction No. finds no patient (404)', `got ${byEncMissing.status}`);
 const mrnStart = await call('/journeys', { token: nurse, method: 'POST', body: { patientNameEn: 'E2E MRN', encounterNo: '1234567' } });
 check(mrnStart.status === 400 && /MRN/.test(mrnStart.text), 'the 7-digit patient file number (MRN) is refused as an encounter (400)', `got ${mrnStart.status}`);
 const unlinked2 = await call('/journeys/unlinked?hours=24', { token: nurse });

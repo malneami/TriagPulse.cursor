@@ -160,6 +160,12 @@ export const api = {
     /** Attach the HIS encounter number (scanned or typed). */
     linkEncounter: (id, encounterNo) =>
       request(`/journeys/${id}/encounter`, { method: 'PATCH', body: JSON.stringify({ encounterNo }) }).then(mapJourney),
+    /** The patient already linked to this Transaction No., or null. */
+    findByEncounter: (encounterNo) =>
+      request(`/journeys/by-encounter/${encodeURIComponent(encounterNo)}`).then(mapJourney).catch((err) => {
+        if (/no patient has this/i.test(err?.message || '')) return null;
+        throw err;
+      }),
     /** Triaged patients with no encounter number yet. */
     unlinked: (hours = 24) => request(`/journeys/unlinked?hours=${hours}`).then((list) => list.map(mapJourney)),
     /** Physician check of the triage level: agree, or a new level with a reason. */

@@ -5,12 +5,12 @@ import { api } from '@/api/client';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 
 /**
- * HIS encounter number for a journey (Stage A): scanned from the wristband or the
- * registration slip with the tablet camera, or typed. The scan only fills the box; the
- * nurse checks the number and taps Link, so a wrong barcode (MRN, ID card) is not saved.
+ * HIS encounter number for a journey = the "Transaction No." on the outpatient visit ticket.
+ * The camera reads it (printed text, or a barcode if one carries it), or the nurse types it.
+ * The camera only fills the box; the nurse checks the number before it is saved.
  *
- * Native BarcodeDetector first (Chrome on Android/ChromeOS/macOS); @zxing/browser is loaded
- * only when that is missing (iPad Safari). Typing always works.
+ * Barcodes: native BarcodeDetector first, @zxing/browser when missing (iPad Safari).
+ * Text: tesseract.js, served by the app, loaded on first use (lib/ticketOcr).
  */
 
 const FORMATS = ['code_128', 'code_39', 'code_93', 'codabar', 'itf', 'ean_13', 'qr_code', 'pdf417', 'data_matrix'];
@@ -51,14 +51,25 @@ async function nativeDetector() {
   }
 }
 
+/**
+ * Camera for the visit ticket. Two readers run on the same picture, on the tablet:
+ * - the printed "Transaction No." is read as text (on-device OCR, loaded on first use);
+ * - any barcode is decoded, but only a barcode that holds a valid Transaction No. is taken
+ *   (the ticket's own barcode is the MRN and is ignored).
+ * Frames never leave the device. The number found only fills the box; the nurse confirms.
+ */
 function Scanner({ onResult }) {
   const videoRef = useRef(null);
   const [state, setState] = useState('starting'); // starting | scanning | blocked | unsupported
+  const [ocr, setOcr] = useState({ phase: 'loading', pct: 0 }); // loading | reading | failed
+  const [note, setNote] = useState('');
+  const [slow, setSlow] = useState(false);
 
   useEffect(() => {
     let stopped = false;
     let stream = null;
     let timer = null;
+    let slowTimer = null;
     let zxingControls = null;
 
     const done = (text) => {
@@ -67,82 +78,134 @@ function Scanner({ onResult }) {
       if (navigator.vibrate) navigator.vibrate(80);
       onResult(text);
     };
+    const fromBarcode = (raw) => {
+      const v = cleanEncounter(raw);
+      if (LOOKS_RIGHT.test(v)) done(v);
+      else if (/^\d{6,7}$/.test(v)) setNote('الباركود هو رقم الملف (MRN) — تم تجاهله · The barcode is the MRN — ignored');
+    };
 
     (async () => {
       if (!navigator.mediaDevices?.getUserMedia) { setState('unsupported'); return; }
-      const constraints = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false };
-      const detector = await nativeDetector();
       try {
-        if (detector) {
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
-          if (stopped) return;
-          const v = videoRef.current;
-          v.srcObject = stream;
-          await v.play().catch(() => {});
-          setState('scanning');
-          const tick = async () => {
-            if (stopped) return;
-            try {
-              if (v.readyState >= 2) {
-                const codes = await detector.detect(v);
-                if (codes?.length) { done(codes[0].rawValue); return; }
-              }
-            } catch { /* frame not ready */ }
-            timer = setTimeout(tick, 200);
-          };
-          tick();
-        } else {
-          const { BrowserMultiFormatReader } = await import('@zxing/browser');
-          if (stopped) return;
-          const reader = new BrowserMultiFormatReader();
-          zxingControls = await reader.decodeFromConstraints(constraints, videoRef.current, (result) => {
-            if (result) done(result.getText());
-          });
-          if (stopped) zxingControls.stop();
-          else setState('scanning');
-        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false,
+        });
       } catch (err) {
         setState(err?.name === 'NotAllowedError' || err?.name === 'SecurityError' ? 'blocked' : 'unsupported');
+        return;
+      }
+      if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+      const v = videoRef.current;
+      v.srcObject = stream;
+      await v.play().catch(() => {});
+      setState('scanning');
+      slowTimer = setTimeout(() => setSlow(true), 25000);
+
+      // Barcodes: native detector, else zxing on the same video.
+      const detector = await nativeDetector();
+      if (detector) {
+        const tick = async () => {
+          if (stopped) return;
+          try {
+            if (v.readyState >= 2) {
+              const codes = await detector.detect(v);
+              for (const c of codes || []) fromBarcode(c.rawValue);
+            }
+          } catch { /* frame not ready */ }
+          timer = setTimeout(tick, 250);
+        };
+        tick();
+      } else {
+        import('@zxing/browser').then(({ BrowserMultiFormatReader }) => {
+          if (stopped) return;
+          const reader = new BrowserMultiFormatReader();
+          reader.decodeFromVideoElement(v, (result) => { if (result) fromBarcode(result.getText()); })
+            .then((c) => { zxingControls = c; if (stopped) c.stop(); })
+            .catch(() => {});
+        }).catch(() => {});
+      }
+
+      // Printed text: read frames one after another until the Transaction No. is found.
+      try {
+        const { getTicketReader, readTransactionNo } = await import('@/lib/ticketOcr');
+        await getTicketReader((m) => {
+          if (m?.status && /load|init/i.test(m.status) && typeof m.progress === 'number') {
+            setOcr({ phase: 'loading', pct: Math.round(m.progress * 100) });
+          }
+        });
+        if (stopped) return;
+        setOcr({ phase: 'reading', pct: 100 });
+        while (!stopped) {
+          const found = await readTransactionNo(v, LOOKS_RIGHT).catch(() => null);
+          if (found) { done(found.value); return; }
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      } catch {
+        if (!stopped) setOcr({ phase: 'failed', pct: 0 });
       }
     })();
 
     return () => {
       stopped = true;
       clearTimeout(timer);
+      clearTimeout(slowTimer);
       try { zxingControls?.stop(); } catch { /* ignore */ }
       stream?.getTracks().forEach((t) => t.stop());
     };
   }, [onResult]);
 
   return (
-    <div className="relative rounded-xl overflow-hidden bg-ink aspect-[4/3]">
-      <video ref={videoRef} muted playsInline className="w-full h-full object-cover" aria-label="الكاميرا / Camera" />
+    <div className="flex flex-col gap-2">
+      <div className="relative rounded-xl overflow-hidden bg-ink aspect-[4/3]">
+        <video ref={videoRef} muted playsInline className="w-full h-full object-cover" aria-label="الكاميرا / Camera" />
+        {state === 'scanning' && (
+          <span aria-hidden="true" className="absolute inset-6 rounded-lg border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.25)]" />
+        )}
+        {state !== 'scanning' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white text-center p-4">
+            {state === 'starting' ? <Camera className="w-8 h-8" aria-hidden="true" /> : <CameraOff className="w-8 h-8" aria-hidden="true" />}
+            <span className="text-[15px]">
+              {state === 'starting' && 'تشغيل الكاميرا… / Starting camera…'}
+              {state === 'blocked' && 'الكاميرا غير مسموح بها. اكتب الرقم أدناه. / Camera blocked — type the number below.'}
+              {state === 'unsupported' && 'لا توجد كاميرا متاحة. اكتب الرقم أدناه. / No camera — type the number below.'}
+            </span>
+          </div>
+        )}
+      </div>
       {state === 'scanning' && (
-        <span aria-hidden="true" className="absolute inset-x-8 top-1/2 h-0.5 bg-white/80 shadow-[0_0_12px_white]" />
+        <p aria-live="polite" className="m-0 text-sm text-graphite">
+          {ocr.phase === 'loading' && `تحميل قارئ النص (أول مرة فقط) ${ocr.pct}% · Loading the text reader (first time only)`}
+          {ocr.phase === 'reading' && 'ضع «Transaction No.» داخل الإطار، والتذكرة مستوية · Fit “Transaction No.” in the frame, ticket flat'}
+          {ocr.phase === 'failed' && 'تعذّر تشغيل قارئ النص — اكتب الرقم · Text reader unavailable — type the number'}
+        </p>
       )}
-      {state !== 'scanning' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white text-center p-4">
-          {state === 'starting' ? <Camera className="w-8 h-8" aria-hidden="true" /> : <CameraOff className="w-8 h-8" aria-hidden="true" />}
-          <span className="text-[15px]">
-            {state === 'starting' && 'تشغيل الكاميرا… / Starting camera…'}
-            {state === 'blocked' && 'الكاميرا غير مسموح بها. اكتب الرقم أدناه. / Camera blocked — type the number below.'}
-            {state === 'unsupported' && 'لا توجد كاميرا متاحة. اكتب الرقم أدناه. / No camera — type the number below.'}
-          </span>
-        </div>
+      {note && <p className="m-0 text-sm text-ink">{note}</p>}
+      {slow && ocr.phase === 'reading' && (
+        <p className="m-0 text-sm font-semibold text-ink">
+          لم يُقرأ بعد: قرّب التذكرة وأضف إضاءة، أو اكتب الرقم · Not read yet: closer, more light, or type it
+        </p>
       )}
+      <p className="m-0 text-xs text-graphite">
+        تُقرأ الصورة على الجهاز فقط ولا تُحفظ · The picture is read on this device only and is not saved.
+      </p>
     </div>
   );
 }
 
-export function EncounterDialog({ journey, open, onOpenChange, onLinked }) {
+/**
+ * Read or type the Transaction No. With a journey, Link saves it on that patient.
+ * Without one (CTAS page, no patient yet), onPick receives the checked number instead.
+ */
+export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick, initialValue = '' }) {
   const [value, setValue] = useState('');
   const [scanning, setScanning] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (open) { setValue(journey?.encounter_no || ''); setScanning(true); setError(''); }
-  }, [open, journey?.encounter_no]);
+    if (open) { setValue(journey?.encounter_no || initialValue || ''); setScanning(!(journey?.encounter_no || initialValue)); setError(''); }
+  }, [open, journey?.encounter_no, initialValue]);
 
   // Stable, so the camera is not restarted on every keystroke.
   const onResult = useCallback((text) => { setValue(cleanEncounter(text)); setScanning(false); setError(''); }, []);
@@ -150,12 +213,17 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked }) {
   const ok = LOOKS_RIGHT.test(clean);
 
   const save = async () => {
-    if (!ok || !journey) return;
+    if (!ok) return;
     setSaving(true);
     setError('');
     try {
+      if (!journey) {
+        await onPick?.(clean);
+        onOpenChange(false);
+        return;
+      }
       const updated = await api.journeys.linkEncounter(journey.id, clean);
-      toast.success(`تم ربط رقم الزيارة ${clean} / Encounter linked`);
+      toast.success(`تم ربط رقم العملية ${clean} / Transaction No. linked`);
       onLinked?.(updated);
       onOpenChange(false);
     } catch (err) {
@@ -170,7 +238,7 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked }) {
       <DialogContent dir="rtl" className="max-w-md">
         <DialogTitle className="text-lg">ربط رقم العملية / Link Transaction No.</DialogTitle>
         <DialogDescription className="text-sm text-graphite">
-          اكتب «رقم العملية» من تذكرة الزيارة، أو امسح باركوداً يحمله. Type the Transaction No. from the visit ticket, or scan a barcode that carries it.
+          وجّه الكاميرا إلى تذكرة الزيارة لقراءة «رقم العملية»، ثم تحقق منه. Point the camera at the visit ticket to read the Transaction No., then check it.
         </DialogDescription>
         {scanning ? (
           <Scanner onResult={onResult} />
@@ -180,7 +248,7 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked }) {
             onClick={() => { setScanning(true); setValue(''); }}
             className="h-11 rounded-xl border border-mist flex items-center justify-center gap-2 text-[15px]"
           >
-            <Camera className="w-4 h-4" aria-hidden="true" /> مسح مرة أخرى / Scan again
+            <Camera className="w-4 h-4" aria-hidden="true" /> قراءة مرة أخرى / Read again
           </button>
         )}
         <label className="flex flex-col gap-1">
@@ -275,15 +343,15 @@ export function EncounterField({ value, onChange, disabled = false, inputClassNa
           onClick={() => setOpen(true)}
           className="mt-1 h-12 px-4 rounded-xl bg-ink text-white flex items-center gap-2 text-sm font-semibold shrink-0 disabled:opacity-40"
         >
-          <Barcode className="w-5 h-5" aria-hidden="true" /> مسح · Scan
+          <Camera className="w-5 h-5" aria-hidden="true" /> كاميرا · Camera
         </button>
       </div>
       {bad && <span role="alert" className="text-sm font-semibold text-ink">{encounterProblem(value)}</span>}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent dir="rtl" className="max-w-md">
-          <DialogTitle className="text-lg">مسح الباركود / Scan barcode</DialogTitle>
+          <DialogTitle className="text-lg">قراءة رقم العملية / Read the Transaction No.</DialogTitle>
           <DialogDescription className="text-sm text-graphite">
-            الباركود الكبير في تذكرة الزيارة هو رقم الملف (MRN) وسيُرفض. · The large barcode on the visit ticket is the MRN and will be refused.
+            وجّه الكاميرا إلى تذكرة الزيارة · Point the camera at the visit ticket.
           </DialogDescription>
           {open && <Scanner onResult={onResult} />}
         </DialogContent>
