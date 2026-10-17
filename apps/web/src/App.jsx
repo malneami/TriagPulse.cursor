@@ -19,6 +19,8 @@ import AiEvaluationDashboard from './pages/AiEvaluationDashboard';
 import Login from './pages/Login';
 import MyTriage from './pages/MyTriage';
 import TriageReview from './pages/TriageReview';
+import StaffAdmin from './pages/StaffAdmin';
+import ChangePassword from './pages/ChangePassword';
 import { syncClinicalLibrariesFromApi } from '@/lib/clinicalLibrariesSync';
 import { syncRoutingConfigFromApi } from './lib/routingConfigSync';
 
@@ -37,7 +39,7 @@ function Guarded({ permission, children }) {
 }
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isAuthenticated } = useAuth();
+  const { isLoadingAuth, isAuthenticated, user } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -52,6 +54,11 @@ const AuthenticatedApp = () => {
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
       </div>
     );
+  }
+
+  // A temporary password (new account or admin reset) must be changed before anything else.
+  if (isAuthenticated && user?.must_change_password) {
+    return <ChangePassword forced />;
   }
 
   if (!isAuthenticated) {
@@ -74,6 +81,8 @@ const AuthenticatedApp = () => {
         <Route path="/admin/libraries" element={<Guarded permission="manage_clinical_libraries"><ClinicalLibrariesAdmin /></Guarded>} />
         <Route path="/admin/routing" element={<Guarded permission="manage_routing"><RoutingAdmin /></Guarded>} />
         <Route path="/admin/analytics" element={<Guarded permission="view_clinical_analytics"><ClinicalAnalytics /></Guarded>} />
+        <Route path="/admin/staff" element={<Guarded permission="manage_security"><StaffAdmin /></Guarded>} />
+        <Route path="/account/password" element={<ChangePassword />} />
         <Route path="/admin/triage-review" element={<Guarded permission="view_clinical_analytics"><TriageReview /></Guarded>} />
         <Route path="/admin/ai-evaluation" element={<Guarded permission="view_clinical_analytics"><AiEvaluationDashboard /></Guarded>} />
       </Route>

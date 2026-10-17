@@ -279,6 +279,47 @@ if (process.env.EXPECT_WEB === '1') {
   check(apiStill.json?.status === 'ok', 'API still answers alongside the web app');
 }
 
+// ── Staff accounts (admin) ───────────────────────────────────────────
+const admin = await login('admin@triagepulse.local');
+const nurseUsers = await call('/users', { token: nurse });
+check(nurseUsers.status === 403, 'a nurse cannot open staff accounts (403)', `got ${nurseUsers.status}`);
+const staff = await call('/users', { token: admin });
+check(staff.status === 200 && staff.json.some((u) => u.email === 'nurse@triagepulse.local') && !staff.text.includes('passwordHash') && !staff.text.includes('$2'), 'the admin lists staff, with no password data', `status ${staff.status}`);
+const newEmail = `e2e.nurse.${Date.now()}@triagepulse.local`;
+const tempPw = 'Temp4321abcd';
+const weak = await call('/users', { token: admin, method: 'POST', body: { email: newEmail, fullName: 'E2E Nurse', role: 'nurse', password: 'short1' } });
+check(weak.status === 400, 'a weak temporary password is refused (400)', `got ${weak.status}`);
+const newUser = await call('/users', { token: admin, method: 'POST', body: { email: newEmail, fullName: 'E2E Nurse', role: 'nurse', password: tempPw } });
+check(newUser.status === 201 && newUser.json?.mustChangePassword === true && !('passwordHash' in (newUser.json || {})), 'the admin adds a nurse with a temporary password', `status ${newUser.status} ${newUser.text.slice(0, 200)}`);
+const dupUser = await call('/users', { token: admin, method: 'POST', body: { email: newEmail, fullName: 'Dup', role: 'nurse', password: tempPw } });
+check(dupUser.status === 409, 'the same e-mail cannot be added twice (409)', `got ${dupUser.status}`);
+const firstLogin = await call('/auth/login', { method: 'POST', body: { email: newEmail, password: tempPw } });
+check(firstLogin.status === 201 && firstLogin.json?.user?.must_change_password === true, 'first sign-in says the password must be changed');
+const tempToken = firstLogin.json?.access_token;
+const blocked = await call('/journeys', { token: tempToken });
+check(blocked.status === 403, 'with a temporary password, work is blocked until it is changed (403)', `got ${blocked.status}`);
+const wrongCur = await call('/auth/change-password', { token: tempToken, method: 'POST', body: { currentPassword: 'nope', newPassword: 'NewPass5678xy' } });
+check(wrongCur.status === 400, 'changing the password needs the current one (400)', `got ${wrongCur.status}`);
+const changed = await call('/auth/change-password', { token: tempToken, method: 'POST', body: { currentPassword: tempPw, newPassword: 'NewPass5678xy' } });
+check(changed.status === 201, 'the new nurse changes the temporary password', `status ${changed.status} ${changed.text.slice(0, 200)}`);
+const unblocked = await call('/journeys', { token: tempToken });
+check(unblocked.status === 200, 'after the change, work is allowed', `got ${unblocked.status}`);
+const toPhysician = await call(`/users/${newUser.json.id}`, { token: admin, method: 'PATCH', body: { role: 'physician' } });
+check(toPhysician.status === 200 && toPhysician.json?.role === 'physician', 'the admin changes the role');
+const deactivated = await call(`/users/${newUser.json.id}`, { token: admin, method: 'PATCH', body: { active: false } });
+check(deactivated.status === 200 && deactivated.json?.active === false, 'the admin deactivates the account');
+const afterDeact = await call('/journeys', { token: tempToken });
+check(afterDeact.status === 401, 'a deactivated account is signed out at once (401)', `got ${afterDeact.status}`);
+const deactLogin = await call('/auth/login', { method: 'POST', body: { email: newEmail, password: 'NewPass5678xy' } });
+check(deactLogin.status === 401, 'a deactivated account cannot sign in (401)', `got ${deactLogin.status}`);
+const meAdmin = await call('/auth/me', { token: admin });
+const selfDemote = await call(`/users/${meAdmin.json.id}`, { token: admin, method: 'PATCH', body: { active: false } });
+check(selfDemote.status === 403, 'an admin cannot deactivate their own account (403)', `got ${selfDemote.status}`);
+const reset = await call(`/users/${newUser.json.id}/reset-password`, { token: admin, method: 'POST', body: { password: 'Reset9876wxyz' } });
+check(reset.status === 201 && reset.json?.mustChangePassword === true, 'the admin resets a password (temporary again)', `status ${reset.status}`);
+const unlocked = await call(`/users/${newUser.json.id}/unlock`, { token: admin, method: 'POST', body: {} });
+check(unlocked.status === 201, 'the admin can unlock an account', `status ${unlocked.status}`);
+
 // ── Security headers and sign-in protection (review H2, H4) ─────────
 const hdr = await fetch(`${BASE}/api/health`);
 check(/default-src 'self'/.test(hdr.headers.get('content-security-policy') || ''), 'content security policy header is set');

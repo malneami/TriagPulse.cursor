@@ -50,7 +50,8 @@ export class WsAuthService {
     if (!payload?.sub) return { refused: 'invalid_token' };
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!user) return { refused: 'unknown_user' };
+    if (!user || !user.active) return { refused: 'unknown_user' };
+    if (user.mustChangePassword) return { refused: 'forbidden' };
     if (!canAccess(user.role as Role, permission)) return { refused: 'forbidden' };
 
     return { id: user.id, email: user.email, full_name: user.fullName, role: user.role };

@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
-import { Activity, LogOut, Eye, Users, Library, Signpost, BarChart3, ShieldCheck, UserCheck, ClipboardCheck } from 'lucide-react';
+import { Activity, LogOut, Eye, Users, Library, Signpost, BarChart3, ShieldCheck, UserCheck, ClipboardCheck, UsersRound, KeyRound } from 'lucide-react';
 import PatientStrip from '@/components/PatientStrip';
 import Wordmark from '@/components/Wordmark';
 import { canAccess } from '@/lib/security/roles';
@@ -28,6 +28,9 @@ export default function Layout({ children }) {
     { path: '/tracking', label: 'لوحة التتبع', labelEn: 'Tracking', Icon: Users },
     ...(canAccess(user, 'view_own_feedback')
       ? [{ path: '/my-triage', label: 'فرزي', labelEn: 'My triage', Icon: UserCheck }]
+      : []),
+    ...(canAccess(user, 'manage_security')
+      ? [{ path: '/admin/staff', label: 'الموظفون', labelEn: 'Staff', Icon: UsersRound }]
       : []),
     ...(canAccess(user, 'manage_clinical_libraries')
       ? [{ path: '/admin/libraries', label: 'المكتبات', labelEn: 'Libraries', Icon: Library }]
@@ -82,6 +85,14 @@ export default function Layout({ children }) {
             >
               {initials(user?.full_name)}
             </span>
+            <Link
+              to="/account/password"
+              aria-label="تغيير كلمة المرور / Change password"
+              title="تغيير كلمة المرور / Change password"
+              className="w-11 h-11 rounded-xl flex items-center justify-center text-graphite hover:bg-paper hover:text-ink"
+            >
+              <KeyRound className="w-5 h-5" aria-hidden="true" />
+            </Link>
             <button
               type="button"
               onClick={logout}

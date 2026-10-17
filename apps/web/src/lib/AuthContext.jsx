@@ -115,6 +115,8 @@ export const AuthProvider = ({ children }) => {
       logout: () => logout(),
       navigateToLogin: () => { window.location.href = appHref('/login'); },
       checkAuth,
+      /** After the user changes a temporary password. */
+      passwordChanged: () => setUser((u) => (u ? { ...u, must_change_password: false } : u)),
     }}>
       {children}
     </AuthContext.Provider>

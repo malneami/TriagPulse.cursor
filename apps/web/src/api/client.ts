@@ -133,6 +133,8 @@ export const api = {
     login: (email, password) =>
       request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
     me: () => request('/auth/me'),
+    changePassword: (currentPassword, newPassword) =>
+      request('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   },
   journeys: {
     // The API DTOs are camelCase; sending snake_case made the whitelist strip every field.
@@ -215,6 +217,15 @@ export const api = {
     exportValidated: (limit = 200, flaggedOnly = false) =>
       request(`/analytics/export/validated?limit=${limit}&flaggedOnly=${flaggedOnly ? 'true' : 'false'}`),
     evaluation: (days = 30) => request(`/analytics/evaluation?days=${days}`),
+  },
+  /** Staff accounts (admin). Passwords are sent only to set them, never read back. */
+  users: {
+    list: () => request('/users'),
+    create: (data) => request('/users', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => request(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    resetPassword: (id, password) =>
+      request(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) }),
+    unlock: (id) => request(`/users/${id}/unlock`, { method: 'POST', body: '{}' }),
   },
   feedback: {
     /** The signed-in nurse's own month. */
