@@ -39,6 +39,11 @@ model User {
   role         UserRole @default(nurse)
   failedLoginCount Int  @default(0) @map("failed_login_count")
   lockedUntil  DateTime? @map("locked_until")
+  /// Deactivated staff cannot sign in; their records and history stay.
+  active       Boolean  @default(true)
+  /// Set when an admin creates the account or resets the password: change it at next sign-in.
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  lastLoginAt  DateTime? @map("last_login_at")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 

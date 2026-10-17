@@ -1,8 +1,13 @@
 import { Body, Controller, Get, HttpException, HttpStatus, Ip, Post, Request, UseGuards } from '@nestjs/common';
 import { allowLoginAttempt } from './login-limit';
 import { AuthGuard } from '@nestjs/passport';
-import { IsString, MinLength } from 'class-validator';
+import { IsString, MaxLength, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
+
+class ChangePasswordDto {
+  @IsString() @MaxLength(128) currentPassword: string;
+  @IsString() @MaxLength(128) newPassword: string;
+}
 
 class LoginDto {
   @IsString()
@@ -23,6 +28,12 @@ export class AuthController {
       throw new HttpException('Too many sign-in attempts. Wait a minute and try again.', HttpStatus.TOO_MANY_REQUESTS);
     }
     return this.authService.login(dto.email, dto.password);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('change-password')
+  changePassword(@Body() dto: ChangePasswordDto, @Request() req: { user: { id: string } }) {
+    return this.authService.changePassword(req.user.id, dto.currentPassword, dto.newPassword);
   }
 
   @UseGuards(AuthGuard('jwt'))
