@@ -242,7 +242,7 @@ export default function VisualTriage() {
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="text-sm text-graphite">
             <label htmlFor="vt-encounter" className="font-semibold text-ink">
-              رقم الزيارة · Encounter number {!notRegistered && <span aria-hidden="true">*</span>}
+              رقم العملية · Transaction No. {!notRegistered && <span aria-hidden="true">*</span>}
             </label>
             <EncounterField
               value={encounterNo}
@@ -327,7 +327,7 @@ export default function VisualTriage() {
           )}
           {sectionAComplete && !encounterReady && (
             <p className="text-sm font-semibold text-ink mt-1">
-              أدخل رقم الزيارة أو اختر «لم يُسجَّل بعد» · Enter the encounter number, or tick “Not registered yet”
+              أدخل رقم العملية أو اختر «لم يُسجَّل بعد» · Enter the Transaction No., or tick “Not registered yet”
             </p>
           )}
         </div>

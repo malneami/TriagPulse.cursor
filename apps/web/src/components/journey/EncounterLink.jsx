@@ -14,7 +14,23 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
  */
 
 const FORMATS = ['code_128', 'code_39', 'code_93', 'codabar', 'itf', 'ean_13', 'qr_code', 'pdf417', 'data_matrix'];
-const LOOKS_RIGHT = /^[A-Za-z0-9][A-Za-z0-9-]{3,24}$/;
+/**
+ * The encounter is the HIS "Transaction No." on the outpatient visit ticket: 9–10 digits.
+ * The 7-digit patient file number (MRN) is the barcode on that ticket and must not be taken
+ * for it, nor the 8-digit appointment number. Override with VITE_ENCOUNTER_PATTERN.
+ */
+const LOOKS_RIGHT = (() => {
+  try { return new RegExp(import.meta.env.VITE_ENCOUNTER_PATTERN || '^\\d{9,10}$'); } catch { return /^\d{9,10}$/; }
+})();
+
+/** Why a value is not accepted, in plain words (null when it is fine or empty). */
+export function encounterProblem(raw) {
+  const v = cleanEncounter(raw);
+  if (!v || LOOKS_RIGHT.test(v)) return null;
+  if (/^\d{6,7}$/.test(v)) return 'هذا رقم ملف المريض (MRN) وليس رقم العملية · This is the patient file number (MRN), not the Transaction No.';
+  if (/^\d{8}$/.test(v)) return 'هذا يبدو رقم الموعد · This looks like the Appointment No. Use the Transaction No.';
+  return 'رقم العملية ٩–١٠ أرقام من تذكرة الزيارة · Transaction No. is 9–10 digits on the visit ticket';
+}
 
 export function encounterLooksRight(raw) {
   return LOOKS_RIGHT.test(cleanEncounter(raw));
@@ -152,9 +168,9 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="max-w-md">
-        <DialogTitle className="text-lg">ربط رقم الزيارة / Link encounter</DialogTitle>
+        <DialogTitle className="text-lg">ربط رقم العملية / Link Transaction No.</DialogTitle>
         <DialogDescription className="text-sm text-graphite">
-          امسح الباركود على السوار أو ورقة التسجيل، ثم تحقق من الرقم. Scan the wristband or registration slip, then check the number.
+          اكتب «رقم العملية» من تذكرة الزيارة، أو امسح باركوداً يحمله. Type the Transaction No. from the visit ticket, or scan a barcode that carries it.
         </DialogDescription>
         {scanning ? (
           <Scanner onResult={onResult} />
@@ -168,23 +184,23 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked }) {
           </button>
         )}
         <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">رقم الزيارة / Encounter number</span>
+          <span className="text-sm font-medium">رقم العملية / Transaction No.</span>
           <input
             dir="ltr"
             value={value}
             onChange={(e) => { setValue(e.target.value); setError(''); }}
             onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
-            inputMode="text"
+            inputMode="numeric"
             autoCapitalize="characters"
             autoComplete="off"
             spellCheck={false}
             maxLength={40}
-            placeholder="E.g. 26-0012345"
+            placeholder="Transaction No. (9–10 digits)"
             className="h-12 border border-mist rounded-xl px-3 text-lg font-semibold tracking-wide bg-white"
           />
         </label>
         {value && !ok && (
-          <p className="text-sm text-graphite">٤–٢٥ حرفاً أو رقماً. 4–25 letters, digits or dashes.</p>
+          <p className="text-sm font-semibold text-ink">{encounterProblem(value)}</p>
         )}
         {error && <p role="alert" className="text-sm font-semibold text-ink border-2 border-ink rounded-lg px-3 py-2">{error}</p>}
         <button
@@ -244,12 +260,12 @@ export function EncounterField({ value, onChange, disabled = false, inputClassNa
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value.toUpperCase())}
-          inputMode="text"
+          inputMode="numeric"
           autoCapitalize="characters"
           autoComplete="off"
           spellCheck={false}
           maxLength={40}
-          placeholder="E.g. 26-0012345"
+          placeholder="Transaction No. (9–10 digits)"
           aria-invalid={bad || undefined}
           className={`${inputClassName} flex-1 font-semibold tracking-wide`}
         />
@@ -262,12 +278,12 @@ export function EncounterField({ value, onChange, disabled = false, inputClassNa
           <Barcode className="w-5 h-5" aria-hidden="true" /> مسح · Scan
         </button>
       </div>
-      {bad && <span className="text-xs text-graphite">٤–٢٥ حرفاً أو رقماً · 4–25 letters, digits or dashes</span>}
+      {bad && <span role="alert" className="text-sm font-semibold text-ink">{encounterProblem(value)}</span>}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent dir="rtl" className="max-w-md">
-          <DialogTitle className="text-lg">مسح رقم الزيارة / Scan encounter</DialogTitle>
+          <DialogTitle className="text-lg">مسح الباركود / Scan barcode</DialogTitle>
           <DialogDescription className="text-sm text-graphite">
-            وجّه الكاميرا إلى باركود السوار أو ورقة التسجيل · Point the camera at the wristband or registration slip barcode.
+            الباركود الكبير في تذكرة الزيارة هو رقم الملف (MRN) وسيُرفض. · The large barcode on the visit ticket is the MRN and will be refused.
           </DialogDescription>
           {open && <Scanner onResult={onResult} />}
         </DialogContent>
