@@ -193,15 +193,19 @@ function Scanner({ onResult }) {
   );
 }
 
-export function EncounterDialog({ journey, open, onOpenChange, onLinked }) {
+/**
+ * Read or type the Transaction No. With a journey, Link saves it on that patient.
+ * Without one (CTAS page, no patient yet), onPick receives the checked number instead.
+ */
+export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick, initialValue = '' }) {
   const [value, setValue] = useState('');
   const [scanning, setScanning] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (open) { setValue(journey?.encounter_no || ''); setScanning(true); setError(''); }
-  }, [open, journey?.encounter_no]);
+    if (open) { setValue(journey?.encounter_no || initialValue || ''); setScanning(!(journey?.encounter_no || initialValue)); setError(''); }
+  }, [open, journey?.encounter_no, initialValue]);
 
   // Stable, so the camera is not restarted on every keystroke.
   const onResult = useCallback((text) => { setValue(cleanEncounter(text)); setScanning(false); setError(''); }, []);
@@ -209,12 +213,17 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked }) {
   const ok = LOOKS_RIGHT.test(clean);
 
   const save = async () => {
-    if (!ok || !journey) return;
+    if (!ok) return;
     setSaving(true);
     setError('');
     try {
+      if (!journey) {
+        await onPick?.(clean);
+        onOpenChange(false);
+        return;
+      }
       const updated = await api.journeys.linkEncounter(journey.id, clean);
-      toast.success(`تم ربط رقم الزيارة ${clean} / Encounter linked`);
+      toast.success(`تم ربط رقم العملية ${clean} / Transaction No. linked`);
       onLinked?.(updated);
       onOpenChange(false);
     } catch (err) {

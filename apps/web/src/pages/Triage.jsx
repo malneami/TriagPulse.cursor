@@ -57,7 +57,7 @@ import { deriveAssessment, nextPrompt } from '@/lib/triageAssessment';
 import { buildTriageDocument } from '@/lib/triageDocument';
 import { deriveCase, casePayload, caseSummaryLines } from '@/lib/caseModel';
 import { ComplaintChips, HistoryChips } from '@/components/triage/flow/CaseChips';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const emptyPatient = () => ({
   patient_id: '',
@@ -158,6 +158,9 @@ export default function Triage() {
     enabled: !!urlPid,
   });
   const activeJourney = journeyList?.[0] || null;
+  // Transaction No. read on this page before a patient exists: saved with the new journey.
+  const [pendingEncounter, setPendingEncounter] = useState('');
+  const queryClient = useQueryClient();
   const visualTriage = activeJourney?.vt_destination
     ? {
         destination: activeJourney.vt_destination,
@@ -1047,6 +1050,7 @@ export default function Triage() {
       if (!journeyId) {
         const ageNum = toNum(patient.age);
         const created = await api.journeys.create({
+          encounterNo: pendingEncounter || undefined,
           patientNameAr: patient.patient_name_ar || undefined,
           patientNameEn: patient.patient_name_en || undefined,
           age: ageNum != null ? Math.round(ageNum) : undefined,
@@ -1586,7 +1590,14 @@ export default function Triage() {
       {/* Header: identification, triage clock, new patient */}
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">
-          <PatientSelectorStrip currentPid={urlPid} onSwitch={handleSwitchPatient} />
+          <PatientSelectorStrip
+            currentPid={urlPid}
+            onSwitch={handleSwitchPatient}
+            journey={activeJourney}
+            pendingEncounter={pendingEncounter}
+            onPendingEncounter={setPendingEncounter}
+            onLinked={() => queryClient.invalidateQueries({ queryKey: ['journey-ctas', urlPid] })}
+          />
         </div>
         <TriageTimer startedAt={timerStartTime} status={timerStatus} stoppedAt={confirmedTime} />
         <button

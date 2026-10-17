@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { api } from '@/api/client';
 import { User, Hash } from 'lucide-react';
-import EncounterLink from '@/components/journey/EncounterLink';
 
 export default function PatientStrip() {
   const location = useLocation();
@@ -35,7 +34,6 @@ export default function PatientStrip() {
         <span className="ms-auto flex items-center gap-1 text-graphite text-sm" dir="ltr">
           <Hash className="w-3.5 h-3.5" aria-hidden="true" />{mrn}
         </span>
-        <EncounterLink journey={patient} onLinked={(j) => setPatient((p) => ({ ...p, ...j }))} />
       </div>
     </div>
   );

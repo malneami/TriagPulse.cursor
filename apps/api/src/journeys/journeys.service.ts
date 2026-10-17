@@ -199,6 +199,16 @@ export class JourneysService {
     return updated;
   }
 
+  async findByEncounter(raw: string) {
+    const encounterNo = String(raw || '').trim().replace(/\s+/g, '').toUpperCase();
+    if (!this.encounterPattern().test(encounterNo)) {
+      throw new BadRequestException('Enter the Transaction No. from the visit ticket (9–10 digits).');
+    }
+    const journey = await this.prisma.patientJourney.findUnique({ where: { encounterNo } });
+    if (!journey) throw new NotFoundException('No patient has this Transaction No. yet');
+    return journey;
+  }
+
   /** Triaged patients of the last `hours` with no encounter number yet (reconciliation list). */
   async findUnlinked(hours = 24) {
     const cutoff = new Date(Date.now() - Math.min(Math.max(hours, 1), 72) * 3600 * 1000);

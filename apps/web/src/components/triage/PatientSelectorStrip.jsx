@@ -1,17 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
-import { ChevronDown, X, Plus } from 'lucide-react';
+import { ChevronDown, X, Plus, Camera, Link2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { EncounterDialog } from '@/components/journey/EncounterLink';
+import { ticketCode } from '@/lib/ticket';
 
 function waitMins(iso) {
   if (!iso) return null;
   return Math.round((Date.now() - new Date(iso).getTime()) / 60000);
 }
 
-export default function PatientSelectorStrip({ currentPid, onSwitch }) {
+/**
+ * "المريض" box on the CTAS page: pick a waiting patient, and read or type the visit
+ * ticket's Transaction No. With a linked patient the number is saved on that patient.
+ * With no patient yet, a number that already belongs to a patient opens that patient;
+ * otherwise it is kept and saved with the new patient when the triage is saved.
+ */
+export default function PatientSelectorStrip({ currentPid, onSwitch, journey = null, pendingEncounter = '', onPendingEncounter, onLinked }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [patients, setPatients] = useState([]);
+  const [encOpen, setEncOpen] = useState(false);
 
   useEffect(() => {
     api.journeys.listActive().then(all => {
@@ -32,13 +42,26 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
     return name || 'مجهول / Unknown';
   };
 
+  const encounter = journey?.encounter_no || (!journey ? pendingEncounter : '');
+  const pickEncounter = async (no) => {
+    const found = await api.journeys.findByEncounter(no);
+    if (found && found.patient_id !== currentPid) {
+      toast.success(`${ticketCode(found.ticket_no)} — فتح المريض المرتبط بهذا الرقم / Opening the patient with this Transaction No.`);
+      onSwitch(found.patient_id);
+      return;
+    }
+    onPendingEncounter?.(no);
+    toast.success(`رقم العملية ${no} سيُحفظ مع المريض الجديد / Will be saved with the new patient`);
+  };
+
   return (
     <div className="relative">
+      <div className="w-full h-11 bg-white border border-mist text-ink rounded-2xl shadow-sm flex items-center hover:border-ink">
       <button
         onClick={() => setOpen(v => !v)}
         type="button"
         aria-expanded={open}
-        className="w-full h-11 bg-white border border-mist text-ink rounded-2xl shadow-sm px-4 flex items-center justify-between gap-2 hover:border-ink"
+        className="flex-1 min-w-0 h-full ps-4 pe-2 flex items-center justify-between gap-2 rounded-s-2xl"
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-graphite text-sm shrink-0">المريض:</span>
@@ -50,6 +73,27 @@ export default function PatientSelectorStrip({ currentPid, onSwitch }) {
         </div>
         <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
+      <button
+        type="button"
+        onClick={() => setEncOpen(true)}
+        title={encounter ? 'رقم العملية / Transaction No.' : 'قراءة رقم العملية بالكاميرا / Read the Transaction No. with the camera'}
+        className={`h-8 me-1.5 px-3 rounded-xl flex items-center gap-1.5 text-sm font-semibold shrink-0 ${
+          encounter ? 'border border-mist text-ink' : 'bg-ink text-white'
+        }`}
+      >
+        {encounter ? <Link2 className="w-4 h-4" aria-hidden="true" /> : <Camera className="w-4 h-4" aria-hidden="true" />}
+        <span dir="ltr">{encounter || 'Transaction No.'}</span>
+        {!encounter && <span className="hidden md:inline">· رقم العملية</span>}
+      </button>
+      </div>
+      <EncounterDialog
+        journey={journey}
+        open={encOpen}
+        onOpenChange={setEncOpen}
+        onLinked={onLinked}
+        onPick={pickEncounter}
+        initialValue={!journey ? pendingEncounter : ''}
+      />
 
       {open && (
         <div className="absolute top-full right-0 left-0 mt-1 bg-white border border-mist rounded-xl shadow-xl z-50 overflow-hidden">

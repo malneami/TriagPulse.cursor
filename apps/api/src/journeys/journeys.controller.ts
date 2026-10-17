@@ -73,6 +73,13 @@ export class JourneysController {
     return this.journeysService.findUnlinked(Number(hours) || 24);
   }
 
+  /** The patient already linked to this Transaction No. (scanned on the CTAS page), or 404. */
+  @Get('by-encounter/:encounterNo')
+  @RequirePermission('perform_triage')
+  byEncounter(@Param('encounterNo') encounterNo: string) {
+    return this.journeysService.findByEncounter(encounterNo);
+  }
+
   @Get(':id')
   @RequirePermission('perform_triage')
   findOne(@Param('id') id: string, @Request() req: { user: { id: string; role: string } }) {
