@@ -5,8 +5,8 @@ export const RED_FLAG_LIBRARY_VERSION = '1.0.0';
 export const DEFAULT_RED_FLAG_THRESHOLDS: RedFlagThresholds = {
   spo2_critical: 85,
   spo2_urgent: 90,
-  gcs_critical: 8,
-  gcs_urgent: 13,
+  gcs_critical: 9,
+  gcs_urgent: 14,
   sbp_critical: 70,
   sbp_urgent: 90,
   hr_severe: 130,

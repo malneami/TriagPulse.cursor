@@ -402,4 +402,17 @@ export function runComorbidityTests(assert: Assert) {
     const mention = findComplaintMentions('epigastric pain') as any[];
     assert((computeLiveCTAS as any)(p('55', 'gastric pain'), {}).assessment_trail.step1_chief_complaint.complaint.name_en === 'Abdominal Pain', 'CR-70', '"gastric / epigastric pain" is recognised as abdominal pain', JSON.stringify(mention?.[0] || null).slice(0, 80));
   }
+  // ── GCS and pain (approved 2026-10-17: C1, H1 acute rows) ──
+  {
+    const b = { hr: '80', bp_systolic: '120', spo2: '98', rr: '16', temperature: '37', gcs: '15' };
+    const L = (p: Record<string, unknown>, a: Record<string, unknown> = {}) => (computeLiveCTAS as any)({ ...b, ...p }, a).level;
+    assert(L({ age: '40', chief_complaint: 'confusion', pain_score: 0, gcs: '9' }) === 1 && L({ age: '40', chief_complaint: 'confusion', pain_score: 0, gcs: '3' }) === 1, 'CR-71', 'GCS 3–9 → CTAS 1');
+    assert(L({ age: '40', chief_complaint: 'confusion', pain_score: 0, gcs: '10' }) === 2 && L({ age: '40', chief_complaint: 'confusion', pain_score: 0, gcs: '13' }) === 2, 'CR-72', 'GCS 10–13 → CTAS 2');
+    assert(L({ age: '40', chief_complaint: 'abdominal pain', pain_score: 6 }) === 3, 'CR-73', 'Adult moderate central acute pain (abdominal 6/10) → CTAS 3');
+    assert(L({ age: '40', chief_complaint: 'chest pain non cardiac', pain_score: 3 }) === 4, 'CR-74', 'Adult mild central acute pain → CTAS 4');
+    assert(L({ age: '40', chief_complaint: 'ankle pain', pain_score: 6 }) === 4, 'CR-75', 'Adult moderate peripheral pain stays CTAS 4');
+    assert(L({ age: '40', chief_complaint: 'abdominal pain', pain_score: 6 }, { pain_location: 'peripheral' }) === 4, 'CR-76', "Nurse's location answer overrides the complaint");
+    assert(L({ age: '8', chief_complaint: 'ankle pain', pain_score: 5 }) === 3 && L({ age: '8', chief_complaint: 'ankle pain', pain_score: 2 }) === 4, 'CR-77', 'Child: moderate acute pain → 3, mild acute → 4');
+    assert(L({ age: '40', chief_complaint: 'chronic back pain', pain_score: 6 }) === 5, 'CR-78', 'Chronic rows unchanged (chronic back pain 6/10 stays 5)');
+  }
 }

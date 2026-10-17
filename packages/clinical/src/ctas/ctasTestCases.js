@@ -92,7 +92,7 @@ function detectRedFlag(patient) {
   const hr = num(patient.hr);
   return Boolean(
     (spo2 !== null && spo2 < 90) ||
-    (gcs !== null && gcs < 13) ||
+    (gcs !== null && gcs <= 13) ||
     (sbp !== null && sbp < 90) ||
     (hr !== null && hr > 130 && sbp !== null && sbp < 100) ||
     text.includes('chest pain') || text.includes('stroke') || text.includes('facial droop') ||
@@ -110,10 +110,10 @@ function estimateLevel(patient) {
   const pain = num(patient.pain_score);
   const text = String(patient.chief_complaint || '').toLowerCase();
 
-  if ((spo2 !== null && spo2 < 88) || (gcs !== null && gcs <= 8) || (sbp !== null && sbp < 70)) return 1;
+  if ((spo2 !== null && spo2 < 88) || (gcs !== null && gcs <= 9) || (sbp !== null && sbp < 70)) return 1;
   if (
     (spo2 !== null && spo2 < 92) ||
-    (gcs !== null && gcs < 13) ||
+    (gcs !== null && gcs <= 13) ||
     (sbp !== null && sbp < 90) ||
     text.includes('chest pain') ||
     text.includes('stroke') ||
