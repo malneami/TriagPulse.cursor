@@ -16,6 +16,10 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 const FORMATS = ['code_128', 'code_39', 'code_93', 'codabar', 'itf', 'ean_13', 'qr_code', 'pdf417', 'data_matrix'];
 const LOOKS_RIGHT = /^[A-Za-z0-9][A-Za-z0-9-]{3,24}$/;
 
+export function encounterLooksRight(raw) {
+  return LOOKS_RIGHT.test(cleanEncounter(raw));
+}
+
 export function cleanEncounter(raw) {
   return String(raw || '').trim().replace(/\s+/g, '').toUpperCase();
 }
@@ -220,5 +224,54 @@ export default function EncounterLink({ journey, onLinked, tone = 'light' }) {
       </button>
       <EncounterDialog journey={journey} open={open} onOpenChange={setOpen} onLinked={onLinked} />
     </>
+  );
+}
+
+/**
+ * Encounter number box for a new patient (visual triage): type it, or tap Scan and the
+ * camera fills the box. Nothing is saved here; the number goes with the new journey.
+ */
+export function EncounterField({ value, onChange, disabled = false, inputClassName = '' }) {
+  const [open, setOpen] = useState(false);
+  const onResult = useCallback((text) => { onChange(cleanEncounter(text)); setOpen(false); }, [onChange]);
+  const bad = value && !encounterLooksRight(value);
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-2">
+        <input
+          id="vt-encounter"
+          dir="ltr"
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value.toUpperCase())}
+          inputMode="text"
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={40}
+          placeholder="E.g. 26-0012345"
+          aria-invalid={bad || undefined}
+          className={`${inputClassName} flex-1 font-semibold tracking-wide`}
+        />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen(true)}
+          className="mt-1 h-12 px-4 rounded-xl bg-ink text-white flex items-center gap-2 text-sm font-semibold shrink-0 disabled:opacity-40"
+        >
+          <Barcode className="w-5 h-5" aria-hidden="true" /> مسح · Scan
+        </button>
+      </div>
+      {bad && <span className="text-xs text-graphite">٤–٢٥ حرفاً أو رقماً · 4–25 letters, digits or dashes</span>}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogTitle className="text-lg">مسح رقم الزيارة / Scan encounter</DialogTitle>
+          <DialogDescription className="text-sm text-graphite">
+            وجّه الكاميرا إلى باركود السوار أو ورقة التسجيل · Point the camera at the wristband or registration slip barcode.
+          </DialogDescription>
+          {open && <Scanner onResult={onResult} />}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

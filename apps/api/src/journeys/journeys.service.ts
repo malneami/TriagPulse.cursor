@@ -20,11 +20,14 @@ export class JourneysService {
       gender?: Gender;
       phone?: string;
       modeOfArrival?: string;
+      encounterNo?: string;
     },
     user: { id: string; full_name?: string; email?: string },
   ) {
+    const encounterNo = data.encounterNo ? await this.checkEncounter(data.encounterNo) : null;
     const journey = await this.prisma.patientJourney.create({
       data: {
+        ...(encounterNo ? { encounterNo, encounterLinkedAt: new Date(), encounterLinkedById: user.id } : {}),
         patientId: randomUUID(),
         createdById: user.id,
         patientNameAr: data.patientNameAr,
@@ -37,7 +40,7 @@ export class JourneysService {
         currentLocation: 'ARRIVAL',
       },
     });
-    await this.audit.log('PatientJourney', journey.id, 'journey_created', user, { patientId: journey.patientId });
+    await this.audit.log('PatientJourney', journey.id, 'journey_created', user, { patientId: journey.patientId, encounterLinked: !!encounterNo });
     return journey;
   }
 
@@ -163,18 +166,24 @@ export class JourneysService {
    * Links the HIS encounter number to a journey. Department-wide (any triage user: nurse or
    * clerk at the desk), audit-logged. The same number cannot sit on two patients.
    */
-  async linkEncounter(id: string, raw: string, user: { id: string; role: string; full_name?: string; email?: string }) {
-    const encounterNo = String(raw || '').trim().toUpperCase();
+  /** Cleans and checks an encounter number; 400 if malformed, 409 if another patient has it. */
+  private async checkEncounter(raw: string, journeyId?: string): Promise<string> {
+    const encounterNo = String(raw || '').trim().replace(/\s+/g, '').toUpperCase();
     if (!this.encounterPattern().test(encounterNo)) {
       throw new BadRequestException('This does not look like an encounter number. Scan again or check the digits.');
     }
-    const journey = await this.prisma.patientJourney.findUnique({ where: { id } });
-    if (!journey) throw new NotFoundException('Journey not found');
-    if (journey.encounterNo === encounterNo) return journey;
     const other = await this.prisma.patientJourney.findUnique({ where: { encounterNo } });
-    if (other && other.id !== id) {
+    if (other && other.id !== journeyId) {
       throw new ConflictException(`Encounter ${encounterNo} is already linked to ticket T${String(other.ticketNo % 1000).padStart(3, '0')}.`);
     }
+    return encounterNo;
+  }
+
+  async linkEncounter(id: string, raw: string, user: { id: string; role: string; full_name?: string; email?: string }) {
+    const journey = await this.prisma.patientJourney.findUnique({ where: { id } });
+    if (!journey) throw new NotFoundException('Journey not found');
+    const encounterNo = await this.checkEncounter(raw, id);
+    if (journey.encounterNo === encounterNo) return journey;
     const updated = await this.prisma.patientJourney.update({
       where: { id },
       data: { encounterNo, encounterLinkedAt: new Date(), encounterLinkedById: user.id },
