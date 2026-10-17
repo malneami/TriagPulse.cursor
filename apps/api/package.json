@@ -42,6 +42,7 @@
     "@types/node": "^22.13.5",
     "@types/passport-jwt": "^4.0.1",
     "@types/ws": "^8.18.1",
+    "deepmerge-ts": "^8.0.2",
     "prisma": "^6.5.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
