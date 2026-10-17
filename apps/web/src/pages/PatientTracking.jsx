@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Monitor, Plus, RefreshCw, Search } from 'lucide-react';
+import { BadgeCheck, ChevronDown, Monitor, Plus, RefreshCw, Search } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
+import { canAccess } from '@/lib/security/roles';
+import CtasReviewDialog from '@/components/journey/CtasReviewDialog';
+import EncounterLink from '@/components/journey/EncounterLink';
 import { api } from '@/api/client';
 import { CTAS_LEVELS, ctasBar, ctasMeta } from '@/lib/ctasStyle';
 import { ticketCode } from '@/lib/ticket';
@@ -43,7 +47,7 @@ function ageSex(p) {
   return [age, sex].filter(Boolean).join('، ');
 }
 
-function PatientCard({ patient, now, onOpen, onSeen }) {
+function PatientCard({ patient, now, onOpen, onSeen, onReview, physician }) {
   const [confirming, setConfirming] = useState(false);
   useEffect(() => {
     if (!confirming) return undefined;
@@ -70,6 +74,11 @@ function PatientCard({ patient, now, onOpen, onSeen }) {
           {[ageSex(patient), detail].filter(Boolean).join(' · ')}
         </span>
       )}
+      {patient.ctas_reviewed_at && (
+        <span className={`text-xs flex items-center gap-1 ${late ? 'text-white' : 'text-ink'}`}>
+          <BadgeCheck className="w-3.5 h-3.5" aria-hidden="true" /> راجع الطبيب المستوى · Physician checked
+        </span>
+      )}
       <div className="flex items-baseline justify-between gap-2">
         <span className={`text-sm ${late ? 'font-semibold' : 'text-graphite'}`}>{status}</span>
         <span className="text-xl font-semibold tabular-nums">{w.waited ?? '—'} د</span>
@@ -89,7 +98,27 @@ function PatientCard({ patient, now, onOpen, onSeen }) {
             {patient.current_status === 'ctas_in_progress' ? 'متابعة الفرز' : 'بدء فرز CTAS'}
           </button>
         )}
-        {triaged && (
+        {triaged && physician && (
+          <>
+            <button
+              type="button"
+              onClick={() => onReview(patient, 'seen')}
+              aria-label={`مراجعة المستوى وتسجيل فحص ${patientName(patient)}`}
+              className={`flex-1 h-11 rounded-lg text-sm font-medium ${late ? 'bg-white text-ink' : 'bg-ink text-white'}`}
+            >
+              فحصه الطبيب / Seen
+            </button>
+            <button
+              type="button"
+              onClick={() => onReview(patient, 'retriage')}
+              aria-label={`إعادة فرز ${patientName(patient)}`}
+              className={`h-11 px-3 rounded-lg text-sm font-medium ${late ? 'border border-white/60 text-white' : 'border border-mist text-ink hover:bg-paper'}`}
+            >
+              إعادة الفرز
+            </button>
+          </>
+        )}
+        {triaged && !physician && (
           <button
             type="button"
             onClick={() => (confirming ? (setConfirming(false), onSeen(patient)) : setConfirming(true))}
@@ -126,9 +155,62 @@ function Lane({ title, sub, count, barStyle, children }) {
   );
 }
 
+/** Triaged patients of the last 24 h with no HIS encounter number yet. */
+function NotLinked() {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: list = [], isError } = useQuery({
+    queryKey: ['unlinked-journeys'],
+    queryFn: () => api.journeys.unlinked(24),
+    refetchInterval: 60000,
+  });
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['unlinked-journeys'] });
+    queryClient.invalidateQueries({ queryKey: ['tracking-board'] });
+  };
+  if (isError) return null;
+  return (
+    <section aria-label="غير مربوط برقم زيارة" className="bg-white border border-mist rounded-2xl">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="w-full px-4 h-12 flex items-center gap-2 text-[15px]"
+      >
+        <span className="font-semibold">غير مربوط برقم زيارة</span>
+        <span className="text-graphite text-sm">Not linked to an encounter · last 24 h</span>
+        <span className={`ms-auto min-w-8 h-8 px-2 rounded-lg flex items-center justify-center font-semibold tabular-nums ${list.length ? 'bg-ink text-white' : 'bg-paper'}`}>
+          {list.length}
+        </span>
+        <ChevronDown className={`w-5 h-5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <ul className="list-none m-0 px-3 pb-3 flex flex-col gap-2">
+          {list.length === 0 && <li className="text-sm text-graphite px-1 py-2">كل المرضى مربوطون / Everyone is linked.</li>}
+          {list.map((p) => (
+            <li key={p.id} className="flex items-center gap-3 border border-mist rounded-xl px-3 py-2">
+              <span dir="ltr" className="font-semibold">{ticketCode(p.ticket_no)}</span>
+              <span className="truncate">{patientName(p)}</span>
+              <span className="text-sm text-graphite">{ageSex(p)}</span>
+              <span className="text-sm text-graphite">CTAS {p.ctas_level}</span>
+              <span className="text-sm text-graphite tabular-nums" dir="ltr">
+                {p.arrival_time ? new Date(p.arrival_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''}
+              </span>
+              <span className="ms-auto"><EncounterLink journey={p} onLinked={refresh} /></span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export default function PatientTracking() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const physician = canAccess(user, 'review_ctas');
+  const [review, setReview] = useState(null); // { patient, mode }
   const [search, setSearch] = useState('');
   const [now, setNow] = useState(Date.now());
 
@@ -178,6 +260,12 @@ export default function PatientTracking() {
       toast.error(`تعذّر التحديث — ${err?.message || 'Could not update'}`);
     }
   };
+
+  const afterReview = () => {
+    queryClient.invalidateQueries({ queryKey: ['tracking-board'] });
+    queryClient.invalidateQueries({ queryKey: ['unlinked-journeys'] });
+  };
+  const openReview = (patient, mode) => setReview({ patient, mode });
 
   return (
     <div dir="rtl" className="space-y-4 pb-8">
@@ -248,17 +336,27 @@ export default function PatientTracking() {
           return (
             <Lane key={level} title={`${level} ${m.ar}`} sub={level === 1 ? 'فوري / Immediate' : `خلال ${m.wait_min} دقيقة`} count={byLevel[level].length} barStyle={ctasBar(level)}>
               {byLevel[level].map((p) => (
-                <PatientCard key={p.id} patient={p} now={now} onOpen={openTriage} onSeen={markSeen} />
+                <PatientCard key={p.id} patient={p} now={now} onOpen={openTriage} onSeen={markSeen} onReview={openReview} physician={physician} />
               ))}
             </Lane>
           );
         })}
         <Lane title="بانتظار CTAS" sub="بعد الفرز البصري" count={byLevel.awaiting.length} barStyle={{ backgroundColor: '#4B5765' }}>
           {byLevel.awaiting.map((p) => (
-            <PatientCard key={p.id} patient={p} now={now} onOpen={openTriage} onSeen={markSeen} />
+            <PatientCard key={p.id} patient={p} now={now} onOpen={openTriage} onSeen={markSeen} onReview={openReview} physician={physician} />
           ))}
         </Lane>
       </div>
+
+      <NotLinked />
+
+      <CtasReviewDialog
+        patient={review?.patient}
+        mode={review?.mode}
+        open={Boolean(review)}
+        onOpenChange={(o) => { if (!o) setReview(null); }}
+        onDone={afterReview}
+      />
 
       {!isFetching && filtered.length === 0 && !isError && (
         <div className="bg-white border border-dashed border-graphite/40 rounded-2xl py-12 text-center space-y-3">

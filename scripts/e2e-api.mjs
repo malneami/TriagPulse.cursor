@@ -205,6 +205,46 @@ const onBoard = board.json.find((j) => j.id === journeyId);
 check(!!onBoard, 'a triaged patient stays on the board until seen');
 check(Number.isInteger(onBoard?.ticketNo) && onBoard.ticketNo > 0, 'board entries carry a ticket number', String(onBoard?.ticketNo));
 
+// ── Stage A: encounter number, physician re-triage, private nurse feedback ─
+const unlinked = await call('/journeys/unlinked?hours=24', { token: nurse });
+check(unlinked.status === 200 && unlinked.json.some((j) => j.id === journeyId), 'a triaged patient with no encounter number is on the "Not linked" list');
+const badEnc = await call(`/journeys/${journeyId}/encounter`, { token: nurse, method: 'PATCH', body: { encounterNo: 'x!' } });
+check(badEnc.status === 400, 'a malformed encounter number is rejected (400)', `got ${badEnc.status}`);
+const encNo = `E2E-${Date.now().toString().slice(-8)}`;
+const linked = await call(`/journeys/${journeyId}/encounter`, { token: nurse, method: 'PATCH', body: { encounterNo: encNo.toLowerCase() } });
+check(linked.status === 200 && linked.json?.encounterNo === encNo, 'the nurse links the encounter number (stored upper-case)', `status ${linked.status} ${linked.text.slice(0, 200)}`);
+const other = await call('/journeys', { token: nurse, method: 'POST', body: { patientNameEn: 'E2E Other', age: 30, gender: 'female' } });
+const dupEnc = await call(`/journeys/${other.json.id}/encounter`, { token: nurse, method: 'PATCH', body: { encounterNo: encNo } });
+check(dupEnc.status === 409, 'the same encounter number cannot be linked to a second patient (409)', `got ${dupEnc.status}`);
+const unlinked2 = await call('/journeys/unlinked?hours=24', { token: nurse });
+check(!unlinked2.json.some((j) => j.id === journeyId), 'a linked patient leaves the "Not linked" list');
+
+const nurseReview = await call(`/journeys/${journeyId}/ctas-review`, { token: nurse, method: 'POST', body: { level: 3, reason: 'x' } });
+check(nurseReview.status === 403, 'a nurse cannot re-triage (physician only)', `got ${nurseReview.status}`);
+const noReason = await call(`/journeys/${journeyId}/ctas-review`, { token: physician, method: 'POST', body: { level: 3 } });
+check(noReason.status === 400, 'a re-triage to a different level needs a reason (400)', `got ${noReason.status}`);
+const retriage = await call(`/journeys/${journeyId}/ctas-review`, { token: physician, method: 'POST', body: { level: 3, reason: 'Pain — e2e', markSeen: false } });
+check(retriage.status === 201 && retriage.json?.review?.nurseLevel === 4 && retriage.json?.review?.reviewedLevel === 3 && retriage.json?.review?.reviewerRole === 'physician',
+  'the physician re-triages 4 → 3 with a reason; role is recorded', `status ${retriage.status} ${retriage.text.slice(0, 300)}`);
+check(retriage.json?.journey?.ctasLevel === 3 && retriage.json?.journey?.ctasReviewedAt, 'the board level follows the re-triage');
+const reviewId = retriage.json?.review?.id;
+const boardRt = await call('/tracking/board', { token: nurse });
+check(boardRt.json.some((j) => j.id === journeyId), 're-triage without Seen keeps the patient on the board');
+
+const mine = await call('/feedback/me', { token: nurse });
+check(mine.status === 200 && mine.json?.summary?.cases >= 1, "the nurse's own feedback page loads", `status ${mine.status} ${mine.text.slice(0, 200)}`);
+check(!mine.text.includes('E2E Test'), 'the feedback page carries no patient name');
+const physResp = await call(`/feedback/${reviewId}/respond`, { token: physician, method: 'POST', body: { action: 'understood' } });
+check(physResp.status === 403, "only the triaging nurse can answer a review of her case (403)", `got ${physResp.status}`);
+const emptyDispute = await call(`/feedback/${reviewId}/respond`, { token: nurse, method: 'POST', body: { action: 'disputed' } });
+check(emptyDispute.status === 400, 'a dispute needs a reason (400)', `got ${emptyDispute.status}`);
+const dispute = await call(`/feedback/${reviewId}/respond`, { token: nurse, method: 'POST', body: { action: 'disputed', comment: 'Pain was 3/10 at triage' } });
+check(dispute.status === 201 && dispute.json?.action === 'disputed', 'the nurse disputes with a reason', `status ${dispute.status} ${dispute.text.slice(0, 200)}`);
+const deptNurse = await call('/feedback/department', { token: nurse });
+check(deptNurse.status === 403, 'a nurse cannot open the department feedback view (403)', `got ${deptNurse.status}`);
+const dept = await call('/feedback/department', { token: physician });
+check(dept.status === 200 && dept.json?.summary && !dept.text.includes('nurse@triagepulse') && !dept.text.includes('E2E Test'), 'the department view has totals and no names', `status ${dept.status}`);
+
 const seen = await call(`/journeys/${journeyId}/status`, { token: physician, method: 'PATCH', body: { status: 'seen' } });
 check(seen.status === 200 && seen.json?.seenAt, "a physician can mark a nurse's patient as seen", `status ${seen.status} ${seen.text.slice(0, 200)}`);
 

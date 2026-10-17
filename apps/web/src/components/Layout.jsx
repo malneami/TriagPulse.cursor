@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
-import { Activity, LogOut, Eye, Users, Library, Signpost, BarChart3, ShieldCheck } from 'lucide-react';
+import { Activity, LogOut, Eye, Users, Library, Signpost, BarChart3, ShieldCheck, UserCheck } from 'lucide-react';
 import PatientStrip from '@/components/PatientStrip';
 import Wordmark from '@/components/Wordmark';
 import { canAccess } from '@/lib/security/roles';
@@ -26,6 +26,9 @@ export default function Layout({ children }) {
     { path: '/visual-triage', label: 'الفرز البصري', labelEn: 'Visual triage', Icon: Eye },
     { path: '/triage', label: 'فرز CTAS', labelEn: 'CTAS triage', Icon: Activity },
     { path: '/tracking', label: 'لوحة التتبع', labelEn: 'Tracking', Icon: Users },
+    ...(canAccess(user, 'view_own_feedback')
+      ? [{ path: '/my-triage', label: 'فرزي', labelEn: 'My triage', Icon: UserCheck }]
+      : []),
     ...(canAccess(user, 'manage_clinical_libraries')
       ? [{ path: '/admin/libraries', label: 'المكتبات', labelEn: 'Libraries', Icon: Library }]
       : []),
