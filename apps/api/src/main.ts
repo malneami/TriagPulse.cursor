@@ -1,8 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { json } from 'express';
+import express, { json, NextFunction, Request, Response } from 'express';
 import { existsSync } from 'fs';
-import { resolve } from 'path';
+import { join, resolve } from 'path';
 import { AppModule, ENV_FILE_PATHS } from './app.module';
 
 /**
@@ -31,6 +31,31 @@ function logConfigSources() {
   }
 }
 
+/**
+ * Optional single-port mode: when SERVE_WEB_DIR points at a built web app
+ * (apps/web/dist), the API also serves the UI, so the whole app runs on one
+ * port. Used in GitHub Codespaces, where the API's port forwards reliably.
+ * /api and /socket.io always go to the API; other GET page routes get
+ * index.html so the React router can handle them.
+ */
+function serveWebApp(server: express.Express) {
+  const dir = process.env.SERVE_WEB_DIR?.trim();
+  if (!dir) return;
+  const root = resolve(process.cwd(), dir);
+  const indexFile = join(root, 'index.html');
+  if (!existsSync(indexFile)) {
+    console.warn(`[web] SERVE_WEB_DIR=${dir} has no index.html (build the web app first); UI not served.`);
+    return;
+  }
+  server.use(express.static(root, { index: 'index.html' }));
+  server.use((req: Request, res: Response, next: NextFunction) => {
+    const isApi = req.path.startsWith('/api') || req.path.startsWith('/socket.io');
+    if (req.method !== 'GET' || isApi || !req.accepts('html')) return next();
+    res.sendFile(indexFile);
+  });
+  console.log(`[web] Serving the web app from ${root}`);
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   logConfigSources();
@@ -39,11 +64,13 @@ async function bootstrap() {
     credentials: true,
   });
   app.use(json({ limit: '8mb' }));
+  serveWebApp(app.getHttpAdapter().getInstance());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix('api');
   const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`TriagePulse API running on http://localhost:${port}/api`);
+  if (process.env.SERVE_WEB_DIR) console.log(`TriagePulse app running on http://localhost:${port}/`);
 }
 
 bootstrap();

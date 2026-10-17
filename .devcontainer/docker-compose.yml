@@ -1,0 +1,28 @@
+# GitHub Codespaces / Dev Containers: the TriagePulse dev environment.
+# "app" is where the code runs; "db" is a private Postgres for this codespace only.
+# They share one network, so the app reaches Postgres at localhost:5432.
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm
+    volumes:
+      - ../..:/workspaces:cached
+    command: sleep infinity
+    network_mode: service:db
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: triagepulse
+      POSTGRES_PASSWORD: triagepulse
+      POSTGRES_DB: triagepulse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U triagepulse -d triagepulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

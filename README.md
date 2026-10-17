@@ -9,6 +9,10 @@ Emergency triage platform rebuilt with NestJS, PostgreSQL, and React — migrate
 - **Database:** PostgreSQL + Prisma (`prisma/`)
 - **Clinical logic:** Shared TypeScript package (`packages/clinical`)
 
+## Testing without hosting
+
+Open a **GitHub Codespace** on any branch to run the full app in your browser, and every pull request runs automatic tests. See [docs/TESTING.md](docs/TESTING.md).
+
 ## Quick Start
 
 ```bash
