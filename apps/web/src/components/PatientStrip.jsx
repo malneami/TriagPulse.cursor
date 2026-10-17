@@ -24,15 +24,17 @@ export default function PatientStrip() {
   const gender = patient.gender === 'male' ? 'ذكر' : patient.gender === 'female' ? 'أنثى' : '';
 
   return (
-    <div className="bg-teal-700 text-white px-4 py-1.5 flex items-center gap-3 text-sm" dir="rtl">
-      <User className="w-3.5 h-3.5 shrink-0 opacity-70" />
-      <span className="font-black">{name}</span>
-      {(age || gender) && (
-        <span className="text-teal-200 text-xs">{[age, gender].filter(Boolean).join(' · ')}</span>
-      )}
-      <span className="mr-auto flex items-center gap-1 text-teal-200 text-xs font-mono">
-        <Hash className="w-3 h-3" />{mrn}
-      </span>
+    <div className="bg-white border-b border-mist" dir="rtl">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-12 flex items-center gap-4 text-[15px]">
+        <User className="w-4 h-4 shrink-0 text-graphite" aria-hidden="true" />
+        <span className="font-semibold">{name}</span>
+        {(age || gender) && (
+          <span className="text-graphite">{[age, gender].filter(Boolean).join('، ')}</span>
+        )}
+        <span className="ms-auto flex items-center gap-1 text-graphite text-sm" dir="ltr">
+          <Hash className="w-3.5 h-3.5" aria-hidden="true" />{mrn}
+        </span>
+      </div>
     </div>
   );
 }

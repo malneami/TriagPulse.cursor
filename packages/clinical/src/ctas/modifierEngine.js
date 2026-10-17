@@ -9,6 +9,7 @@ import {
 } from './clarifyingQuestionBank.js';
 import { applyModifierLibraryEffects, getActiveModifiers } from './modifierLibrary.js';
 import { computeLiveCTAS } from './vitalRanges.js';
+import { findingStatus } from './negation.js';
 import {
   buildKnownFacts,
   shouldSuppressQuestion,
@@ -42,8 +43,11 @@ function buildContextText(patient = {}, answers = {}, transcript = '') {
  * Exact / alias match first; family match only when both sides share the same
  * normalized family (so head LOC modifiers do not match limb_pain).
  */
-function pathwayMatches(modifier, pathway) {
+function pathwayMatches(modifier, pathway, text = '') {
   if (!modifier.pathways?.length || modifier.pathways.includes('*')) return true;
+  // Safety findings count whatever the complaint is: when the conversation mentions one
+  // (e.g. stridor while the complaint is cough), the modifier applies or is asked.
+  if (text && (modifier.cross_pathway_when || []).some((rx) => rx.test(text))) return true;
   if (modifier.pathways.includes(pathway)) return true;
   if (modifier.pathways.some((p) => pathwaysAreAliases(p, pathway))) return true;
   const family = normalizePathwayFamily(pathway);
@@ -56,6 +60,8 @@ function pathwayMatches(modifier, pathway) {
 function ageMatches(modifier, patient = {}) {
   const age = parseFloat(patient.age);
   const pediatric = Number.isFinite(age) && age < 14;
+  // Optional age limit ("adults over 40"): asked only when the age is known and above it.
+  if (modifier.min_age_years != null && !(Number.isFinite(age) && age > modifier.min_age_years)) return false;
   if (modifier.age_applicability === 'both' || !modifier.age_applicability) return true;
   if (modifier.age_applicability === 'pediatric') return pediatric;
   if (modifier.age_applicability === 'adult') {
@@ -63,6 +69,14 @@ function ageMatches(modifier, patient = {}) {
     return !pediatric;
   }
   return true;
+}
+
+/** Optional cue gate: ask only when the conversation mentions one of `ask_when_patterns`. */
+function askWhenMatches(modifier, patient = {}, transcript = '') {
+  const pats = modifier.ask_when_patterns;
+  if (!Array.isArray(pats) || !pats.length) return true;
+  const text = [transcript, patient.transcription, patient.chief_complaint].filter(Boolean).join(' \n ');
+  return pats.some((rx) => rx.test(text));
 }
 
 function ctasLevelMatches(modifier, level) {
@@ -118,14 +132,21 @@ export function detectKnownModifier(modifier, { patient = {}, answers = {}, tran
   const ctx = buildContextText(patient, answers, transcript);
   if (!ctx.trim()) return { known: false, status: 'unknown' };
 
+  const graded = Array.isArray(modifier.options) && modifier.options.length > 0
+    && !modifier.options.some((o) => o.value === 'نعم');
   for (const re of modifier.detect_patterns || []) {
-    if (re.test(ctx)) {
-      const negated = new RegExp(`(?:no|not|denies|بدون|لا\\s*(?:يوجد)?|ينفي).{0,24}(?:${re.source})`, 'i');
-      if (negated.test(ctx)) {
-        return { known: true, value: 'لا', source: 'transcript_negated', status: 'known_negative', confidence: 0.9 };
-      }
-      return { known: true, value: 'نعم', source: 'transcript', status: 'known_positive', confidence: 0.88 };
+    const st = findingStatus(re, ctx);
+    if (!st) continue;
+    if (st === 'negative') {
+      // A check that bundles several features is not ruled out by one denied word.
+      if (modifier.detect_positive_only) continue;
+      return { known: true, value: 'لا', source: 'transcript_negated', status: 'known_negative', confidence: 0.9 };
     }
+    // Denied and stated in the same conversation ("no bleeding … still bleeding"): ask.
+    if (st === 'both') return { known: false, status: 'unknown', conflicting: true };
+    // Graded questions (seizure ongoing / post-ictal / resolved) are asked, not guessed.
+    if (graded) return { known: false, status: 'unknown' };
+    return { known: true, value: 'نعم', source: 'transcript', status: 'known_positive', confidence: 0.88 };
   }
 
   for (const re of modifier.related_medications || []) {
@@ -178,9 +199,11 @@ export function selectMissingModifiers({
     modifiers,
   });
 
+  const crossText = [transcript, patient?.transcription, patient?.chief_complaint].filter(Boolean).join(' \n ');
   const candidates = modifiers
-    .filter((m) => pathwayMatches(m, pathway))
+    .filter((m) => pathwayMatches(m, pathway, crossText))
     .filter((m) => ageMatches(m, patient))
+    .filter((m) => askWhenMatches(m, patient, transcript))
     .filter((m) => ctasLevelMatches(m, level))
     .map((m) => {
       const detected = detectKnownModifier(m, { patient, answers, transcript });
@@ -356,6 +379,7 @@ function buildChangeExplanation(initialLevel, finalLevel, applied = [], directio
  *   destination_changed: boolean,
  *   team_leader_review: boolean,
  *   critical_alert: boolean,
+ *   critical_question_pending: boolean,
  *   provider_confirmation_required: boolean,
  *   pathway: string,
  * }}
@@ -461,9 +485,11 @@ export function evaluateModifierEngine({
   const needsTeamLeader = libEffects.applied.some((a) => a.team_leader_review)
     || directionApplied.some((a) => a.team_leader_review)
     || selection.questions.some((q) => q.team_leader_review);
+  // Critical only from answers / findings. A critical question that is merely being
+  // asked is not an alert (it blocks Confirm until answered instead).
   const critical = libEffects.applied.some((a) => a.critical_alert)
-    || safetyApplied.some((a) => a.critical_alert || a.safety_alert)
-    || selection.questions.some((q) => q.critical_alert);
+    || safetyApplied.some((a) => a.critical_alert || a.safety_alert);
+  const criticalQuestionPending = selection.questions.some((q) => q.critical_alert);
 
   return {
     initial_ctas: startLevel,
@@ -494,6 +520,7 @@ export function evaluateModifierEngine({
     destination_changed: !!explanation.destination_changed || !!directionApplied.length,
     team_leader_review: needsTeamLeader,
     critical_alert: critical,
+    critical_question_pending: criticalQuestionPending,
     provider_confirmation_required: true,
     pathway: path,
   };

@@ -5,8 +5,8 @@ export const RED_FLAG_LIBRARY_VERSION = '1.0.0';
 export const DEFAULT_RED_FLAG_THRESHOLDS: RedFlagThresholds = {
   spo2_critical: 85,
   spo2_urgent: 90,
-  gcs_critical: 8,
-  gcs_urgent: 13,
+  gcs_critical: 9,
+  gcs_urgent: 14,
   sbp_critical: 70,
   sbp_urgent: 90,
   hr_severe: 130,
@@ -36,7 +36,8 @@ export const DEFAULT_RED_FLAG_TEXT_RULES: RedFlagTextRule[] = [
   {
     id: 'rf_bleeding',
     terms: ['uncontrolled bleeding', 'نزيف شديد', 'نزيف لا يتوقف', 'major bleeding'],
-    level: 1,
+    // CTAS 2; raised to 1 only with shock signs or hypotension for age (approved 2026-10-16).
+    level: 2,
     label_ar: 'نزيف شديد غير مسيطر عليه',
     label_en: 'Uncontrolled major bleeding',
     active: true,

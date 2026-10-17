@@ -6,9 +6,11 @@ import type {
 } from './types';
 import { buildDefaultRedFlagLibrary, RED_FLAG_LIBRARY_VERSION } from './redFlagLibrary';
 
-export type RuntimeModifier = Omit<SerializableModifier, 'detect_patterns' | 'related_medications'> & {
+export type RuntimeModifier = Omit<SerializableModifier, 'detect_patterns' | 'related_medications' | 'ask_when_patterns' | 'cross_pathway_when'> & {
   detect_patterns: RegExp[];
   related_medications?: RegExp[];
+  ask_when_patterns?: RegExp[];
+  cross_pathway_when?: RegExp[];
 };
 
 type RuntimeState = {
@@ -46,6 +48,8 @@ export function hydrateModifiers(list: SerializableModifier[]): RuntimeModifier[
     ...m,
     detect_patterns: (m.detect_patterns || []).map(toRegExp),
     related_medications: (m.related_medications || []).map(toRegExp),
+    ask_when_patterns: m.ask_when_patterns?.length ? m.ask_when_patterns.map(toRegExp) : undefined,
+    cross_pathway_when: m.cross_pathway_when?.length ? m.cross_pathway_when.map(toRegExp) : undefined,
   }));
 }
 
@@ -59,6 +63,9 @@ export function serializeModifier(mod: {
   field: string;
   detect_patterns?: Array<string | RegExp>;
   related_medications?: Array<string | RegExp>;
+  ask_when_patterns?: Array<string | RegExp>;
+  cross_pathway_when?: Array<string | RegExp>;
+  detect_positive_only?: boolean;
   question_ar: string;
   question_en: string;
   answer_type: string;
@@ -86,6 +93,9 @@ export function serializeModifier(mod: {
     field: mod.field,
     detect_patterns: (mod.detect_patterns || []).map((p) => (p instanceof RegExp ? p.source : String(p))),
     related_medications: (mod.related_medications || []).map((p) => (p instanceof RegExp ? p.source : String(p))),
+    ...(mod.ask_when_patterns?.length ? { ask_when_patterns: mod.ask_when_patterns.map((p) => (p instanceof RegExp ? p.source : String(p))) } : {}),
+    ...(mod.detect_positive_only ? { detect_positive_only: true } : {}),
+    ...(mod.cross_pathway_when?.length ? { cross_pathway_when: mod.cross_pathway_when.map((p) => (p instanceof RegExp ? p.source : String(p))) } : {}),
     question_ar: mod.question_ar,
     question_en: mod.question_en,
     answer_type: mod.answer_type as SerializableModifier['answer_type'],

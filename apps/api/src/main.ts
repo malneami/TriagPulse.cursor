@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import express, { json, NextFunction, Request, Response } from 'express';
+import helmet from 'helmet';
 import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { AppModule, ENV_FILE_PATHS } from './app.module';
@@ -22,6 +23,7 @@ function logConfigSources() {
     console.log('[config] NOTE: multiple .env files found. For any key defined in more than one,'
       + ' the FIRST file listed above wins — including when its value is blank.');
   }
+  console.log(`[config] SPEECHMATICS_API_KEY: ${process.env.SPEECHMATICS_API_KEY?.trim() ? 'loaded — live speech uses Speechmatics (Arabic + English)' : 'not set'}`);
   const configured = !!process.env.OPENAI_API_KEY?.trim();
   console.log(`[config] OPENAI_API_KEY: ${configured ? 'loaded' : 'NOT SET — STT falls back to browser speech + manual entry'}`);
   if (configured) {
@@ -63,6 +65,32 @@ async function bootstrap() {
     origin: process.env.CORS_ORIGIN || 'http://localhost:5174',
     credentials: true,
   });
+  // Security headers (review H4): content security policy, HSTS, no framing, no sniffing.
+  // The web app loads only its own files plus Google Fonts; live speech and the board use
+  // same-origin Socket.IO (ws/wss); the API calls Speechmatics/OpenAI server-side only.
+  const connectExtra = process.env.CSP_CONNECT_EXTRA?.split(/\s+/).filter(Boolean) || [];
+  app.use(helmet({
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        mediaSrc: ["'self'", 'blob:'],
+        connectSrc: ["'self'", 'ws:', 'wss:', ...connectExtra],
+        workerSrc: ["'self'", 'blob:'],
+        frameAncestors: ["'none'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    hsts: { maxAge: 31536000, includeSubDomains: true },
+    referrerPolicy: { policy: 'no-referrer' },
+  }));
   app.use(json({ limit: '8mb' }));
   serveWebApp(app.getHttpAdapter().getInstance());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

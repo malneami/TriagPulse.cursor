@@ -144,12 +144,16 @@ export const CTAS_DB = {
 };
 
 // ── CTAS level colors ─────────────────────────────────────────────────────────
+// The single source of truth for CTAS colours in the whole app: the standard
+// CTAS scale (1 blue, 2 red, 3 yellow, 4 green, 5 white). `ink` is the text
+// colour that stays readable on `hex`; `outline` is set where the fill alone
+// would vanish on a white page (level 5).
 export const CTAS_CONFIG = {
-  1: { ar: 'إنعاش', en: 'Resuscitation', wait_ar: 'فوري', wait_en: 'Immediate', wait_min: 0, hex: '#E24B4A' },
-  2: { ar: 'طارئ', en: 'Emergent', wait_ar: '١٥ دقيقة', wait_en: '15 minutes', wait_min: 15, hex: '#EF9F27' },
-  3: { ar: 'عاجل', en: 'Urgent', wait_ar: '٣٠ دقيقة', wait_en: '30 minutes', wait_min: 30, hex: '#0F6E56' },
-  4: { ar: 'أقل إلحاحاً', en: 'Less Urgent', wait_ar: '٦٠ دقيقة', wait_en: '60 minutes', wait_min: 60, hex: '#378ADD' },
-  5: { ar: 'غير عاجل', en: 'Non-Urgent', wait_ar: '١٢٠ دقيقة', wait_en: '120 minutes', wait_min: 120, hex: '#888780' },
+  1: { ar: 'إنعاش', en: 'Resuscitation', wait_ar: 'فوري', wait_en: 'Immediate', wait_min: 0, hex: '#1E4FD6', ink: '#FFFFFF', outline: null },
+  2: { ar: 'طارئ', en: 'Emergent', wait_ar: '١٥ دقيقة', wait_en: '15 minutes', wait_min: 15, hex: '#D3242C', ink: '#FFFFFF', outline: null },
+  3: { ar: 'عاجل', en: 'Urgent', wait_ar: '٣٠ دقيقة', wait_en: '30 minutes', wait_min: 30, hex: '#F2C230', ink: '#14202B', outline: null },
+  4: { ar: 'أقل إلحاحاً', en: 'Less Urgent', wait_ar: '٦٠ دقيقة', wait_en: '60 minutes', wait_min: 60, hex: '#187A43', ink: '#FFFFFF', outline: null },
+  5: { ar: 'غير عاجل', en: 'Non-Urgent', wait_ar: '١٢٠ دقيقة', wait_en: '120 minutes', wait_min: 120, hex: '#FFFFFF', ink: '#14202B', outline: '#14202B' },
 };
 
 // matchComplaint lives in resolveChiefComplaint.js (scored resolver) to avoid

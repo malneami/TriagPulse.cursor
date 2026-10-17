@@ -171,10 +171,11 @@ function evaluateStep0({ vitals, flags, appearance }) {
   } else if (vitals.spo2 != null && vitals.spo2 < 90 && !vitals._suppress_spo2_floor) {
     pushCandidate(candidates, { level: 1, rule_id: 'step0_breathing', label_en: `Breathing compromised SpO₂ ${vitals.spo2}%`, label_ar: 'تنفس مضطرب' });
   }
-  if (vitals.gcs != null && vitals.gcs <= 8) {
+  // CTAS level-of-consciousness modifier (approved 2026-10-17): GCS 3–9 → 1, 10–13 → 2.
+  if (vitals.gcs != null && vitals.gcs <= 9) {
     alerts.push({ ar: `GCS ${vitals.gcs}`, en: `GCS ${vitals.gcs} — unconscious` });
     pushCandidate(candidates, { level: 1, rule_id: 'step0_disability', label_en: `GCS ${vitals.gcs} → CTAS 1`, label_ar: `GCS ${vitals.gcs} → CTAS 1` });
-  } else if (vitals.gcs != null && vitals.gcs < 13) {
+  } else if (vitals.gcs != null && vitals.gcs <= 13) {
     pushCandidate(candidates, { level: 2, rule_id: 'step0_loc', label_en: `Reduced consciousness GCS ${vitals.gcs}`, label_ar: 'انخفاض الوعي' });
   }
   if (vitals.sbp != null && vitals.sbp < 70) {
@@ -299,10 +300,10 @@ function evaluateLocPrimary({ vitals, flags }) {
   const candidates = [];
   const applied = [];
   if (vitals.gcs != null) {
-    if (vitals.gcs <= 8) {
+    if (vitals.gcs <= 9) {
       pushCandidate(candidates, { level: 1, rule_id: 'loc_unconscious', label_en: `GCS ${vitals.gcs} → CTAS 1`, label_ar: 'فقدان وعي' });
       applied.push({ label_en: `GCS ${vitals.gcs} unconscious`, label_ar: `GCS ${vitals.gcs}`, result: 'CTAS 1 override' });
-    } else if (vitals.gcs <= 12) {
+    } else if (vitals.gcs <= 13) {
       pushCandidate(candidates, { level: 2, rule_id: 'loc_impaired', label_en: `GCS ${vitals.gcs} → CTAS 2`, label_ar: 'ضعف وعي' });
       applied.push({ label_en: `GCS ${vitals.gcs} → CTAS 2`, label_ar: `GCS ${vitals.gcs}`, result: 'CTAS 2 min' });
     } else if (vitals.gcs <= 14) {
@@ -314,12 +315,31 @@ function evaluateLocPrimary({ vitals, flags }) {
   return { candidates, applied };
 }
 
-function evaluatePainPrimary({ vitals, answers, isPediatric, chronicity }) {
+/** Complaints whose pain is central (internal organ: head, chest, abdomen, pelvis). */
+const CENTRAL_PAIN_PATHWAYS = new Set([
+  'chest_pain_cardiac', 'chest_pain_non_cardiac', 'abdominal_pain', 'headache',
+  'urinary_retention', 'uti', 'vaginal_bleed', 'pregnancy_over_20',
+]);
+
+/**
+ * CTAS pain modifier: severity × location × onset (acute rows approved 2026-10-17).
+ * Adults: severe central acute 2, severe peripheral acute 3, moderate central acute 3,
+ * moderate peripheral acute 4, mild central acute 4, mild peripheral 5.
+ * Children (Paeds CTAS): severe acute 2, moderate acute 3, mild acute 4.
+ * Chronic rows are unchanged until checked against the CTAS manual.
+ * Location: the nurse's answer (pain_location) wins; otherwise it follows the complaint.
+ */
+function evaluatePainPrimary({ vitals, answers, isPediatric, chronicity, pathway }) {
   const candidates = [];
   const applied = [];
   const pain = vitals.pain;
   if (pain == null) return { candidates, applied };
-  const central = /central|مركزي|داخلي/.test(answerText(answers.pain_location));
+  const locAnswer = answerText(answers.pain_location);
+  const saidCentral = /central|مركزي|داخلي/.test(locAnswer);
+  const saidPeripheral = /peripheral|طرفي|خارجي/.test(locAnswer);
+  const central = saidCentral || (!saidPeripheral && CENTRAL_PAIN_PATHWAYS.has(pathway));
+  const where = saidCentral ? 'central' : central ? 'central (from the complaint)' : 'peripheral';
+  const whereAr = central ? 'مركزي' : 'طرفي';
   const chronic = isChronicUnchanged(chronicity?.status)
     || /chronic|مزمن/.test(answerText(answers.pain_duration_type));
   // Acute-on-chronic / worse / new → allow pain upgrades
@@ -328,7 +348,7 @@ function evaluatePainPrimary({ vitals, answers, isPediatric, chronicity }) {
     if (isPediatric && allowAcutePain) {
       pushCandidate(candidates, { level: 2, rule_id: 'pain_ped_severe', label_en: `Severe pediatric pain ${pain}/10 → CTAS 2`, label_ar: 'ألم شديد أطفال' });
     } else if (central && allowAcutePain) {
-      pushCandidate(candidates, { level: 2, rule_id: 'pain_central_acute', label_en: `Severe central acute pain → CTAS 2`, label_ar: 'ألم مركزي حاد شديد' });
+      pushCandidate(candidates, { level: 2, rule_id: 'pain_central_acute', label_en: `Severe ${where} acute pain ${pain}/10 → CTAS 2`, label_ar: `ألم ${whereAr} حاد شديد` });
     } else if (allowAcutePain) {
       pushCandidate(candidates, { level: 3, rule_id: 'pain_severe', label_en: `Severe pain ${pain}/10 → CTAS 3`, label_ar: 'ألم شديد' });
     } else {
@@ -339,10 +359,24 @@ function evaluatePainPrimary({ vitals, answers, isPediatric, chronicity }) {
       });
     }
   } else if (pain >= 4 && allowAcutePain) {
-    pushCandidate(candidates, { level: 4, rule_id: 'pain_moderate', label_en: `Moderate pain → CTAS 4`, label_ar: 'ألم متوسط' });
+    if (isPediatric) {
+      pushCandidate(candidates, { level: 3, rule_id: 'pain_ped_moderate', label_en: `Moderate pediatric pain ${pain}/10 → CTAS 3`, label_ar: 'ألم متوسط أطفال' });
+    } else if (central) {
+      pushCandidate(candidates, { level: 3, rule_id: 'pain_central_moderate', label_en: `Moderate ${where} acute pain ${pain}/10 → CTAS 3`, label_ar: `ألم ${whereAr} متوسط حاد` });
+    } else {
+      pushCandidate(candidates, { level: 4, rule_id: 'pain_moderate', label_en: `Moderate pain → CTAS 4`, label_ar: 'ألم متوسط' });
+    }
   } else if (pain >= 1) {
-    pushCandidate(candidates, { level: 5, rule_id: 'pain_mild', label_en: `Mild pain ${pain}/10 → CTAS 5`, label_ar: 'ألم خفيف' });
-    applied.push({ label_en: `Pain ${pain}/10 mild`, label_ar: `ألم ${pain}/10`, result: 'noted' });
+    if (allowAcutePain && pain < 4 && isPediatric) {
+      pushCandidate(candidates, { level: 4, rule_id: 'pain_ped_mild', label_en: `Mild pediatric pain ${pain}/10 → CTAS 4`, label_ar: 'ألم خفيف أطفال' });
+    } else if (allowAcutePain && pain < 4 && central) {
+      pushCandidate(candidates, { level: 4, rule_id: 'pain_central_mild', label_en: `Mild ${where} acute pain ${pain}/10 → CTAS 4`, label_ar: `ألم ${whereAr} خفيف حاد` });
+    } else {
+      pushCandidate(candidates, pain >= 4
+        ? { level: 5, rule_id: 'pain_chronic', label_en: `Chronic pain ${pain}/10, usual pattern → CTAS 5`, label_ar: 'ألم مزمن بنمطه المعتاد' }
+        : { level: 5, rule_id: 'pain_mild', label_en: `Mild pain ${pain}/10 → CTAS 5`, label_ar: 'ألم خفيف' });
+    }
+    applied.push({ label_en: `Pain ${pain}/10`, label_ar: `ألم ${pain}/10`, result: 'noted' });
   }
   return { candidates, applied };
 }
@@ -531,6 +565,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     ageGroup,
     isPediatric,
     chronicityStable: !!normalized.flags.chronic_stable_vitals,
+    age: patient.age,
   });
 
   const feverAdult = (!isPediatric && hasFever)
@@ -562,7 +597,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     homeOxygen,
   });
   const loc = evaluateLocPrimary({ vitals: normalized.vitals, flags: normalized.flags });
-  const pain = evaluatePainPrimary({ vitals: normalized.vitals, answers, isPediatric, chronicity });
+  const pain = evaluatePainPrimary({ vitals: normalized.vitals, answers, isPediatric, chronicity, pathway });
 
   // Library CTAS effects only (destination-only excluded inside applyModifierLibraryEffects)
   const lib = applyModifierLibraryEffects(answers, 5);

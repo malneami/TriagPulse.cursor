@@ -73,10 +73,13 @@ function mapJourney(j) {
     awaiting_ctas: 'ctas_pending',
     ctas_in_progress: 'ctas_in_progress',
     completed: 'complete',
+    seen: 'seen',
   };
   return {
     id: j.id,
     patient_id: j.patientId,
+    ticket_no: j.ticketNo,
+    seen_at: j.seenAt,
     mrn: j.mrn,
     id_number: j.idNumber,
     patient_name_ar: j.patientNameAr,
@@ -142,6 +145,9 @@ export const api = {
     /** Server enum values: visual_triage | awaiting_ctas | ctas_in_progress | completed */
     setStatus: (id, status) =>
       request(`/journeys/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }).then(mapJourney),
+    /** A physician has seen the patient: they leave the tracking board. */
+    markSeen: (id) =>
+      request(`/journeys/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'seen' }) }).then(mapJourney),
     /** Marks CTAS as started. The server stamps ctas_started_at once, with server time. */
     startCtas: (id) =>
       request(`/journeys/${id}/status`, {
@@ -172,6 +178,17 @@ export const api = {
     activate: (id) =>
       request(`/clinical-libraries/${id}/activate`, { method: 'POST', body: '{}' }),
     get: (id) => request(`/clinical-libraries/${id}`),
+  },
+  routingConfig: {
+    current: () => request('/routing-config/current'),
+    history: () => request('/routing-config/history'),
+    publish: (body) =>
+      request('/routing-config/publish', { method: 'POST', body: JSON.stringify(body) }),
+    activate: (id) =>
+      request(`/routing-config/${id}/activate`, { method: 'POST', body: '{}' }),
+    useBuiltin: () => request('/routing-config/use-builtin', { method: 'POST', body: '{}' }),
+    setBusy: (department, zone, busy) =>
+      request('/routing-config/zone-status', { method: 'POST', body: JSON.stringify({ department, zone, busy }) }),
   },
   analytics: {
     agreement: (days = 30) => request(`/analytics/agreement?days=${days}`),

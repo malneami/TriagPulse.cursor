@@ -8,6 +8,7 @@ import {
   type RealtimeConfigState,
 } from '@triagepulse/clinical';
 import { SttService } from './stt.service';
+import { markOpenAiBillingBlocked } from './stt-billing';
 
 export type RealtimeEmitFn = (event: string, payload: unknown) => void;
 
@@ -414,6 +415,7 @@ export class SttRealtimeService {
       if (errObj?.code === 'input_audio_buffer_commit_empty') return;
       if (/no credits|insufficient.?quota|billing|payment.?required/i.test(msg)) {
         msg = 'OpenAI account has no credits remaining — add billing credits to restore Realtime STT.';
+        markOpenAiBillingBlocked();
       }
       this.logger.warn(`Realtime error [${sessionId}]: ${msg}`);
       // A turn_detection refusal is handled by the negotiation retry in startSession;

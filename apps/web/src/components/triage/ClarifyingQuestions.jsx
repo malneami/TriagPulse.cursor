@@ -160,7 +160,7 @@ function AnswerControl({ question, answer, onAnswer }) {
         <button key={opt.value}
           onClick={() => onAnswer(answer === opt.value ? undefined : opt.value)}
           className={`flex-1 py-1.5 rounded-lg text-sm font-bold border-2 transition-all ${
-            answer === opt.value ? opt.color + ' shadow-sm scale-105' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+            answer === opt.value ? opt.color + ' shadow-sm scale-105' : 'bg-white text-graphite border-mist hover:border-mist'
           }`}
         >
           {opt.value}
@@ -178,12 +178,12 @@ function AnswerControl({ question, answer, onAnswer }) {
           const color = n <= 3 ? 'border-green-400 bg-green-50 text-green-700' : n <= 6 ? 'border-yellow-400 bg-yellow-50 text-yellow-700' : 'border-red-400 bg-red-50 text-red-700';
           return (
             <button key={n} onClick={() => onAnswer(sel ? undefined : String(n))}
-              className={`w-9 h-9 rounded-lg border-2 font-bold text-sm transition-all ${sel ? color + ' scale-110 shadow' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+              className={`w-9 h-9 rounded-lg border-2 font-bold text-sm transition-all ${sel ? color + ' scale-110 shadow' : 'bg-white border-mist text-graphite hover:border-mist'}`}
             >{n}</button>
           );
         })}
       </div>
-      <p className="text-xs text-slate-400 mt-1">١ = خفيف · ١٠ = لا يُحتمل</p>
+      <p className="text-xs text-graphite mt-1">١ = خفيف · ١٠ = لا يُحتمل</p>
     </div>
   );
 
@@ -192,7 +192,7 @@ function AnswerControl({ question, answer, onAnswer }) {
       {DURATION_OPTIONS.map(opt => (
         <button key={opt} onClick={() => onAnswer(answer === opt ? undefined : opt)}
           className={`px-3 py-1.5 rounded-lg text-sm font-medium border-2 transition-all ${
-            answer === opt ? 'bg-teal-600 text-white border-teal-600 scale-105 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+            answer === opt ? 'bg-teal-600 text-white border-teal-600 scale-105 shadow-sm' : 'bg-white text-graphite border-mist hover:border-teal-300'
           }`}
         >{opt}</button>
       ))}
@@ -204,7 +204,7 @@ function AnswerControl({ question, answer, onAnswer }) {
       {(question.answer_options || []).map(opt => (
         <button key={opt} onClick={() => onAnswer(answer === opt ? undefined : opt)}
           className={`px-3 py-1.5 rounded-lg text-sm font-medium border-2 transition-all ${
-            answer === opt ? 'bg-teal-600 text-white border-teal-600 scale-105 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+            answer === opt ? 'bg-teal-600 text-white border-teal-600 scale-105 shadow-sm' : 'bg-white text-graphite border-mist hover:border-teal-300'
           }`}
         >{opt}</button>
       ))}
@@ -220,8 +220,8 @@ function CascadeQuestion({ question, answer, onAnswer }) {
       <div className="flex items-start gap-1.5 mb-2">
         <span className="text-teal-500 font-bold text-sm shrink-0">↳</span>
         <div>
-          <p className="text-sm text-slate-800 font-medium">{question.text_ar}</p>
-          {question.text_en && <p className="text-xs text-slate-400 mt-0.5">{question.text_en}</p>}
+          <p className="text-sm text-ink font-medium">{question.text_ar}</p>
+          {question.text_en && <p className="text-xs text-graphite mt-0.5">{question.text_en}</p>}
         </div>
       </div>
       <AnswerControl question={question} answer={answer} onAnswer={onAnswer} />
@@ -298,7 +298,7 @@ export default function ClarifyingQuestions({
     <div className="bg-white rounded-2xl shadow-sm border border-teal-100 p-5 flex flex-col items-center gap-3">
       <Loader2 className="w-6 h-6 text-teal-600 animate-spin" />
       <p className="text-sm text-teal-700 font-medium">جارٍ توليد الأسئلة الاستيضاحية...</p>
-      <p className="text-xs text-slate-400">Generating targeted follow-up questions</p>
+      <p className="text-xs text-graphite">Generating targeted follow-up questions</p>
     </div>
   );
 
@@ -313,12 +313,12 @@ export default function ClarifyingQuestions({
 
   if (visibleQuestions.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-amber-200 p-4 space-y-3">
+      <div className="bg-white rounded-2xl shadow-sm border border-mist p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <HelpCircle className="w-5 h-5 text-amber-600 shrink-0" />
+          <HelpCircle className="w-5 h-5 text-graphite shrink-0" />
           <div>
-            <h3 className="font-bold text-slate-800 text-sm">أسئلة استيضاحية</h3>
-            <p className="text-xs text-slate-500">
+            <h3 className="font-bold text-ink text-sm">أسئلة استيضاحية</h3>
+            <p className="text-xs text-graphite">
               لا توجد أسئلة متاحة لهذا المستوى/المسار حالياً — No clarifying questions for this CTAS level/pathway yet
             </p>
           </div>
@@ -353,8 +353,8 @@ export default function ClarifyingQuestions({
         <div className="flex items-center gap-2 min-w-0">
           <HelpCircle className="w-5 h-5 text-teal-600 shrink-0" />
           <div className="min-w-0">
-            <h3 className="font-bold text-slate-800 text-sm">أسئلة استيضاحية</h3>
-            <p className="text-xs text-slate-400">Clarifying Questions · {answeredCount}/{visibleQuestions.length} answered</p>
+            <h3 className="font-bold text-ink text-sm">أسئلة استيضاحية</h3>
+            <p className="text-xs text-graphite">Clarifying Questions · {answeredCount}/{visibleQuestions.length} answered</p>
             {source === 'modifier_engine' ? (
               <p className="text-[11px] font-bold text-teal-700 mt-0.5">
                 {onlyDirectionOrSafety
@@ -387,24 +387,24 @@ export default function ClarifyingQuestions({
 
           return (
             <div key={q.id || q.field || i}
-              className={`rounded-xl border p-3 transition-all ${currentAnswer !== undefined ? 'border-teal-200 bg-teal-50' : 'border-slate-200 bg-slate-50'}`}
+              className={`rounded-xl border p-3 transition-all ${currentAnswer !== undefined ? 'border-teal-200 bg-teal-50' : 'border-mist bg-paper'}`}
             >
               <div className="flex items-start gap-2 mb-2.5">
                 <span className="shrink-0 w-5 h-5 rounded-full bg-teal-600 text-white text-xs flex items-center justify-center font-bold mt-0.5">
                   {i + 1}
                 </span>
-                <p className="text-sm text-slate-800 leading-relaxed font-medium">{q.text_ar}</p>
+                <p className="text-sm text-ink leading-relaxed font-medium">{q.text_ar}</p>
               </div>
               {/* CTAS impact notification */}
               {ctasImpacts[q.field] && (
-                <div className="mb-2.5 pr-7 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-300 rounded-xl text-xs font-bold animate-pulse">
-                  <ArrowUp className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span className="text-amber-800">
+                <div className="mb-2.5 pr-7 flex items-center gap-2 px-3 py-2 bg-paper border border-mist rounded-xl text-xs font-bold animate-pulse">
+                  <ArrowUp className="w-3.5 h-3.5 text-graphite shrink-0" />
+                  <span className="text-ink">
                     تأثير على CTAS / CTAS Impact: {ctasImpacts[q.field].from} → {ctasImpacts[q.field].to}
                   </span>
                 </div>
               )}
-              {q.text_en && <p className="text-xs text-slate-400 mb-2.5 pr-7">{q.text_en}</p>}
+              {q.text_en && <p className="text-xs text-graphite mb-2.5 pr-7">{q.text_en}</p>}
               <AnswerControl question={q} answer={currentAnswer} onAnswer={v => handleAnswer(q.field, v)} />
 
               {/* Static cascade rules (prior_cardiac, fever, etc.) */}
@@ -418,12 +418,12 @@ export default function ClarifyingQuestions({
               ))}
               {/* Dynamic clinical cascades */}
               {(dynamicCascades[q.field] || []).map(cq => (
-                <div key={cq.field} className="mt-2 mr-2 pl-3 border-r-2 border-amber-300 pr-3">
+                <div key={cq.field} className="mt-2 mr-2 pl-3 border-r-2 border-mist pr-3">
                   <div className="flex items-center gap-1.5 mb-2">
                     <GitBranch className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                     <div>
-                      <p className="text-sm text-slate-800 font-medium">{cq.text_ar}</p>
-                      {cq.text_en && <p className="text-xs text-slate-400">{cq.text_en}</p>}
+                      <p className="text-sm text-ink font-medium">{cq.text_ar}</p>
+                      {cq.text_en && <p className="text-xs text-graphite">{cq.text_en}</p>}
                     </div>
                   </div>
                   <AnswerControl

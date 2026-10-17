@@ -39,7 +39,10 @@ const EXTRA_SYNONYMS = {
     'heat stroke', 'heatstroke', 'heat exhaustion', 'heat related', 'heat cramps',
     'ضربة شمس', 'إجهاد حراري', 'حرارة بيئية',
   ],
-  fever: ['fever', 'febrile', 'pyrexia', 'حمى', 'سخونة', 'سخون'],
+  fever: [
+    'fever', 'febrile', 'pyrexia', 'حمى', 'سخونة', 'سخون', 'سخونية', 'حرارة',
+    'عنده حرارة', 'عندها حرارة', 'ارتفاع حرارة', 'ارتفاع في الحرارة', 'ارتفاع درجة الحرارة',
+  ],
   nasal_congestion: [
     'nasal congestion', 'hay fever', 'allergic rhinitis', 'stuffy nose',
     'احتقان الأنف', 'حساسية الأنف',
@@ -48,6 +51,7 @@ const EXTRA_SYNONYMS = {
     'cough', 'cold symptoms', 'uri', 'urti', 'upper respiratory', 'sore throat',
     'سعال', 'كحة', 'زكام', 'التهاب تنفسي علوي', 'ألم حلق',
   ],
+  stridor_resp: ['stridor', 'صرير', 'سترايدر', 'استرايدر', 'سترايدور'],
   tinnitus: ['tinnitus', 'ringing in ear', 'ringing ears', 'طنين', 'طنين الأذن'],
   altered_loc: [
     'altered loc', 'altered consciousness', 'altered level of consciousness',
@@ -57,7 +61,10 @@ const EXTRA_SYNONYMS = {
   headache: ['headache', 'head pain', 'migraine', 'صداع', 'وجع رأس'],
   abdominal_pain: [
     'abdominal pain', 'stomach pain', 'belly pain', 'flank pain', 'loin pain',
+    'epigastric pain', 'epigastric', 'gastric pain', 'upper abdominal pain', 'stomach ache', 'stomachache', 'tummy pain',
     'ألم بطني', 'ألم في البطن', 'بطن', 'ألم خاصرة', 'خاصرة',
+    'ألم في المعدة', 'ألم المعدة', 'وجع المعدة', 'وجع في المعدة', 'ألم فم المعدة', 'ألم في فم المعدة', 'فم المعدة',
+    'ألم أعلى البطن', 'ألم في أعلى البطن', 'ألم شرسوفي', 'مغص',
   ],
   uti: [
     'uti', 'dysuria', 'urinary symptoms', 'burning urine', 'flank pain uti',
@@ -65,6 +72,10 @@ const EXTRA_SYNONYMS = {
   ],
   back_pain: ['back pain', 'lumbar pain', 'ألم الظهر', 'ظهر'],
   lower_extremity_injury: [
+    // Limp / joint pain (CTAS has no separate joint-pain complaint yet; nearest is lower extremity).
+    'joint pain', 'joint swelling', 'swollen joint', 'limp', 'limping', 'not bearing weight', 'refuses to walk',
+    'ألم في المفصل', 'ألم المفصل', 'ألم المفاصل', 'ألم في المفاصل', 'تورم المفصل', 'تورم في المفصل',
+    'عرج', 'يعرج', 'عرج في المشي', 'ما يمشي', 'لا يمشي', 'رافض يمشي',
     'leg pain', 'knee pain', 'ankle pain', 'foot pain', 'neck pain',
     'ألم الساق', 'ألم الركبة', 'ألم القدم', 'ألم الرقبة', 'رقبة',
   ],
@@ -135,6 +146,11 @@ const DISAMBIGUATION_BOOSTS = [
 ];
 
 /** Short tokens that over-match — require longer context or reduced weight. */
+const FEVER_WORDS = new Set(['fever', 'حرارة']);
+function feverAsComplaint(clause, at, term) {
+  if (clause.slice(Math.max(0, at - 2), at) === 'ال') return false;
+  return !/\d/.test(clause.slice(at + term.length, at + term.length + 14));
+}
 const SHORT_WEAK = new Set(['صدر', 'بطن', 'ظهر', 'قدم', 'جلد', 'حرارة', 'chest', 'pain', 'fever']);
 
 function normalizeText(s) {
@@ -398,6 +414,120 @@ export function matchComplaint(chiefComplaint, opts = {}) {
   if (opts.confirmedKey) return getComplaintByKey(opts.confirmedKey);
   return null;
 }
+
+// Clause markers for findComplaintMentions.
+const NEGATION_CUE = /(?:^|\s)(?:no|not|non|denies|denied|without|negative for|free of|لا|ليس|ليست|بدون|ينفي|تنفي|ما\s*في|ما\s*عنده|ما\s*عندها|مافي|ماعنده|ما\s*يشكو|غير\s*موجود)(?:\s|$)/;
+const HISTORY_CUE = /(?:^|\s)(?:history of|past history|known case of|known case|known|previous|previously|prior|on treatment for|medications?|meds|takes|taking|allerg\w*|تاريخ(?:\s*مرضي)?|سابق(?:اً|ا)?|معروف|مريض\s+(?:سكري|ضغط|قلب|ربو)|يستخدم|يتناول|أدوية|حساسية)(?:\s|$)/;
+
+/**
+ * Every distinct complaint mentioned in a transcript, in order of first mention.
+ * Negated mentions ("no fever") and history clauses ("history of stroke") are skipped,
+ * so a chronic illness is never turned into a presenting complaint. Ambiguous phrases
+ * are resolved against their own clause (e.g. "chest pain … non cardiac").
+ * @param {string} text
+ * @returns {Array<{ complaintKey: string, categoryKey: string, label_en: string, label_ar: string, default_ctas: number, term: string, clause: string }>}
+ */
+/** Index of `term` as a whole word (Arabic و/ب/ف/ل/ال prefixes and English plural allowed), or -1. */
+function wordAt(clause, term) {
+  const arabic = /[\u0600-\u06FF]/.test(term);
+  let from = 0;
+  while (from <= clause.length) {
+    const at = clause.indexOf(term, from);
+    if (at < 0) return -1;
+    const end = at + term.length;
+    let start = at;
+    if (arabic) {
+      if (clause.slice(Math.max(0, start - 2), start) === 'ال') start -= 2;
+      if (start > 0 && 'وبفل'.includes(clause[start - 1]) && (start - 1 === 0 || clause[start - 2] === ' ')) start -= 1;
+    }
+    const okBefore = start === 0 || clause[start - 1] === ' ';
+    const after = clause.slice(end);
+    const okAfter = after === '' || after[0] === ' ' || (!arabic && /^(?:s|es)(?:\s|$)/.test(after));
+    if (okBefore && okAfter) return at;
+    from = at + 1;
+  }
+  return -1;
+}
+
+export function findComplaintMentions(text) {
+  const clauses = String(text || '')
+    .split(/[.!?؟،,;:\n]+|\s(?:and|also|plus|then|with|ومعه|ومعها|وأيضاً|وايضا|كذلك)\s/i)
+    .map((c) => normalizeText(c))
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const clause of clauses) {
+    if (HISTORY_CUE.test(` ${clause} `)) continue;
+    // Terms present in this clause, longest first; a term inside a longer hit is skipped.
+    const hits = [];
+    for (const entry of LEXICON.values()) {
+      for (const term of entry.terms) {
+        if (!term || term.length < 3) continue;
+        const weak = SHORT_WEAK.has(term) || termWeight(term) < 0.55;
+        if (weak && !FEVER_WORDS.has(term)) continue;
+        const at = wordAt(clause, term);
+        // "fever" / «حرارة» on its own is a complaint («وحرارة», "Fever."), but «الحرارة 39»
+        // or "fever 39" is the temperature reading.
+        if (weak && at >= 0 && !feverAsComplaint(clause, at, term)) continue;
+        if (at >= 0) hits.push({ entry, term, at, end: at + term.length });
+      }
+    }
+    hits.sort((a, b) => (b.end - b.at) - (a.end - a.at) || a.at - b.at);
+    const taken = [];
+    for (const h of hits) {
+      if (taken.some((t) => h.at < t.end && h.end > t.at && (t.term !== h.term))) continue;
+      // Words before the term in the same clause: a negation there rules it out.
+      const before = clause.slice(Math.max(0, h.at - 30), h.at);
+      if (NEGATION_CUE.test(` ${before} `)) continue;
+      taken.push(h);
+    }
+    // Same phrase can belong to several complaints: score each against the clause.
+    const byTerm = new Map();
+    for (const h of taken) {
+      const scored = scoreEntry(h.entry, clause).score;
+      const cur = byTerm.get(`${h.at}:${h.term}`);
+      if (!cur || scored > cur.scored) byTerm.set(`${h.at}:${h.term}`, { ...h, scored });
+    }
+    for (const h of [...byTerm.values()].sort((a, b) => a.at - b.at)) {
+      if (seen.has(h.entry.complaintKey)) continue;
+      seen.add(h.entry.complaintKey);
+      out.push({
+        complaintKey: h.entry.complaintKey,
+        categoryKey: h.entry.categoryKey,
+        label_en: h.entry.label_en,
+        label_ar: h.entry.label_ar,
+        default_ctas: h.entry.default_ctas,
+        term: h.term,
+        clause,
+      });
+    }
+  }
+  // An allergic reaction happening NOW is a complaint, not history: "allergic reaction",
+  // hives / urticaria, anaphylaxis, or a rash / swelling soon after a food, medicine,
+  // injection or sting (approved 2026-10-16). "Allergic to penicillin" stays history.
+  if (!seen.has('allergic_reaction')) {
+    const t = normalizeText(text);
+    const statedNow = ACUTE_ALLERGY.test(t) && !/(?:no|not|denies|without|لا|بدون|ما\s*في)\s+(?:\S+\s+){0,2}?(?:allergic\s+reaction|hives|urticaria|تفاعل\s+تحسسي|شرى)/i.test(t);
+    const afterExposure = RASH_OR_SWELLING.test(t) && EXPOSURE_TRIGGER.test(t);
+    const entry = [...LEXICON.values()].find((e) => e.complaintKey === 'allergic_reaction');
+    if (entry && (statedNow || afterExposure)) {
+      out.push({
+        complaintKey: entry.complaintKey,
+        categoryKey: entry.categoryKey,
+        label_en: entry.label_en,
+        label_ar: entry.label_ar,
+        default_ctas: entry.default_ctas,
+        term: statedNow ? 'allergic reaction' : 'rash after exposure',
+        clause: t.slice(0, 120),
+      });
+    }
+  }
+  return out;
+}
+
+const ACUTE_ALLERGY = /allergic\s+reaction|hives|urticaria|anaphyla\w*|تفاعل\s+تحسسي|شرى|ارتكاريا|صدمة\s+تحسسية|تأق/i;
+const RASH_OR_SWELLING = /rash|eruption|hives|wheals?|swelling|itch\w*|طفح|حبوب|حكة|حكه|هرش|تورم|انتفاخ/i;
+const EXPOSURE_TRIGGER = /after\s+(?:eating|taking|the\s+)?\s*(?:injection|vaccine|medicine|medication|antibiotic|food|nuts?|peanuts?|egg|milk|fish|shellfish|sting|bite|dose|\w+\s+injection)|after\s+(?:an?\s+)?injection|following\s+(?:an?\s+)?(?:injection|dose|vaccine)|بعد\s+(?:ما\s+)?(?:أكل|اكل|تناول|أخذ|اخذ|الإبرة|الابرة|إبرة|ابرة|حقنة|الحقنة|التطعيم|تطعيم|الدواء|دواء|المضاد|مضاد|لدغة|قرصة|المكسرات|الفول)/i;
 
 /**
  * Flat list of all complaints for search UI.

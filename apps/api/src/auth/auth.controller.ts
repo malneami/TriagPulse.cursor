@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Ip, Post, Request, UseGuards } from '@nestjs/common';
+import { allowLoginAttempt } from './login-limit';
 import { AuthGuard } from '@nestjs/passport';
 import { IsString, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
@@ -17,7 +18,10 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
-  login(@Body() dto: LoginDto) {
+  login(@Body() dto: LoginDto, @Ip() ip: string) {
+    if (!allowLoginAttempt(ip || 'unknown', dto.email)) {
+      throw new HttpException('Too many sign-in attempts. Wait a minute and try again.', HttpStatus.TOO_MANY_REQUESTS);
+    }
     return this.authService.login(dto.email, dto.password);
   }
 

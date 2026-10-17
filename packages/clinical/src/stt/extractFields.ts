@@ -1,5 +1,6 @@
 import { mapClinicalCodes } from './coding';
 import { matchComplaint } from '../ctas/resolveChiefComplaint';
+import { buildCaseDetails } from '../ctas/caseDetails';
 import { STT_FIELD_DEFINITIONS, STT_REQUIRED_KEYS } from './vocabulary';
 import { conservativeTranscriptCleanup, detectTranscriptLanguage, segmentTranscriptByLanguage } from './vocabulary';
 import type {
@@ -7,6 +8,7 @@ import type {
   SttFieldSlot,
   SttSessionOutput,
   VitalSignEntry,
+  CaseDetails,
 } from './types';
 
 const ARABIC_DIGITS: Record<string, string> = {
@@ -19,6 +21,11 @@ const ARABIC_NUMBERS: Record<string, number> = {
   'خمس': 5, 'خمسة': 5, 'ست': 6, 'ستة': 6, 'سبع': 7, 'سبعة': 7, 'ثمان': 8, 'ثمانية': 8, 'تسع': 9, 'تسعة': 9,
   'عشر': 10, 'عشرة': 10, 'عشرين': 20, 'ثلاثين': 30, 'أربعين': 40, 'اربعين': 40, 'خمسين': 50, 'ستين': 60, 'سبعين': 70,
   'ثمانين': 80, 'تسعين': 90, 'مئة': 100, 'مائة': 100, 'ميه': 100, 'مية': 100,
+  // Colloquial (Gulf/Najdi) teens as ASR writes them.
+  'احدعش': 11, 'حداش': 11, 'اطنعش': 12, 'اثنعش': 12, 'ثلطعش': 13, 'ثلاثتاش': 13, 'ثلاثتعش': 13,
+  'اربعتعش': 14, 'اربعتاش': 14, 'خمستعش': 15, 'خمستاش': 15, 'خمستعشر': 15, 'ستعش': 16, 'ستاش': 16, 'ستعشر': 16,
+  'سبعتعش': 17, 'سبعتاش': 17, 'سبعتعشر': 17, 'سبعطعش': 17, 'ثمنتعش': 18, 'ثمنطعش': 18, 'تمنتاش': 18,
+  'تسعتعش': 19, 'تسعتاش': 19, 'تسعتعشر': 19,
 };
 
 const ENGLISH_NUMBERS: Record<string, number> = {
@@ -29,8 +36,14 @@ const ENGLISH_NUMBERS: Record<string, number> = {
   hundred: 100,
 };
 
-/** Word / Arabic-run / separator, so a rewrite can preserve everything in between. */
-const NUMBER_TOKEN_RE = /[A-Za-z]+|[؀-ۿ]+|[^A-Za-z؀-ۿ]+/g;
+/**
+ * Word / Arabic-run / separator, so a rewrite can preserve everything in between.
+ * Arabic letters only: the Arabic comma, semicolon and question mark (، ؛ ؟) and
+ * Arabic-Indic digits are separators — «خمسة عشر،» must read as 15, not 5.
+ */
+const AR_LETTERS = '\u0621-\u065F\u066E-\u06D3\u06D5-\u06FF';
+const NUMBER_TOKEN_RE = new RegExp(`[A-Za-z]+|[${AR_LETTERS}]+|[^A-Za-z${AR_LETTERS}]+`, 'g');
+const WORD_RE = new RegExp(`[A-Za-z${AR_LETTERS}]`);
 
 /** ASR often drops / swaps Arabic hamza forms (أ/إ/آ → ا). */
 function normalizeArabicAlef(word: string): string {
@@ -61,9 +74,18 @@ function classifyNumberWord(word: string): { lang: 'en' | 'ar'; value: number } 
   return null;
 }
 
-/** Arabic composes additively in any order: مئة وأربعين = 140, خمسة وخمسين = 55. */
+/**
+ * Arabic composes additively (مئة وأربعين = 140, خمسة وخمسين = 55, خمسة عشر = 15);
+ * a unit before مية multiplies (ثلاث مية = 300).
+ */
 function combineArabic(values: number[]): number {
-  return values.reduce((a, b) => a + b, 0);
+  const terms: number[] = [];
+  for (const v of values) {
+    const prev = terms[terms.length - 1];
+    if (v === 100 && prev != null && prev > 1 && prev < 10) terms[terms.length - 1] = prev * 100;
+    else terms.push(v);
+  }
+  return terms.reduce((a, b) => a + b, 0);
 }
 
 function combineEnglish(values: number[]): number {
@@ -90,7 +112,7 @@ export function normalizeSpokenNumbers(text: string): string {
   const tokens = String(text).match(NUMBER_TOKEN_RE);
   if (!tokens) return String(text);
 
-  const isWord = (t: string) => /[A-Za-z؀-ۿ]/.test(t);
+  const isWord = (t: string) => WORD_RE.test(t);
   const isRunGap = (t: string) => /^[\s-]+$/.test(t);
 
   const out: string[] = [];
@@ -122,6 +144,16 @@ export function normalizeSpokenNumbers(text: string): string {
       }
       const next = classifyNumberWord(word);
       if (!next || next.lang !== head.lang) break;
+      if (head.lang === 'ar') {
+        // An Arabic number continues only with «و» (أربعة وتسعين), a teen (خمسة عشر) or
+        // hundreds (ثلاث مية). Otherwise a new number starts: «أربعة وتسعين سبعة وتسعين»
+        // is 94 then 97, not 191.
+        const last = values[values.length - 1];
+        // Spoken without «و» after a hundred: «مئة عشرة» = 110, «مية خمسين» = 150.
+        const afterHundred = last >= 100 && last % 100 === 0 && next.value < 100;
+        const continues = word.startsWith('و') || (next.value === 10 && last < 10) || (next.value === 100 && last < 10) || afterHundred;
+        if (!continues) break;
+      }
       values.push(next.value);
       consumedTo = k;
       j = k + 1;
@@ -134,8 +166,29 @@ export function normalizeSpokenNumbers(text: string): string {
   return out.join('');
 }
 
+const NUM_WORD = '(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|a\\s+hundred|صفر|واحد|وحدة|اثنين|اثنان|إثنين|ثنين|ثلاث|ثلاثة|تلات|تلاتة|أربع|اربع|أربعة|اربعة|خمس|خمسة|ست|ستة|سبع|سبعة|ثمان|ثمانية|تمن|تمانية|تسع|تسعة|عشر|عشرة|عشرين|ثلاثين|أربعين|اربعين|خمسين|ستين|سبعين|ثمانين|تسعين|مية|مئة|مائة|ميه)';
+// Label + stop + value: "Pain score. Five" (not number + stop + number: "110. 90" are two readings).
+const STT_GLUE_VALUE = new RegExp(
+  `(?<![\\d٠-٩])([.،,؛:!])\\s+(?=(?:\\d|[٠-٩]|${NUM_WORD})(?=[\\s.،,؛:!?؟/%]|$|\\d))`,
+  'giu',
+);
+// Stop before a pair connector: «90. على. 80», "90. Over 50".
+const STT_GLUE_PAIR = /([.،,؛:!])\s+(?=(?:على|over|out\s+of|\/)(?=[\s.،,؛:!?؟]|$|\d))/giu;
+
+/**
+ * Some speech services (Speechmatics) put a full stop between a label and its value:
+ * "Pain score. Five.", «الضغط. 90. على. 80». Joining them keeps "label value" together.
+ * Only punctuation followed by a space is touched, so 37.5 or 1,500 stay as they are.
+ */
+export function relaxSttPunctuation(text: string): string {
+  return String(text || '').replace(STT_GLUE_PAIR, ' ').replace(STT_GLUE_VALUE, ' ');
+}
+
 function normalizeDigits(text: string): string {
-  return normalizeSpokenNumbers(String(text).replace(/[٠-٩]/g, (d) => ARABIC_DIGITS[d] ?? d));
+  // Arabic decimal separator «٫» (and the comma between digits) is a decimal point: «٣٧٫٥» = 37.5.
+  return normalizeSpokenNumbers(String(text)
+    .replace(/[٠-٩]/g, (d) => ARABIC_DIGITS[d] ?? d)
+    .replace(/(\d)\s*٫\s*(\d)/g, '$1.$2'));
 }
 
 function parseSpokenNumberWord(word: string): number | null {
@@ -167,6 +220,15 @@ function parseAgeInSmallUnits(text: string): { value: number; span: string; conf
     else if (/أسبوع/.test(unit)) years = 2 / 52;
     const val = clampAge(years);
     if (val != null) return { value: val, span: dual[0], confidence: 0.93 };
+  }
+
+  // Arabic years said as a dual or a bare singular: «عمره سنتين» = 2, «عمره سنة» = 1.
+  const yearWord = t.match(
+    new RegExp(`(?:${cue}|طفل(?:ة)?|بنت|ولد|رضيع(?:ة)?)\\s*${fillers}\\s*(سنتين|سنتان|سنة|سنه|عام|عامين|عامان)(?![\\u0621-\\u064A])(\\s*و\\s*نص)?`, 'i'),
+  );
+  if (yearWord) {
+    const val = clampAge((/سنتين|سنتان|عامين|عامان/.test(yearWord[1]) ? 2 : 1) + (yearWord[2] ? 0.5 : 0));
+    if (val != null) return { value: val, span: yearWord[0], confidence: 0.9 };
   }
 
   // N + months/weeks/days (digits or spoken words)
@@ -236,6 +298,9 @@ function parseSpokenAge(text: string): { value: number; span: string; confidence
   }
 
   const yearsOld = t.match(/(?:^|[,\s])(\d{1,3})\s*(?:years?\s*old|year\s*old|years?\s+of\s+age|y\/o|yo|سن[ةها])/i)
+    // "child 3 years", "girl aged 5 yrs", «طفل 3 سنوات», «بنت ٥ سنين»
+    || t.match(/\b(?:child|boy|girl|baby|infant|toddler|kid|patient|male|female|man|woman|aged?)\s+(?:of\s+|is\s+)?(\d{1,3})\s*(?:years?|yrs?|y)\b/i)
+    || t.match(/(?:طفل|طفلة|ولد|بنت|مريض|مريضة|رضيع|رضيعة)\s+(?:عمره|عمرها)?\s*(\d{1,3})\s*(?:سنوات|سنين|سنة|سنه)/i)
     || t.match(/(?:حوالي|تقريباً?|نحو)\s*(\d{1,3})\s*سن[ةها]?/i)
     || t.match(/سن[ةها]\s*(\d{1,3})/i);
   if (yearsOld) {
@@ -344,9 +409,13 @@ function parseAllergies(text: string): { value: string; span: string; confidence
   return null;
 }
 
+const ONSET_UNIT = 'hours?|hrs?|minutes?|mins?|days?|weeks?|months?|morning|evening|night|yesterday|ago'
+  + '|صباح|الصبح|مساء|الليل|أمس|امس|البارحة|ساعة|ساعتين|ساعات|دقيقة|دقيقتين|دقائق|يوم|يومين|أيام|ايام|أسبوع|اسبوع|أسبوعين|اسبوعين|أسابيع|شهر|شهرين|أشهر|شهور';
+
 function parseOnset(text: string): { value: string; span: string; confidence: number } | null {
-  const m = text.match(/(?:for|since|منذ|من)\s+([\w\u0600-\u06FF\s\d]+?(?:hours?|hour|minutes?|minute|days?|day|morning|evening|صباح|مساء|ساعة|ساعات|دقيقة|أيام))/i)
-    || text.match(/(\d+\s*(?:hours?|minutes?|days?|ساعة|ساعات|دقيقة|أيام))/i);
+  const unit = `(?:${ONSET_UNIT})`;
+  const m = text.match(new RegExp(`(?:for|since|started|began|منذ|من|بدأت?\\s+(?:من|منذ)?|بدات\\s+(?:من)?)\\s*((?:[\\w\\u0600-\\u06FF\\d]+\\s+){0,3}?${unit}(?:\\s+ago)?)(?![\\w\\u0600-\\u06FF])`, 'i'))
+    || text.match(new RegExp(`(\\d+\\s*${unit}(?:\\s+ago)?)`, 'i'));
   if (m) return { value: m[1].trim(), span: m[0], confidence: 0.85 };
   return null;
 }
@@ -392,7 +461,7 @@ function parseChiefComplaint(rawText: string): { value: string; span: string; co
   const text = positiveClauses(rawText);
   if (!text) return null;
   const patterns = [
-    /(?:chief complaint|complaint|complain(?:s|ing)?(?:\s+(?:about|of|from))?|presenting with|presents with|c\/o|came with|شكوى|الشكوى(?: الرئيسية)?|كومبلين|يشكو(?: من)?|يشتكي(?: من)?|يعاني من)\s*(?:is|of|:)?\s*([^.،;\n]+)/i,
+    /(?:chief complaint|complaint|complain(?:s|ing)?(?:\s+(?:about|of|from))?|presenting with|presents with|c\/o|came with|شكوى|الشكوى(?: الرئيسية)?|كومبلين|(?:يشكو|يشتكي|اشتكي|أشتكي|تشتكي|تشكو|يشكي)(?:\s+(?:أيضا|أيضاً|ايضا|كمان))?(?: من)?|يعاني من)\s*(?:is|of|:)?\s*([^.،;\n]+)/i,
     /(?:,\s*|\s)(chest pain|abdominal pain|headache|dyspnea|shortness of breath|fever|syncope|bleeding|back pain|nausea|vomiting|diarrhea|cough)(?:\s|,|$)/i,
     /(?:,\s*|\s)(ألم صدر|ألم بطن|صداع|ضيق تنفس|حمى|غثيان|قيء|إسهال|سعال)(?:\s|,|$)/i,
     /\b(chest pain|abdominal pain|headache|dyspnea|shortness of breath|fever|syncope|bleeding)\b/i,
@@ -403,6 +472,9 @@ function parseChiefComplaint(rawText: string): { value: string; span: string; co
     if (m) {
       let value = (m[1] || m[0]).trim();
       value = value.split(/\bfor\b|\bsince\b|\bمنذ\b|\bمن\b/i)[0].trim();
+      // A complaint said without a pause runs into the vitals («جرح القدم مع نزيف درجة
+      // الألم خمسة»): stop at the first vital-sign or history label.
+      value = value.split(/\s(?:درجة\s+(?:الألم|الالم|الحرارة)|(?:الألم|الالم)\s+\d|النبض|نبض|الضغط|ضغط\s+الدم|الأكسجين|الاكسجين|التنفس|الحرارة|حرارة\s+\S*\d|الوعي|مستوى\s+الوعي|الوزن|وزنه|وزنها|pain\s+(?:score|is\s+\d|\d)|heart\s+rate|\bhr\b|\bbp\b|blood\s+pressure|spo2|oxygen|resp(?:iratory)?\s+rate|\brr\b|temp(?:erature)?\b|gcs\b|weight\b)/i)[0].trim() || value;
       return { value, span: m[0], confidence: 0.86 };
     }
   }
@@ -428,14 +500,28 @@ function parseName(text: string): { value: string; span: string; confidence: num
   return null;
 }
 
+/** List items after "takes/on …" that are clearly not medicines. */
+const NOT_A_MEDICINE = /^(?:no|not|non|denies|never|nil|none|لا|ليس|ما|بدون)\b|^(?:لا|ما|ليس)\s|allerg|حساسي|history|known|تاريخ|معروف|علاج|مزمن|chronic|regular|examination|arrival|admission|since|for\s+\d|\d+\s*(?:days?|weeks?|months?|years?)|يوم|أسبوع|شهر|سنة|سنوات/i;
+
 function parseMedications(text: string): { value: string[]; span: string; confidence: number } | null {
   const meds: string[] = [];
-  const rxList = text.match(/(?:takes|on|medications?|meds|يتناول|أدوية)\s*([^.،;\n]+)/gi) || [];
-  for (const chunk of rxList) {
-    const inner = chunk.replace(/^(?:takes|on|medications?|meds|يتناول|أدوية)\s*/i, '');
-    inner.split(/,|،|and|و/).map((s) => s.trim()).filter(Boolean).forEach((m) => meds.push(m));
+  const spans: string[] = [];
+  // Every "takes / on / يتناول …" starts a list that runs to the end of the sentence.
+  const lead = /(?:^|[\s,،])(?:takes|taking|on|medications?|meds|يتناول|تتناول|يستخدم|تستخدم|يستعمل|تستعمل|يأخذ|تأخذ|ياخذ|تاخذ|أدوية)\s+/gi;
+  for (const m of text.matchAll(lead)) {
+    const rest = text.slice((m.index ?? 0) + m[0].length).split(/[.;\n]/)[0];
+    const items = rest.split(/,|،|\band\b|\s+و\s+|\s+و(?=\S)/i).map((s) => s.trim()).filter(Boolean);
+    const kept: string[] = [];
+    for (const item of items) {
+      const clean = item.replace(/^(?:takes|taking|on|يتناول|تتناول|يستخدم|تستخدم)\s+/i, '').trim();
+      // Stop at the first part that is not a medicine ("…, not asthmatic, no allergies").
+      if (!clean || NOT_A_MEDICINE.test(clean) || clean.split(/\s+/).length > 4) break;
+      kept.push(clean);
+    }
+    if (kept.length) { meds.push(...kept); spans.push(`${m[0].trim()} ${kept.join(', ')}`); }
   }
-  if (meds.length) return { value: meds, span: rxList.join('; '), confidence: 0.8 };
+  const unique = [...new Set(meds)];
+  if (unique.length) return { value: unique, span: spans.join('; '), confidence: 0.8 };
   return null;
 }
 
@@ -612,6 +698,69 @@ function parseVitals(text: string): { value: VitalSignEntry[]; span: string; con
   return { value: vitals, span: spans.join('; '), confidence: 0.88 };
 }
 
+/**
+ * Vitals said with two or more different values ("oxygen 94, 97"; "HR 110 … pulse 128").
+ * The form keeps the last value, but the nurse is asked to confirm which is right.
+ * Each entry lists the distinct values in the order they were said.
+ */
+export interface VitalConflict {
+  field: 'hr' | 'spo2' | 'rr' | 'temperature' | 'gcs' | 'bp' | 'pain_score';
+  values: string[];
+  evidence: string;
+}
+
+export function findVitalConflicts(text: string): VitalConflict[] {
+  const t = normalizeDigits(relaxSttPunctuation(String(text || '')));
+  const specs: Array<{ field: VitalConflict['field']; label: string; num: string; ok: (n: number) => boolean }> = [
+    { field: 'hr', label: HR_LABEL, num: '\\d{2,3}', ok: (n) => n >= 20 && n <= 300 },
+    { field: 'spo2', label: SPO2_LABEL, num: '\\d{2,3}', ok: (n) => n >= SPO2_MIN && n <= SPO2_MAX },
+    { field: 'rr', label: RR_LABEL, num: '\\d{1,3}', ok: (n) => n >= 4 && n <= 120 },
+    { field: 'temperature', label: TEMP_LABEL, num: '\\d{2}(?:\\.\\d)?', ok: (n) => n >= 30 && n <= 45 },
+    { field: 'gcs', label: GCS_LABEL, num: '\\d{1,2}', ok: (n) => n >= 3 && n <= 15 },
+  ];
+  const out: VitalConflict[] = [];
+  for (const s of specs) {
+    const values: string[] = [];
+    const spans: string[] = [];
+    // A label, its number, and an immediately repeated number ("oxygen 94 97", "94 or 97").
+    const re = new RegExp(`(?:${s.label})[^\\d]{0,12}(${s.num})(?:\\s*(?:,|،|or|أو|او|ثم|then|و)?\\s*(${s.num})(?![\\d/]))?`, 'gi');
+    for (const m of t.matchAll(re)) {
+      if (bindsAcrossAnotherLabel(m, s.label)) continue;
+      for (const raw of [m[1], m[2]]) {
+        if (raw == null) continue;
+        const n = Number(raw);
+        if (!s.ok(n)) continue;
+        if (!values.includes(String(n))) values.push(String(n));
+      }
+      spans.push(m[0].trim());
+    }
+    if (values.length > 1) out.push({ field: s.field, values, evidence: spans.join(' … ').slice(0, 160) });
+  }
+  // Blood pressure as pairs.
+  const bpRe = new RegExp(`(?:${BP_LABEL})[^\\d]{0,12}(\\d{2,3})\\s*(?:[\\/\\\\]|over|على|on)\\s*(\\d{2,3})`, 'gi');
+  const bps: string[] = [];
+  const bpSpans: string[] = [];
+  for (const m of t.matchAll(bpRe)) {
+    const v = `${Number(m[1])}/${Number(m[2])}`;
+    if (!bps.includes(v)) bps.push(v);
+    bpSpans.push(m[0].trim());
+  }
+  if (bps.length > 1) out.push({ field: 'bp', values: bps, evidence: bpSpans.join(' … ').slice(0, 160) });
+  // Pain score: only a number tied to the scale ("pain 4 out of 10", "الألم 9 من 10",
+  // "pain score 7"), so "pain started 2 hours ago" is never read as a score.
+  const painRe = /(?:pain\s*score|pain(?:\s+(?:is|at|now|is\s+now|now\s+is))?|درجة\s*الألم|الألم|الالم|ألم)\s*(?:is|at|of|now|الحين|الآن|صار|[:=])?\s*(\d{1,2})\s*(?:out\s*of\s*(?:10|ten)|\/\s*10|من\s*10|من\s*عشرة)|pain\s*score\s*(?:is|of|[:=])?\s*(\d{1,2})\b/gi;
+  const pains: string[] = [];
+  const painSpans: string[] = [];
+  for (const m of t.matchAll(painRe)) {
+    const n = Number(m[1] ?? m[2]);
+    if (!(n >= 0 && n <= 10)) continue;
+    if (!pains.includes(String(n))) pains.push(String(n));
+    painSpans.push(m[0].trim());
+  }
+  if (pains.length > 1) out.push({ field: 'pain_score', values: pains, evidence: painSpans.join(' … ').slice(0, 160) });
+  return out;
+}
+
 function parseAcuity(text: string): { value: string; span: string; confidence: number } | null {
   const m = text.match(/\b(?:ctas|esi|acuity|triage level|مستوى(?: الفرز)?)\s*(?:level|is|[:=])?\s*([1-5])\b/i);
   if (m) return { value: `CTAS ${m[1]}`, span: m[0], confidence: 0.7 };
@@ -770,7 +919,7 @@ export function extractFieldsFromTranscript(
   transcript: string,
   existingFields: Record<SttFieldKey, SttFieldSlot> = createEmptySttFields(),
 ): Record<SttFieldKey, SttFieldSlot> {
-  const text = conservativeTranscriptCleanup(transcript);
+  const text = relaxSttPunctuation(conservativeTranscriptCleanup(transcript));
   let fields = { ...existingFields };
 
   const runExtract = (chunk: string) => {
@@ -847,7 +996,10 @@ export function buildSttSessionOutput(
   transcript: string,
   fields: Record<SttFieldKey, SttFieldSlot>,
   modelVersion = 'triagepulse-stt-extract-v1',
-  extras: Partial<Pick<import('./types').SttSessionOutput, 'extraction_method' | 'llm_used' | 'transcript_analysis'>> = {},
+  extras: Partial<Pick<import('./types').SttSessionOutput, 'extraction_method' | 'llm_used' | 'transcript_analysis'>> & {
+    /** Latest LLM case details for this session; validated against the transcript. */
+    llm_case_details?: Pick<import('./llmExtractSchema').LlmCtasExtractResult, 'complaints' | 'conditions' | 'medications'> | null;
+  } = {},
 ): SttSessionOutput {
   const cleaned = conservativeTranscriptCleanup(transcript);
   const languageProfile = detectTranscriptLanguage(cleaned);
@@ -857,6 +1009,12 @@ export function buildSttSessionOutput(
   const low_confidence_spans = Object.values(fields)
     .filter((f) => isFilled(f) && f.confidence > 0 && f.confidence < 0.75)
     .map((f) => ({ text: f.source_span, confidence: f.confidence }));
+
+  const { llm_case_details: llmCase, ...rest } = extras;
+  const listedMeds = Array.isArray(fields.current_medications?.value) ? fields.current_medications.value as string[] : [];
+  const case_details = buildCaseDetails(cleaned, { medications: listedMeds, llm: llmCase || null }) as CaseDetails;
+  // Two different readings for one vital: the nurse confirms which is right.
+  case_details.vital_conflicts = findVitalConflicts(cleaned);
 
   return {
     session_id: sessionId,
@@ -868,7 +1026,8 @@ export function buildSttSessionOutput(
     low_confidence_spans,
     model_version: modelVersion,
     timestamp: new Date().toISOString(),
-    ...extras,
+    ...rest,
+    case_details,
   };
 }
 
@@ -901,6 +1060,13 @@ export function mapSttSessionToPatientUpdates(fields: Record<SttFieldKey, SttFie
   if (fields.sex.value === 'F') set('gender', 'female', fields.sex.confidence);
   if (fields.chief_complaint.value) set('chief_complaint', fields.chief_complaint.value, fields.chief_complaint.confidence);
   if (fields.pain_score.value != null) set('pain_score', fields.pain_score.value, fields.pain_score.confidence);
+  // History fields said aloud (previously extracted but never copied to the form).
+  if (fields.onset_duration?.value) set('onset_duration', String(fields.onset_duration.value), fields.onset_duration.confidence);
+  if (Array.isArray(fields.current_medications?.value) && fields.current_medications.value.length) {
+    set('current_medications', (fields.current_medications.value as string[]).join('، '), fields.current_medications.confidence);
+  }
+  if (fields.relevant_history?.value) set('relevant_history', String(fields.relevant_history.value), fields.relevant_history.confidence);
+  if (fields.allergies?.value) set('allergies', String(fields.allergies.value), fields.allergies.confidence);
 
   const coerceNum = (raw: unknown): string | number | null => {
     if (raw == null || raw === '') return null;

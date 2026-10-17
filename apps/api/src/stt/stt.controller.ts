@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 import { SttService } from './stt.service';
+import { SpeechmaticsRealtimeService } from './speechmatics-realtime.service';
 import { RolesGuard, RequirePermission } from '../auth/roles.guard';
 import { AuditService } from '../audit/audit.service';
 import type { SttFieldKey } from '@triagepulse/clinical';
@@ -39,6 +40,7 @@ export class SttController {
   constructor(
     private sttService: SttService,
     private auditService: AuditService,
+    private speechmatics: SpeechmaticsRealtimeService,
   ) {}
 
   /** A clinician may only use STT sessions they created. Same 404 whether missing or foreign. */
@@ -50,8 +52,24 @@ export class SttController {
 
   @Get('status')
   @RequirePermission('perform_triage')
-  status() {
-    return this.sttService.getStatus();
+  async status() {
+    // Speechmatics is the live provider when its key is set and accepted; OpenAI otherwise.
+    if (this.speechmatics.isConfigured()) {
+      const sm = await this.speechmatics.checkStatus();
+      if (sm.ok) {
+        return {
+          configured: true,
+          reachable: true,
+          realtime: true,
+          provider: 'speechmatics',
+          model: this.speechmatics.resolveRealtimeModel(),
+          realtime_model: this.speechmatics.resolveRealtimeModel(),
+        };
+      }
+      const openai = await this.sttService.getStatus();
+      return { ...openai, provider: 'openai', speechmatics_error: sm.error, lastError: openai.lastError || sm.error };
+    }
+    return { ...(await this.sttService.getStatus()), provider: 'openai' };
   }
 
   @Post('session')

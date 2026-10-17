@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { BILLING_MESSAGE, clearOpenAiBillingBlocked, markOpenAiBillingBlocked, openAiBillingBlocked } from './stt-billing';
 import { randomUUID } from 'crypto';
 import {
   CLINICAL_STT_VOCABULARY,
@@ -19,6 +20,7 @@ import {
   type SttFieldSlot,
   type SttSessionOutput,
   type CtasFieldKey,
+  type LlmCtasExtractResult,
 } from '@triagepulse/clinical';
 
 interface SessionState {
@@ -30,7 +32,13 @@ interface SessionState {
   modelVersion: string;
   lastCtasCaptured: number;
   stagnantExtractCount: number;
+  /** Latest LLM case details (complaints, illnesses, medicines); checked against the transcript on use. */
+  llmCaseDetails: LlmCaseDetails | null;
+  /** Transcript length when case details were last read by the LLM. */
+  caseDetailsAt: number;
 }
+
+type LlmCaseDetails = Pick<LlmCtasExtractResult, 'complaints' | 'conditions' | 'medications'>;
 
 function ctasFieldsFromPatientUpdates(updates: Record<string, unknown>) {
   return computeCtasCompleteness(updates);
@@ -67,6 +75,8 @@ export class SttService {
       modelVersion: this.resolveModelVersion(),
       lastCtasCaptured: 0,
       stagnantExtractCount: 0,
+      llmCaseDetails: null,
+      caseDetailsAt: 0,
     });
     return { sessionId: id };
   }
@@ -107,6 +117,7 @@ export class SttService {
       extraction_method: 'rules',
       llm_used: false,
       transcript_analysis,
+      llm_case_details: session.llmCaseDetails,
     });
   }
 
@@ -132,8 +143,14 @@ export class SttService {
     }
     session.lastCtasCaptured = ctas.captured;
 
+    // Case details (all complaints, chronic illnesses, medicines) are read once per
+    // finished recording or typed text, when the transcript has grown since last time.
+    const caseDetailsDue = isFinal
+      && session.transcript.length > 40
+      && session.transcript.length !== session.caseDetailsAt;
     const shouldLlm = forceLlm
       || (isFinal && !ctas.isComplete)
+      || caseDetailsDue
       || hasLowCtasConfidence(session.fields)
       || session.stagnantExtractCount >= 2;
 
@@ -142,6 +159,12 @@ export class SttService {
       const llmResult = await this.callLlmExtract(session.transcript, ctas.missing as CtasFieldKey[]);
       if (llmResult) {
         session.fields = mergeLlmExtractIntoFields(session.fields, llmResult, session.transcript);
+        session.llmCaseDetails = {
+          complaints: llmResult.complaints,
+          conditions: llmResult.conditions,
+          medications: llmResult.medications,
+        };
+        session.caseDetailsAt = session.transcript.length;
         llmUsed = true;
         session.stagnantExtractCount = 0;
       }
@@ -154,6 +177,7 @@ export class SttService {
       extraction_method: llmUsed ? 'hybrid' : 'rules',
       llm_used: llmUsed,
       transcript_analysis,
+      llm_case_details: session.llmCaseDetails,
     });
   }
 
@@ -246,6 +270,7 @@ export class SttService {
     const transcript_analysis = analyzeTranscriptCompleteness(session.transcript, patientUpdates);
     return buildSttSessionOutput(session.id, session.transcript, session.fields, session.modelVersion, {
       transcript_analysis,
+      llm_case_details: session.llmCaseDetails,
     });
   }
 
@@ -256,6 +281,7 @@ export class SttService {
     realtime: boolean;
     realtime_model: string;
     lastError?: string;
+    billing?: boolean;
   }> {
     const apiKey = process.env.OPENAI_API_KEY?.trim();
     const model = process.env.OPENAI_STT_MODEL || 'gpt-transcribe';
@@ -268,6 +294,19 @@ export class SttService {
         realtime: false,
         realtime_model,
         lastError: 'OPENAI_API_KEY not set',
+      };
+    }
+
+    // No credits: listing models still works, so the probe below would say "ready".
+    if (openAiBillingBlocked()) {
+      return {
+        configured: true,
+        model,
+        reachable: false,
+        realtime: false,
+        realtime_model,
+        lastError: BILLING_MESSAGE,
+        billing: true,
       };
     }
 
@@ -392,6 +431,7 @@ export class SttService {
         const data = (await res.json()) as { text?: string };
         const text = conservativeTranscriptCleanup(data.text || '');
         this.lastOpenAiError = null;
+        clearOpenAiBillingBlocked();
         return {
           text,
           confidence: text ? 0.88 : 0,
@@ -403,6 +443,7 @@ export class SttService {
       const err = await res.text();
       if (res.status === 429 || /no credits|insufficient.?quota|billing|payment.?required/i.test(err)) {
         lastError = 'OpenAI account has no credits remaining — add billing credits or use browser speech.';
+        markOpenAiBillingBlocked();
         this.lastOpenAiError = lastError;
         this.logger.warn(lastError);
         break;

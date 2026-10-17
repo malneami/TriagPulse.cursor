@@ -1,3 +1,4 @@
+import { clearAllDrafts } from '@/lib/triageDraft';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api, setToken, getToken } from '@/api/client';
@@ -56,6 +57,9 @@ export const AuthProvider = ({ children }) => {
 
   const logout = useCallback((reason) => {
     if (reason) rememberLogoutReason(reason);
+    // A manual sign-out removes triage drafts from this tab; the idle lock keeps them so
+    // the same nurse can sign back in and continue (review H6).
+    if (reason !== 'idle') clearAllDrafts();
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);

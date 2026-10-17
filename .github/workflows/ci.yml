@@ -29,8 +29,12 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      - name: No high or critical vulnerabilities in production libraries
+        run: npm audit --omit=dev --audit-level=high
       - name: Clinical engine tests (CTAS + speech extraction)
         run: npm run build --workspace=@triagepulse/clinical && npm test
+      - name: Clinical scenarios (live triage display rules, under-triage checks)
+        run: npm run validate:scenarios
       - name: Build web app
         run: npm run build --workspace=@triagepulse/web
       - name: Production bundle has no demo credentials

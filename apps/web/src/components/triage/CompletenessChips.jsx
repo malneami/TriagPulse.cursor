@@ -3,10 +3,11 @@ import { CTAS_REQUIRED_FIELDS } from '@/lib/stt/ctasFieldMap';
 
 export const REQUIRED_FIELDS = CTAS_REQUIRED_FIELDS;
 
+// Completeness is shown in ink and graphite only: CTAS colours mean acuity,
+// so a green or yellow progress bar here could be misread as a triage level.
 export function completenessColor(count) {
-  if (count <= 4) return '#EF4444';
-  if (count <= 9) return '#EF9F27';
-  return '#0F6E56';
+  if (count >= 10) return '#14202B';
+  return '#4B5765';
 }
 
 /**
@@ -31,19 +32,19 @@ export default function CompletenessChips({
     <div>
       {showHeader && (
         <div className="flex items-center justify-between mb-2 gap-2">
-          <p className={`font-black text-slate-600 ${compact ? 'text-xs' : 'text-xs'}`}>
+          <p className={`font-black text-graphite ${compact ? 'text-xs' : 'text-xs'}`}>
             {compact ? 'اكتمال / Completeness' : 'اكتمال البيانات — Data Completeness'}
           </p>
           <p
             className="text-xs font-black shrink-0"
-            style={{ color: captured === total ? '#0F6E56' : '#EF4444' }}
+            style={{ color: captured === total ? '#14202B' : '#4B5765' }}
           >
-            {compact ? `${captured}/${total}` : `${captured} / ١٠ مكتمل — ${captured} / ${total} Complete`}
+            <span dir="ltr" className="tabular-nums">{captured}/{total}</span>{compact ? '' : ' مكتمل · complete'}
           </p>
         </div>
       )}
 
-      <div className={`bg-slate-100 rounded-full overflow-hidden ${compact ? 'h-1.5 mb-2' : 'h-2.5 mb-3'}`}>
+      <div className={`bg-paper rounded-full overflow-hidden ${compact ? 'h-1.5 mb-2' : 'h-2.5 mb-3'}`}>
         <div
           className={`h-full rounded-full transition-all duration-500 ${pulse ? 'animate-pulse' : ''}`}
           style={{ width: `${(captured / total) * 100}%`, backgroundColor: color }}
@@ -64,8 +65,8 @@ export default function CompletenessChips({
                 compact ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2 py-1 font-medium'
               } ${
                 done
-                  ? 'bg-teal-50 text-teal-700 border-teal-200'
-                  : `bg-red-50 text-red-600 border-red-200 ${onFieldClick ? 'hover:bg-red-100' : ''}`
+                  ? 'bg-white text-ink border-mist'
+                  : `bg-white text-ink border-ink border-dashed ${onFieldClick ? 'hover:bg-paper' : ''}`
               }`}
             >
               {done

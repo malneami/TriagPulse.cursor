@@ -11,7 +11,7 @@ export default function VitalsBadge({ interp }) {
   }[modifier];
 
   const bg = badge === '🟢' ? 'bg-green-50 border-green-200 text-green-700'
-           : badge === '🟡' ? 'bg-amber-50 border-amber-200 text-amber-700'
+           : badge === '🟡' ? 'bg-paper border-mist text-graphite'
            : 'bg-red-50 border-red-200 text-red-700';
 
   return (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, LOGOUT_REASON_KEY } from '@/lib/AuthContext';
 import { toast } from 'sonner';
+import Wordmark from '@/components/Wordmark';
 
 const API_BASE = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
@@ -85,11 +86,11 @@ export default function Login() {
   const canSubmit = !loading && email.trim() && password && apiOnline !== false;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50" dir="rtl">
-      <form onSubmit={handleSubmit} noValidate className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md space-y-4">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-black text-slate-900">TriagePulse</h1>
-          <p className="text-slate-500 text-sm mt-1">نظام فرز الطوارئ / Emergency Triage</p>
+    <div className="min-h-screen flex items-center justify-center bg-paper px-4 py-10" dir="rtl">
+      <form onSubmit={handleSubmit} noValidate className="bg-white border border-mist p-8 rounded-[18px] w-full max-w-md space-y-5">
+        <div className="text-center mb-2 space-y-2">
+          <h1 className="m-0"><Wordmark size="lg" /></h1>
+          <p className="text-graphite text-base">نظام فرز الطوارئ بمعيار CTAS <span className="block text-sm">Emergency triage</span></p>
         </div>
 
         {apiOnline === false && (
@@ -119,35 +120,43 @@ export default function Login() {
         )}
 
         <div>
-          <label className="block text-sm font-bold mb-1">Email</label>
+          <label htmlFor="login-email" className="block text-sm font-medium mb-1.5">البريد الإلكتروني / Email</label>
           <input
+            id="login-email"
             type="text"
             inputMode="email"
+            dir="ltr"
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full border rounded-xl px-3 py-2"
+            className="w-full h-[52px] border border-mist rounded-xl px-4 text-[17px] bg-white"
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-bold mb-1">Password</label>
+          <label htmlFor="login-password" className="block text-sm font-medium mb-1.5">كلمة المرور / Password</label>
           <input
+            id="login-password"
             type="password"
+            dir="ltr"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full border rounded-xl px-3 py-2"
+            className="w-full h-[52px] border border-mist rounded-xl px-4 text-[17px] bg-white"
             required
           />
         </div>
         <button
           type="submit"
           disabled={!canSubmit}
-          className="w-full bg-teal-600 text-white py-3 rounded-xl font-black hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full h-14 bg-ink text-white rounded-xl text-[17px] font-semibold hover:bg-ink-deep disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {loading ? '...' : 'تسجيل الدخول / Login'}
+          {loading ? 'جارٍ الدخول… / Signing in…' : 'تسجيل الدخول / Sign in'}
         </button>
+        <p className="text-center text-sm text-graphite">
+          يُغلق التطبيق تلقائياً بعد ١٥ دقيقة من عدم النشاط
+          <span className="block text-xs">Signs out after 15 minutes without activity</span>
+        </p>
         {SHOW_DEMO && (
         <div className="pt-1 space-y-2">
           <p className="text-xs text-slate-500 text-center font-bold">Local demo accounts (development only)</p>

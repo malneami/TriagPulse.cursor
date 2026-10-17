@@ -15,6 +15,7 @@ import { getRuntimeModifiers } from '../libraries/runtime.js';
  *   name_ar: string,
  *   pathways: string[],
  *   age_applicability: AgeApplicability,
+ *   min_age_years?: number,          // ask only when age is known and above this
  *   field: string,
  *   detect_patterns: RegExp[],
  *   related_medications?: RegExp[],
@@ -244,7 +245,9 @@ export const CTAS_MODIFIER_LIBRARY = [
     ],
     age_applicability: 'both',
     field: 'stridor',
-    detect_patterns: [/stridor|noisy\s+breathing|airway\s+(?:threat|compromise)/i, /صرير|تنفس\s*مزعج|انسداد\s*مجرى/i],
+    detect_patterns: [/stridor|noisy\s+breathing|airway\s+(?:threat|compromise)/i, /صرير|سترايدر|استرايدر|سترايدور|ستريدور|تنفس\s*مزعج|انسداد\s*مجرى/i],
+    // Counts with any complaint when mentioned (approved 2026-10-16).
+    cross_pathway_when: [/stridor|airway\s+(?:threat|compromise)/i, /صرير|سترايدر|استرايدر|سترايدور|ستريدور|انسداد\s*مجرى/i],
     question_ar: 'هل يوجد صرير (صوت تنفس عالي النبرة)؟',
     question_en: 'Is there stridor (high-pitched breathing noise)?',
     answer_type: 'yes_no',
@@ -325,6 +328,45 @@ export const CTAS_MODIFIER_LIBRARY = [
     protocol_source: 'CTAS 2025 Abdominal',
     version: '1.0.0',
     review_date: '2026-08-05',
+  },
+  {
+    // Approved 2026-10-16 (T6): epigastric pain in an adult over 40 may be cardiac.
+    id: 'mod_epigastric_cardiac',
+    name: 'Epigastric pain with cardiac features (adult > 40)',
+    name_ar: 'ألم شرسوفي مع علامات قلبية (بالغ فوق 40)',
+    pathways: ['abdominal_pain', 'abdominal_pain_unspecified'],
+    age_applicability: 'adult',
+    min_age_years: 40,
+    field: 'epigastric_cardiac_features',
+    detect_positive_only: true,
+    detect_patterns: [
+      /(?:sweat\w*|diaphore\w*|clammy)[^.]{0,60}(?:pain|epigastr)|(?:pain|epigastr\w*)[^.]{0,60}(?:sweat\w*|diaphore\w*|clammy)|radiat\w*\s+(?:to\s+)?(?:the\s+)?(?:left\s+)?(?:arm|jaw|neck|shoulder|chest)|(?:pressure|tightness|heaviness)\s+(?:in|on)\s+(?:the\s+)?(?:chest|upper\s+abdomen|epigastri\w*)|(?:pain|epigastr\w*)[^.]{0,40}(?:on|with)\s+exertion/i,
+      /(?:تعرق|عرق|يعرق|متعرق)[^.]{0,60}(?:ألم|الم|وجع)|(?:ألم|الم|وجع)[^.]{0,60}(?:تعرق|عرق|يعرق|متعرق)|(?:ينتشر|يمتد|منتشر|ممتد)\s+(?:إلى|الى|ل)\s*(?:ال)?(?:يد|ذراع|كتف|فك|رقبة|صدر)|(?:ثقل|ضغط|ضيقة)\s+(?:في|على)\s+(?:ال)?(?:صدر|معدة)|(?:مع|عند)\s+(?:ال)?(?:مجهود|جهد|المشي)/i,
+    ],
+    ask_when_patterns: [
+      /epigastr\w*|gastric|upper\s+abdom\w*|upper\s+(?:stomach|belly)|stomach|heartburn|indigestion|dyspeps\w*/i,
+      /المعدة|معدة|معدته|معدتها|شرسوف\w*|أعلى\s*البطن|اعلى\s*البطن|فوق\s*السرة|حرقة|حموضة|عسر\s*هضم/i,
+    ],
+    short_ar: 'ألم شرسوفي مع علامات قلبية',
+    short_en: 'Epigastric pain, cardiac features',
+    question_ar: 'هل توجد علامات قلبية مع ألم أعلى البطن: تعرق، ضيق نفس، ألم يمتد للذراع أو الفك أو الظهر، ألم مع المجهود، أو تاريخ أمراض قلب أو سكري؟',
+    question_en: 'Any cardiac features with the upper abdominal pain: sweating, breathlessness, pain spreading to the arm, jaw or back, pain on exertion, or known heart disease or diabetes?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 2 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 2,
+    critical_alert: true,
+    question_category: 'safety_escalation',
+    clinical_explanation_ar: 'ألم شرسوفي فوق 40 سنة مع علامات قلبية → مسار ألم الصدر القلبي → CTAS 2 وتخطيط قلب خلال 10 دقائق',
+    clinical_explanation_en: 'Epigastric pain over 40 with cardiac features → cardiac chest-pain pathway → CTAS 2, ECG within 10 minutes',
+    priority: 13,
+    active: true,
+    protocol_source: 'CTAS 2025 Chest pain — cardiac features (atypical presentation); approved by Dr. Alnami 2026-10-16',
+    version: '1.0.0',
+    review_date: '2026-10-16',
   },
   {
     id: 'mod_abd_recent_surgery',
@@ -415,20 +457,21 @@ export const CTAS_MODIFIER_LIBRARY = [
     question_en: 'Does the child need a minor procedure (sutures, splint, foreign-body removal)?',
     answer_type: 'yes_no',
     options: [
-      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', destination_hint: 'PEDS_FAST_TRACK' },
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', destination_hint: 'PEDIATRIC_OBSERVATION' },
       { value: 'لا', label_ar: 'لا', label_en: 'No' },
       { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
     ],
     ctas_effect_yes: null,
-    destination_effect: 'PEDS_FAST_TRACK',
+    destination_effect: 'PEDIATRIC_OBSERVATION',
     critical_alert: false,
     team_leader_review: false,
     question_category: 'patient_direction',
     potential_ctas_effect: null,
-    potential_destination_effect: 'PEDS_FAST_TRACK',
+    potential_destination_effect: 'PEDIATRIC_OBSERVATION',
     safety_alert_effect: false,
-    clinical_explanation_ar: 'CTAS 4 مع إجراء بسيط → المسار السريع للأطفال — دون تغيير مستوى CTAS',
-    clinical_explanation_en: 'CTAS 4 with a minor procedure → pediatric Fast Track — does not change CTAS',
+    // All procedures are done in Observation (approved 2026-10-16).
+    clinical_explanation_ar: 'يحتاج إجراء (خياطة، تجبير، إزالة جسم غريب…) → ملاحظة الأطفال — دون تغيير مستوى CTAS',
+    clinical_explanation_en: 'Needs a procedure (suturing, splint, foreign-body removal…) → Paediatric Observation — does not change CTAS',
     priority: 18,
     active: true,
     protocol_source: 'ED pediatric journey chart',
@@ -570,9 +613,19 @@ export const CTAS_MODIFIER_LIBRARY = [
     ],
     age_applicability: 'both',
     field: 'uncontrolled_bleeding',
+    // "Uncontrolled" said either way round, in English or Arabic (same wording the
+    // red-flag alert listens for, so the alert and CTAS agree).
     detect_patterns: [
-      /uncontrolled\s+bleed|heavy\s+bleed|soaking|hemorrhage|active\s+bleed/i,
-      /نزيف\s*(?:غير\s*)?مسيطر|نزيف\s*غزير|ينزف\s*الآن/i,
+      /uncontrolled\s+bleed\w*|(?:heavy|massive|profuse|major|severe)\s+bleed\w*|soaking|ha?emorrhag\w*|active(?:ly)?\s+bleed\w*/i,
+      /bleed\w*\s+(?:is\s+|was\s+)?(?:\w+\s+(?:and\s+)?)?(?:uncontrolled|not\s+stopping|won'?t\s+stop|does\s*n[o']t\s+stop|not\s+controlled|profuse|massive|heavy)/i,
+      /(?:can'?t|cannot|unable\s+to|could\s*n[o']t)\s+(?:stop|control)\s+(?:the\s+)?bleed\w*/i,
+      /نزيف\s*(?:غير\s*)?مسيطر|نزيف\s*(?:غزير|شديد|قوي|كثير)|ينزف\s*(?:الآن|بغزارة|بشدة)/i,
+      /(?:ال)?نزيف\s+(?:لا|ما|مو)\s*(?:يتوقف|يوقف|وقف|توقف|يقف)|نزيف[^.!?؟]{0,40}?(?:لا|ما)\s*(?:يمكن|نقدر|قدرنا|قدرت)\s*(?:ال)?(?:تحكم|سيطرة|نوقف|نوقفه|أوقف)/i,
+    ],
+    // Any complaint: bleeding mentioned asks whether it is controlled.
+    cross_pathway_when: [
+      /bleed\w*|ha?emorrhag\w*|soaking/i,
+      /نزيف|ينزف|تنزف|دم\s*(?:ما|لا)\s*(?:يوقف|وقف)/i,
     ],
     question_ar: 'هل النزيف غير مسيطر عليه حالياً؟',
     question_en: 'Is bleeding currently uncontrolled?',
@@ -595,6 +648,228 @@ export const CTAS_MODIFIER_LIBRARY = [
     review_date: '2026-08-05',
   },
 
+  // ── Wound check: features that make a wound CTAS 3 (approved 2026-10-16) ─
+  {
+    id: 'mod_wound_high_risk',
+    name: 'Wound: neurovascular / deep / bleeding-risk features',
+    name_ar: 'الجرح: علامات عصبية وعائية / عمق / خطر نزيف',
+    pathways: ['laceration', 'puncture', 'abrasion', 'active_bleeding', 'upper_extremity_injury', 'lower_extremity_injury'],
+    age_applicability: 'both',
+    field: 'wound_high_risk',
+    // Only a stated feature answers it; "no numbness" alone does not rule out the others.
+    detect_positive_only: true,
+    detect_patterns: [
+      /numb\w*|tingling|pins\s+and\s+needles|(?:cold|pale|white|blue)\s+(?:foot|feet|hand|hands|finger\w*|toe\w*|limb)|(?:can'?t|cannot|unable\s+to)\s+(?:move|bend|feel)\s+(?:the\s+|his\s+|her\s+)?(?:finger\w*|toe\w*|thumb|foot|hand)|tendon|(?:bone|joint)\s+(?:is\s+)?(?:visible|exposed|showing)|open\s+fracture|gaping|deep\s+(?:wound|cut|lacer\w*)|ha?emophilia|bleeding\s+disorder|(?:on|takes?)\s+(?:warfarin|blood\s*thinn\w*|anticoagul\w*|apixaban|rivaroxaban)/i,
+      /خدر|تنميل|(?:برود|شحوب|ازرقاق)\S*\s+(?:في\s+)?(?:القدم|اليد|الأصابع|الاصابع|الطرف)|(?:لا|ما)\s*(?:يقدر|يستطيع|تقدر|تستطيع)\s*(?:ي|ت)?(?:حرك|يحرك|تحرك|ثني|يثني)\S*\s*(?:أصابع|اصابع|القدم|اليد)|وتر|العظم\s*(?:ظاهر|بارز|مكشوف)|كسر\s*مفتوح|جرح\s*(?:عميق|كبير|مفتوح\s*واسع)|هيموفيليا|سيولة\s*(?:في\s*)?(?:ال)?دم|اضطراب\s*(?:في\s*)?(?:ال)?تخثر|مميع|وارفارين/i,
+    ],
+    // Any complaint: a wound mentioned asks this check.
+    cross_pathway_when: [
+      /wound|lacerat\w*|\bcut\b|puncture|gash/i,
+      /جرح|جروح|تمزق|ثقب|شق\s*(?:في|ب)/i,
+    ],
+    short_ar: 'فحص الجرح',
+    short_en: 'Wound check',
+    question_ar: 'فحص الجرح — هل يوجد أيٌّ مما يلي: خدر أو برودة/شحوب بعد الجرح، عدم القدرة على تحريك الأصابع، جرح عميق (وتر/عظم/مفصل ظاهر) أو كبير مفتوح، اضطراب تخثر أو مميّع دم؟',
+    question_en: 'Wound check — any of: numbness, cold or pale beyond the wound; cannot move fingers/toes; deep wound (tendon, bone or joint visible) or large gaping wound; bleeding disorder or blood thinner?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 3 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 3,
+    question_category: 'safety_escalation',
+    clinical_explanation_ar: 'جرح مع خلل عصبي وعائي أو عمق (وتر/عظم/مفصل) أو اضطراب تخثر → CTAS 3',
+    clinical_explanation_en: 'Wound with neurovascular compromise, deep structures (tendon/bone/joint) or a bleeding disorder → CTAS 3',
+    priority: 8,
+    active: true,
+    protocol_source: 'CTAS 2025 Laceration/Puncture + bleeding-disorder modifier',
+    version: '1.0.0',
+    review_date: '2026-10-16',
+  },
+
+  // ── Allergic reaction (approved 2026-10-16) ───────────────────────────────
+  {
+    id: 'mod_allergy_systemic',
+    name: 'Allergic reaction: systemic signs (possible anaphylaxis)',
+    name_ar: 'تفاعل تحسسي: علامات جهازية (اشتباه تأق)',
+    pathways: ['allergic_reaction', 'rash'],
+    age_applicability: 'both',
+    field: 'allergy_systemic',
+    detect_positive_only: true,
+    detect_patterns: [
+      /(?:lip|lips|tongue|face|facial|eye\w*|throat)\s+(?:is\s+|are\s+)?(?:swell\w*|swollen|oedema|edema)|(?:swell\w*|swollen)\s+(?:of\s+)?(?:the\s+)?(?:lip\w*|tongue|face|throat)|angio-?o?edema|wheez\w*|hoarse\w*|difficult(?:y)?\s+(?:in\s+)?breathing|short(?:ness)?\s+of\s+breath|throat\s+tight\w*|vomit\w*|fain\w*|dizz\w*|collaps\w*|anaphyla\w*\s+(?:now|currently)/i,
+      /تورم\S*\s+(?:في\s+)?(?:ال)?(?:شف\S*|لسان|وجه|عين\S*|حلق)|(?:شف\S*|لسان|وجه)\S*\s+(?:متورم\S*|منتفخ\S*)|أزيز|ازيز|صفير|بحة|ضيق\s*(?:في\s*)?(?:ال)?(?:تنفس|نفس)|صعوبة\s*(?:في\s*)?(?:ال)?تنفس|استفراغ|يستفرغ|قيء|ترجيع|دوخة|دايخ|إغماء|اغماء|أغمي|اغمي/i,
+    ],
+    cross_pathway_when: [
+      // A reaction happening now — not "allergic to penicillin" in the history.
+      /allergic\s+reaction|hives|urticaria|anaphyla\w*|(?:rash|hives|swelling|itch\w*)[^.]{0,40}after\s+(?:an?\s+|the\s+)?(?:injection|vaccine|eating|medicine|medication|antibiotic|sting|bite|nuts?|peanuts?|food)/i,
+      /تفاعل\s+تحسسي|شرى|ارتكاريا|تأق|صدمة\s+تحسسية|(?:طفح|حبوب|حكة|تورم)[^.]{0,40}بعد\s+(?:ما\s+)?(?:أكل|اكل|الإبرة|الابرة|إبرة|ابرة|حقنة|الحقنة|التطعيم|الدواء|دواء|المضاد|لدغة|قرصة|المكسرات)/i,
+    ],
+    short_ar: 'علامات تحسس جهازية',
+    short_en: 'Systemic allergy signs',
+    question_ar: 'هل يوجد أيٌّ مما يلي: تورم الشفايف أو اللسان أو الوجه، صعوبة تنفس أو صفير، بحة في الصوت، استفراغ أو ألم بطن، دوخة أو إغماء؟',
+    question_en: 'Any of: lip, tongue or face swelling; difficulty breathing or wheeze; hoarse voice; vomiting or abdominal pain; dizziness or fainting?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 2, destination_hint: 'RESUSCITATION' },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 2,
+    destination_effect: 'RESUSCITATION',
+    question_category: 'safety_escalation',
+    critical_alert: true,
+    team_leader_review: true,
+    clinical_explanation_ar: 'تفاعل تحسسي مع علامات جهازية (اشتباه تأق) → CTAS 2',
+    clinical_explanation_en: 'Allergic reaction with systemic signs (possible anaphylaxis) → CTAS 2',
+    priority: 3,
+    active: true,
+    protocol_source: 'CTAS 2025 Allergic reaction',
+    version: '1.0.0',
+    review_date: '2026-10-16',
+  },
+  {
+    id: 'mod_allergy_severe_history',
+    name: 'Previous severe allergic reaction',
+    name_ar: 'تفاعل تحسسي شديد سابق',
+    pathways: ['allergic_reaction', 'rash'],
+    age_applicability: 'both',
+    field: 'allergy_severe_history',
+    // Only ICU admission, anaphylaxis or adrenaline count (2026-10-16), not a ward admission.
+    detect_positive_only: true,
+    detect_patterns: [
+      /anaphyla\w*|epi-?pen|adrenalin\w*|epinephrin\w*|\b(?:p?icu)\b|intensive\s+care/i,
+      /تأق|صدمة\s+تحسسية|أدرينالين|ادرينالين|أدرنالين|ادرنالين|إبينفرين|ابينفرين|عناية\s+مركزة|العناية\s+المركزة|العناية\s+المركّزة|قلم\s+(?:ال)?(?:أدرينالين|ادرينالين|حساسية)/i,
+    ],
+    cross_pathway_when: [
+      // A reaction happening now — not "allergic to penicillin" in the history.
+      /allergic\s+reaction|hives|urticaria|anaphyla\w*|(?:rash|hives|swelling|itch\w*)[^.]{0,40}after\s+(?:an?\s+|the\s+)?(?:injection|vaccine|eating|medicine|medication|antibiotic|sting|bite|nuts?|peanuts?|food)/i,
+      /تفاعل\s+تحسسي|شرى|ارتكاريا|تأق|صدمة\s+تحسسية|(?:طفح|حبوب|حكة|تورم)[^.]{0,40}بعد\s+(?:ما\s+)?(?:أكل|اكل|الإبرة|الابرة|إبرة|ابرة|حقنة|الحقنة|التطعيم|الدواء|دواء|المضاد|لدغة|قرصة|المكسرات)/i,
+    ],
+    short_ar: 'تفاعل تحسسي شديد سابق',
+    short_en: 'Previous severe reaction',
+    question_ar: 'هل سبق أن أصيب بتفاعل تحسسي شديد: تأق، أو احتاج أدرينالين/إبي-بن، أو دخل العناية المركزة؟',
+    question_en: 'Previous severe allergic reaction: anaphylaxis, needed adrenaline/EpiPen, or ICU admission?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 2 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 2,
+    question_category: 'ctas_modifier',
+    clinical_explanation_ar: 'تفاعل تحسسي مع تاريخ تفاعل شديد (تأق / أدرينالين / عناية مركزة) → CTAS 2',
+    clinical_explanation_en: 'Allergic reaction with a previous severe reaction (anaphylaxis / adrenaline / ICU) → CTAS 2',
+    priority: 4,
+    active: true,
+    protocol_source: 'CTAS 2025 Allergic reaction — previous severe reaction',
+    version: '1.0.0',
+    review_date: '2026-10-16',
+  },
+  {
+    id: 'mod_allergy_rapid_onset',
+    name: 'Rash/reaction within 2 hours of an exposure',
+    name_ar: 'طفح/تفاعل خلال ساعتين من التعرض',
+    pathways: ['allergic_reaction', 'rash'],
+    age_applicability: 'both',
+    field: 'allergy_rapid_onset',
+    detect_positive_only: true,
+    detect_patterns: [
+      /within\s+(?:\w+\s+){0,2}min\w*|(?:\d+|few|ten|fifteen|twenty|thirty|forty)\s+min\w*\s+after|immediately\s+after|right\s+after|soon\s+after|within\s+(?:an?|one|1|half\s+an?|two|2)\s+hours?|(?:half\s+an?|an?|one)\s+hour\s+after/i,
+      /(?:خلال|بعد|ب)\s*(?:نص|نصف|ربع)\s*ساعة|(?:خلال|بعد|ب)\s*(?:\d+|كم|دقائق|دقيقة|عشر|عشرين|ثلاثين)\s*(?:دقيقة|دقائق|دقايق)?(?:\s+من)?|مباشرة\s+بعد|على\s+طول\s+بعد|خلال\s+ساعة|بعد\s+ساعة|خلال\s+ساعتين/i,
+    ],
+    cross_pathway_when: [
+      // A reaction happening now — not "allergic to penicillin" in the history.
+      /allergic\s+reaction|hives|urticaria|anaphyla\w*|(?:rash|hives|swelling|itch\w*)[^.]{0,40}after\s+(?:an?\s+|the\s+)?(?:injection|vaccine|eating|medicine|medication|antibiotic|sting|bite|nuts?|peanuts?|food)/i,
+      /تفاعل\s+تحسسي|شرى|ارتكاريا|تأق|صدمة\s+تحسسية|(?:طفح|حبوب|حكة|تورم)[^.]{0,40}بعد\s+(?:ما\s+)?(?:أكل|اكل|الإبرة|الابرة|إبرة|ابرة|حقنة|الحقنة|التطعيم|الدواء|دواء|المضاد|لدغة|قرصة|المكسرات)/i,
+    ],
+    short_ar: 'بدأ خلال ساعتين من التعرض',
+    short_en: 'Onset within 2 h of exposure',
+    question_ar: 'هل بدأ الطفح أو التفاعل خلال ساعتين من أكل أو دواء أو إبرة أو لدغة؟',
+    question_en: 'Did the rash or reaction start within 2 hours of a food, medicine, injection or sting?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_effect: 3 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    ctas_effect_yes: 3,
+    question_category: 'ctas_modifier',
+    clinical_explanation_ar: 'طفح/تفاعل خلال ساعتين من التعرض → CTAS 3 على الأقل (قد يتطور إلى تأق)',
+    clinical_explanation_en: 'Rash/reaction within 2 hours of an exposure → at least CTAS 3 (may progress to anaphylaxis)',
+    priority: 5,
+    active: true,
+    protocol_source: 'CTAS 2025 Allergic reaction + HMG paediatric routing guide (rash within 1–2 h → Observation)',
+    version: '1.0.0',
+    review_date: '2026-10-16',
+  },
+
+  // ── Respiratory distress grade (child with a breathing complaint) ─────────
+  {
+    id: 'mod_peds_resp_distress',
+    name: 'Respiratory distress severity (child)',
+    name_ar: 'درجة الضائقة التنفسية (طفل)',
+    pathways: ['shortness_of_breath', 'wheezing', 'stridor_resp', 'urti_complaints', 'asthma', 'respiratory_distress', 'dyspnea', 'cough'],
+    age_applicability: 'pediatric',
+    field: 'resp_distress_grade',
+    detect_patterns: [],
+    // Any complaint: asked when the conversation mentions breathing difficulty.
+    cross_pathway_when: [
+      /short(?:ness)?\s+of\s+breath|\bsob\b|breathless|difficult(?:y)?\s+(?:in\s+)?breathing|respiratory\s+distress|retraction\w*|recession\w*|nasal\s+flaring|grunting|wheez\w*|tachypn\w*|fast\s+breathing|chest\s+tightness|cyanos\w*|cyanot\w*|stridor/i,
+      /ضيق\s*(?:في\s*)?(?:ال)?(?:تنفس|نفس)|صعوبة\s*(?:في\s*)?(?:ال)?تنفس|كتمة|سحب\s*(?:صدر|بين|تحت|في)|انسحاب\s*(?:صدر|بين|تحت)|رفرفة|شخير|أزيز|ازيز|صفير|تنفس\s*سريع|ازرقاق|زرقة|صرير|سترايدر/i,
+    ],
+    question_ar: 'ما درجة الضائقة التنفسية؟ (السحب، رفرفة الأنف، الشخير، الكلام/الرضاعة، اللون، الوعي)',
+    question_en: 'Respiratory distress? (retractions, nasal flaring, grunting, speech/feeding, colour, alertness)',
+    answer_type: 'options',
+    options: [
+      { value: 'شديدة / Severe', label_ar: 'شديدة: جهد تنفسي مفرط، ازرقاق، خمول، لا يتكلم/يرضع', label_en: 'Severe: excessive effort, cyanosis, lethargy, cannot speak/feed', ctas_effect: 1, destination_hint: 'RESUSCITATION' },
+      { value: 'متوسطة / Moderate', label_ar: 'متوسطة: زيادة الجهد، تململ، يتكلم بعبارات', label_en: 'Moderate: increased effort, restless, speaks in phrases', ctas_effect: 2 },
+      { value: 'خفيفة / Mild', label_ar: 'خفيفة: ضيق أو تنفس سريع بلا جهد واضح، يتكلم بجمل', label_en: 'Mild: dyspnoea or fast breathing, no obvious effort, full sentences', ctas_effect: 3 },
+      { value: 'لا توجد / None', label_ar: 'لا توجد ضائقة', label_en: 'No distress' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    question_category: 'ctas_modifier',
+    clinical_explanation_ar: 'الضائقة التنفسية: شديدة → CTAS 1، متوسطة → 2، خفيفة → 3',
+    clinical_explanation_en: 'Respiratory distress: severe → CTAS 1, moderate → 2, mild → 3',
+    priority: 4,
+    active: true,
+    protocol_source: 'CTAS 2025 Respiratory (Paeds CTAS distress modifiers)',
+    version: '1.0.0',
+    review_date: '2026-10-15',
+  },
+
+  // ── Hydration (child with vomiting or diarrhoea) ──────────────────────────
+  {
+    id: 'mod_peds_hydration',
+    name: 'Hydration status (vomiting / diarrhoea)',
+    name_ar: 'درجة الجفاف (قيء / إسهال)',
+    pathways: ['vomiting_nausea', 'diarrhea', 'abdominal_pain', 'abdominal_pain_unspecified', 'fever', 'general'],
+    age_applicability: 'pediatric',
+    field: 'hydration_status',
+    detect_patterns: [],
+    // Asked only when vomiting or diarrhoea is part of the story.
+    ask_when_patterns: [/vomit\w*|diarrh\w*|diarrhoea|loose stools?|gastroenteritis/i, /قيء|استفراغ|ترجيع|إسهال|اسهال|إسهال/i],
+    question_ar: 'ما درجة الجفاف؟ (الفم، الدموع، البول، الوعي، الرسملة)',
+    question_en: 'Hydration status? (mucosa, tears, urine output, alertness, capillary refill)',
+    answer_type: 'options',
+    options: [
+      { value: 'جفاف شديد / Severe', label_ar: 'جفاف شديد', label_en: 'Severe dehydration', ctas_effect: 1, destination_hint: 'RESUSCITATION' },
+      { value: 'جفاف متوسط / Moderate', label_ar: 'جفاف متوسط', label_en: 'Moderate dehydration', ctas_effect: 2 },
+      { value: 'جفاف خفيف / Mild', label_ar: 'جفاف خفيف', label_en: 'Mild dehydration', ctas_effect: 3 },
+      { value: 'لا جفاف مع استمرار الفقد / Potential', label_ar: 'لا علامات جفاف مع استمرار الفقد', label_en: 'No signs, ongoing losses (potential)', ctas_effect: 4 },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    question_category: 'ctas_modifier',
+    clinical_explanation_ar: 'الجفاف: شديد → CTAS 1، متوسط → 2، خفيف → 3، محتمل → 4',
+    clinical_explanation_en: 'Dehydration: severe → CTAS 1, moderate → 2, mild → 3, potential → 4',
+    priority: 9,
+    active: true,
+    protocol_source: 'CTAS 2025 GI (dehydration modifiers)',
+    version: '1.0.0',
+    review_date: '2026-10-15',
+  },
+
   // ── Seizure / altered LOC ─────────────────────────────────────────────────
   {
     id: 'mod_sz_ongoing',
@@ -606,6 +881,11 @@ export const CTAS_MODIFIER_LIBRARY = [
     detect_patterns: [
       /seiz(?:ure|ing)|convuls\w*|status\s+epileptic|post[- ]?ictal/i,
       /نوبة|تشنج|صرع|بعد\s*النوبة/i,
+    ],
+    // Any complaint: a seizure mentioned anywhere asks for its status.
+    cross_pathway_when: [
+      /seiz(?:ure|ing)|convuls\w*|status\s+epileptic|post[- ]?ictal|fitting/i,
+      /نوبة\s*(?:صرع|تشنج)|تشنج|صرع|بعد\s*النوبة|رجفة\s*وتشنج/i,
     ],
     question_ar: 'هل النوبة مستمرة أو المريض لا يزال بعد النوبة؟',
     question_en: 'Is the seizure ongoing or is the patient still post-ictal?',
@@ -659,7 +939,7 @@ function enrichModifier(mod) {
   };
 }
 
-export const MODIFIER_LIBRARY_VERSION = '1.2.0';
+export const MODIFIER_LIBRARY_VERSION = '1.5.0';
 
 export function getActiveModifiers() {
   const runtime = getRuntimeModifiers();
@@ -689,8 +969,10 @@ export function applyModifierLibraryEffects(answers = {}, levelIn = 5) {
       (o) => o.value === value || o.label_ar === value || o.label_en === value,
     );
     const category = mod.question_category || 'ctas_modifier';
-    const destinationHint = opt?.destination_hint || mod.destination_effect || null;
     const isYes = YES_RE.test(String(value).trim());
+    // Only the chosen answer can move the patient: "No" / "Unknown" never falls back
+    // to the question's own destination.
+    const destinationHint = opt?.destination_hint || (isYes ? mod.destination_effect : null) || null;
 
     if (category === 'patient_direction') {
       if (isYes || destinationHint) {
@@ -715,7 +997,8 @@ export function applyModifierLibraryEffects(answers = {}, levelIn = 5) {
     const effect = opt?.ctas_effect
       ?? (isYes ? mod.ctas_effect_yes : null);
     if (effect == null) {
-      if (category === 'safety_escalation' && (isYes || mod.critical_alert)) {
+      // Only a positive answer alerts: "No" / "Unknown" / "Resolved" never do.
+      if (category === 'safety_escalation' && isYes) {
         safetyApplied.push({
           id: mod.id,
           field,

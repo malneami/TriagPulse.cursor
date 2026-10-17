@@ -16,6 +16,8 @@ import {
   resolveCtasDestination,
 } from './modifierEngine.js';
 import { CTAS_MODIFIER_LIBRARY } from './modifierLibrary.js';
+import { runComorbidityTests } from './runComorbidityTests.js';
+import { runRoutingTests } from './runRoutingTests.js';
 import { runSttTests } from '../stt/runSttTests.js';
 import { runFeverValidationSuite } from './ctasFeverValidation.js';
 import { runClarifyingQuestionPipeline } from './questionPipeline.js';
@@ -793,7 +795,7 @@ for (const testCase of CTAS_TEST_CASES) {
 
 // ── Post-CTAS destinations (adult / pediatric journey charts) ───────────────
 {
-  const dest = (opts: Record<string, unknown>) => resolveCtasDestination(opts).destination;
+  const dest = (opts: Record<string, unknown>) => resolveCtasDestination(opts)?.destination;
 
   assert(dest({ level: 1, age: 40 }) === 'RESUSCITATION', 'DEST-01', 'adult CTAS 1 → RESUSCITATION');
   assert(dest({ level: 2, age: 40 }) === 'RESUSCITATION', 'DEST-02', 'adult CTAS 2 → RESUSCITATION');
@@ -804,9 +806,9 @@ for (const testCase of CTAS_TEST_CASES) {
   assert(dest({ level: 2, age: 8 }) === 'PEDIATRIC_RESUS', 'DEST-06', 'age 8 CTAS 2 → PEDIATRIC_RESUS');
   assert(dest({ level: 3, age: 8 }) === 'PEDIATRIC_OBSERVATION', 'DEST-07', 'age 8 CTAS 3 → PEDIATRIC_OBSERVATION');
   assert(
-    dest({ level: 4, age: 8, answers: { minor_procedure: 'نعم' } }) === 'PEDS_FAST_TRACK',
+    dest({ level: 4, age: 8, answers: { minor_procedure: 'نعم' } }) === 'PEDIATRIC_OBSERVATION',
     'DEST-08',
-    'age 8 CTAS 4 + minor procedure → PEDS_FAST_TRACK',
+    'age 8 CTAS 4 + procedure → PEDIATRIC_OBSERVATION (all procedures in Observation, 2026-10-16)',
   );
   assert(dest({ level: 5, age: 8 }) === 'PEDIATRIC_CLINIC', 'DEST-09', 'age 8 CTAS 5 → PEDIATRIC_CLINIC');
   assert(
@@ -828,16 +830,16 @@ for (const testCase of CTAS_TEST_CASES) {
   const obsHint = dest({
     level: 4,
     age: 45,
-    directionApplied: [{ destination_hint: 'URGENT_CARE' }],
+    answers: { recent_abdominal_surgery: 'نعم' },
   });
-  assert(obsHint === 'ADULT_OBSERVATION', 'DEST-12', 'URGENT_CARE hint remaps to adult observation', `got ${obsHint}`);
+  assert(obsHint === 'ADULT_OBSERVATION', 'DEST-12', 'recent surgery → adult observation (center rule in the default configuration)', `got ${obsHint}`);
 
   const acuteHint = dest({
     level: 5,
     age: 45,
-    directionApplied: [{ destination_hint: 'ACUTE_CARE' }],
+    answers: { return_visit_72h: 'نعم' },
   });
-  assert(acuteHint === 'ADULT_OBSERVATION', 'DEST-13', 'ACUTE_CARE hint remaps to adult observation', `got ${acuteHint}`);
+  assert(acuteHint === 'ADULT_OBSERVATION', 'DEST-13', 'return visit within 72 h → adult observation (center rule in the default configuration)', `got ${acuteHint}`);
 
   const ftHint = dest({
     level: 4,
@@ -931,13 +933,13 @@ for (const testCase of CTAS_TEST_CASES) {
   });
   const pedsDest = (enginePeds.suggested_destination as { destination?: string } | null)?.destination;
   assert(
-    pedsDest === 'PEDS_FAST_TRACK'
+    pedsDest === 'PEDIATRIC_OBSERVATION'
       && (enginePeds.direction_applied || []).some((a) => a.field === 'minor_procedure')
       && !(enginePeds.applied_modifiers || []).some(
         (a) => a.field === 'minor_procedure' && a.ctas_effect != null,
       ),
     'DEST-21',
-    'engine: peds CTAS 4 + minor procedure → PEDS_FAST_TRACK without CTAS effect',
+    'engine: peds CTAS 4 + procedure → PEDIATRIC_OBSERVATION without CTAS effect',
     `dest=${pedsDest} level=${enginePeds.updated_ctas}`,
   );
 
@@ -973,6 +975,10 @@ runFeverValidationSuite(assert);
 
 // ── STT code-switching (Arabic/English) ─────────────────────────────────────
 runSttTests(assert);
+
+// ── Chronic illness rules, bedside tests, hydration, direction answers ─────
+runComorbidityTests(assert);
+runRoutingTests(assert);
 
 console.log(`\nCTAS tests: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

@@ -16,6 +16,8 @@
  * }} KnownFact
  */
 
+import { findingStatus } from './negation.js';
+
 const YES = 'نعم';
 const NO = 'لا';
 
@@ -165,16 +167,20 @@ export function buildKnownFacts({
       continue;
     }
     let hit = null;
+    // A graded question (e.g. seizure: ongoing / post-ictal / resolved) is not answered
+    // by the word alone: "seizure" says it happened, not which grade. Ask instead.
+    const graded = Array.isArray(mod.options) && mod.options.length > 0
+      && !mod.options.some((o) => o.value === YES);
     for (const re of mod.detect_patterns || []) {
-      if (re.test(ctx)) {
-        const negated = new RegExp(`(?:no|not|denies|بدون|لا\\s*(?:يوجد)?|ينفي).{0,24}(?:${re.source})`, 'i');
-        if (negated.test(ctx)) {
-          hit = { known: true, value: NO, source: 'transcript_negated' };
-        } else {
-          hit = { known: true, value: YES, source: 'transcript' };
-        }
-        break;
+      const st = findingStatus(re, ctx);
+      if (!st) continue;
+      // Denied and stated in the same conversation: ask, never settle on "no".
+      if (st === 'negative') {
+        if (mod.detect_positive_only) continue;
+        hit = { known: true, value: NO, source: 'transcript_negated' };
       }
+      else if (st === 'positive' && !graded) hit = { known: true, value: YES, source: 'transcript' };
+      break;
     }
     if (!hit) {
       for (const re of mod.related_medications || []) {

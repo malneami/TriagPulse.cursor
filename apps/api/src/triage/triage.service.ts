@@ -4,6 +4,27 @@ import { PrismaService } from '../prisma/prisma.module';
 import { AuditService } from '../audit/audit.service';
 import { computeLiveCTAS, detectRedFlags, getLibraryVersions, validateTriageReady } from '@triagepulse/clinical';
 
+/**
+ * The triage record comes from the client as loose JSON. Coerce it to the column types
+ * so a blank or unexpected value is stored as "not recorded" instead of failing the
+ * whole save (e.g. sex not captured arrived as "" and Prisma rejected the enum).
+ */
+function toNum(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+function toInt(v: unknown): number | undefined {
+  const n = toNum(v);
+  return n === undefined ? undefined : Math.round(n);
+}
+function toGender(v: unknown): Gender | undefined {
+  return v === 'male' || v === 'female' ? (v as Gender) : undefined;
+}
+
 @Injectable()
 export class TriageService {
   constructor(
@@ -40,22 +61,22 @@ export class TriageService {
           patientNameAr: (record.patient_name_ar as string) ?? journey.patientNameAr,
           patientNameEn: (record.patient_name_en as string) ?? journey.patientNameEn,
           mrn: record.mrn as string | undefined,
-          age: (record.age as number) ?? journey.age ?? undefined,
-          gender: (record.gender as Gender) ?? journey.gender ?? undefined,
+          age: toInt(record.age) ?? journey.age ?? undefined,
+          gender: toGender(record.gender) ?? journey.gender ?? undefined,
           nationality: record.nationality as string | undefined,
           phone: record.phone as string | undefined,
           insurance: record.insurance as string | undefined,
           chiefComplaint: record.chief_complaint as string | undefined,
-          hr: record.hr as number | undefined,
-          bpSystolic: record.bp_systolic as number | undefined,
-          bpDiastolic: record.bp_diastolic as number | undefined,
-          spo2: record.spo2 as number | undefined,
-          rr: record.rr as number | undefined,
-          temperature: record.temperature as number | undefined,
-          gcs: record.gcs as number | undefined,
-          painScore: record.pain_score as number | undefined,
+          hr: toInt(record.hr),
+          bpSystolic: toInt(record.bp_systolic),
+          bpDiastolic: toInt(record.bp_diastolic),
+          spo2: toInt(record.spo2),
+          rr: toInt(record.rr),
+          temperature: toNum(record.temperature),
+          gcs: toInt(record.gcs),
+          painScore: toInt(record.pain_score),
           transcription: record.transcription as string | undefined,
-          ctasLevel: record.ctas_level as number | undefined,
+          ctasLevel: toInt(record.ctas_level),
           ctasNameAr: record.ctas_name_ar as string | undefined,
           ctasNameEn: record.ctas_name_en as string | undefined,
           maxWaitTime: record.max_wait_time as string | undefined,
@@ -63,27 +84,27 @@ export class TriageService {
           redFlags: record.red_flags as object | undefined,
           disposition: record.disposition as string | undefined,
           nurseName: clinicianName,
-          aiCtas: record.ai_ctas as number | undefined,
-          nurseCtas: record.nurse_ctas as number | undefined,
+          aiCtas: toInt(record.ai_ctas),
+          nurseCtas: toInt(record.nurse_ctas),
           agreement: record.agreement as boolean | undefined,
           overrideReason: record.override_reason as string | undefined,
           flaggedForReview: (record.flagged_for_review as boolean) ?? false,
-          triageDurationMin: record.triage_duration_min as number | undefined,
+          triageDurationMin: toInt(record.triage_duration_min),
           patientId: journey.patientId,
-          rulesRecommendedCtas: record.rules_recommended_ctas as number | undefined,
-          aiRecommendedCtas: record.ai_recommended_ctas as number | undefined,
-          clinicianFinalCtas: record.clinician_final_ctas as number | undefined,
+          rulesRecommendedCtas: toInt(record.rules_recommended_ctas),
+          aiRecommendedCtas: toInt(record.ai_recommended_ctas),
+          clinicianFinalCtas: toInt(record.clinician_final_ctas),
           clinicianReviewedAt: new Date(),
           reviewedBy: clinicianName,
           ctasStartedAt: record.ctas_started_at ? new Date(record.ctas_started_at as string) : undefined,
           ctasCompletedAt: new Date(),
-          doorToTriageMin: record.door_to_triage_min as number | undefined,
+          doorToTriageMin: toInt(record.door_to_triage_min),
           alertTriggered: (record.alert_triggered as boolean) ?? false,
           alertTriggeredAt: record.alert_triggered_at ? new Date(record.alert_triggered_at as string) : undefined,
           alertAcknowledgedAt: record.alert_acknowledged_at ? new Date(record.alert_acknowledged_at as string) : undefined,
-          alertResponseSec: record.alert_response_sec as number | undefined,
+          alertResponseSec: toInt(record.alert_response_sec),
           alertSummary: record.alert_summary as string | undefined,
-          aiConfidence: record.ai_confidence as number | undefined,
+          aiConfidence: toNum(record.ai_confidence),
           safetyNote: record.safety_note as string | undefined,
           missingFields: record.missing_fields as object | undefined,
           assessmentTrail: typeof record.assessment_trail_json === 'string'
@@ -113,15 +134,17 @@ export class TriageService {
         data: {
           currentStatus: JourneyStatus.completed,
           ctasCompletedAt: new Date(),
-          ctasLevel: (record.clinician_final_ctas as number) ?? (record.ctas_level as number),
-          clinicianFinalCtas: record.clinician_final_ctas as number | undefined,
-          rulesRecommendedCtas: record.rules_recommended_ctas as number | undefined,
-          aiRecommendedCtas: record.ai_recommended_ctas as number | undefined,
+          ctasLevel: toInt(record.clinician_final_ctas) ?? toInt(record.ctas_level),
+          clinicianFinalCtas: toInt(record.clinician_final_ctas),
+          rulesRecommendedCtas: toInt(record.rules_recommended_ctas),
+          aiRecommendedCtas: toInt(record.ai_recommended_ctas),
           chiefComplaint: record.chief_complaint as string | undefined,
           alertAcknowledgedAt: record.alert_acknowledged_at ? new Date(record.alert_acknowledged_at as string) : undefined,
           alertAcknowledgedBy: record.alert_acknowledged_by as string | undefined ?? clinicianName,
           ctasReviewedAt: new Date(),
           incompleteDataFlags: (record.missing_fields as object | string | undefined) ?? undefined,
+          // Final patient direction (nurse-confirmed), shown on the journey.
+          currentLocation: typeof record.disposition === 'string' ? record.disposition : undefined,
           // Only these server-derived fields are written to the journey. The client can
           // no longer send arbitrary journey columns (mass-assignment fix, review B3).
         },

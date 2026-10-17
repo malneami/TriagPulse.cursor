@@ -21,9 +21,13 @@
     "db:studio": "npm run db:studio --workspace=@triagepulse/api",
     "db:migrate:deploy": "npm run db:migrate:deploy --workspace=@triagepulse/api",
     "admin:create": "npm run admin:create --workspace=@triagepulse/api",
-    "codespace:app": "npm run build --workspace=@triagepulse/web && SERVE_WEB_DIR=../web/dist npm run dev:api"
+    "codespace:app": "bash .devcontainer/start-app.sh",
+    "validate:scenarios": "node scripts/validate-triage-scenarios.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2"
   }
 }

@@ -8,9 +8,9 @@ import { getNorms, PEDIATRIC_SD_HEMODYNAMIC_RULES } from '../ageNorms.js';
 export const HEMODYNAMIC_RULES_META = {
   rule_set_id: 'hemodynamic_v1',
   ctas_version: 'CTAS 2025',
-  version: '1.0.0',
+  version: '1.1.0',
   approval_status: 'configured',
-  effective_date: '2026-08-05',
+  effective_date: '2026-10-16',
   clinical_source: 'CTAS Interactive Quick Look Booklet — Hemodynamic',
 };
 
@@ -22,6 +22,48 @@ export const HEMODYNAMIC_THRESHOLDS = {
   adult_borderline_tachycardia: 120,
   adult_bradycardia: 50,
 };
+
+/**
+ * Severe heart rate for age (approved 2026-10-16, rules T1–T4): a rate at or beyond these
+ * limits is CTAS 2 even when blood pressure is normal, and CTAS 1 with hypotension, poor
+ * perfusion / shock signs or altered mental state. Paediatric limits are rounded from the
+ * Fleming 2011 99th centiles (awaiting clinical sign-off of the exact numbers).
+ * The red-flag alert reads the same table, so the alert and the CTAS level always agree.
+ */
+export const SEVERE_HEART_RATE_BY_AGE = [
+  { max_age_years: 0.25, label: '< 3 months', tachy: 190, brady: 90 },
+  { max_age_years: 1, label: '3–12 months', tachy: 180, brady: 80 },
+  { max_age_years: 3, label: '1–3 years', tachy: 160, brady: 70 },
+  { max_age_years: 6, label: '3–6 years', tachy: 150, brady: 60 },
+  { max_age_years: 12, label: '6–12 years', tachy: 140, brady: 55 },
+  { max_age_years: 18, label: '12–18 years', tachy: 130, brady: 45 },
+  { max_age_years: Infinity, label: 'adult', tachy: 130, brady: 40 },
+];
+
+/**
+ * @param {number|string|null} hr
+ * @param {number|string|null} age years (missing → adult limits)
+ * @returns {{ kind: 'tachycardia'|'bradycardia', hr: number, limit: number, band: string } | null}
+ */
+export function severeHeartRate(hr, age) {
+  const h = hr == null || hr === '' ? NaN : Number(hr);
+  if (!Number.isFinite(h) || h <= 0) return null;
+  const a = age == null || age === '' ? NaN : parseFloat(age);
+  const band = SEVERE_HEART_RATE_BY_AGE.find((b) => (Number.isFinite(a) ? a < b.max_age_years : b.max_age_years === Infinity));
+  if (h >= band.tachy) return { kind: 'tachycardia', hr: h, limit: band.tachy, band: band.label };
+  if (h <= band.brady) return { kind: 'bradycardia', hr: h, limit: band.brady, band: band.label };
+  return null;
+}
+
+/** Hypotension for age: < 70 + 2×age (1–10 y), < 90 from 10 y, < 60 under 1 y. */
+export function hypotensiveForAge(sbp, age) {
+  if (sbp == null || sbp === '' || !Number.isFinite(Number(sbp))) return false;
+  const s = Number(sbp);
+  const a = age == null || age === '' ? NaN : parseFloat(age);
+  if (!Number.isFinite(a) || a >= 10) return s < 90;
+  if (a < 1) return s < 60;
+  return s < 70 + 2 * a;
+}
 
 /**
  * Classify tachycardia interpretation for explainability.
@@ -69,6 +111,7 @@ export function evaluateHemodynamicModifier({
   ageGroup,
   isPediatric,
   chronicityStable = false,
+  age = null,
 }) {
   const norms = getNorms(ageGroup);
   const sbp = vitals.sbp;
@@ -80,7 +123,8 @@ export function evaluateHemodynamicModifier({
   const tachy = classifyTachycardia({ vitals, flags, appearance, norms, isPediatric });
 
   // Chronic baseline unchanged — do not auto-upgrade on HR alone
-  if (chronicityStable && tachy.class === 'expected') {
+  // A severe rate for age still counts (T1): it is never written off as baseline.
+  if (chronicityStable && tachy.class === 'expected' && !severeHeartRate(hr, age)) {
     return {
       level: null,
       rule_id: 'hemo_chronic_stable_no_upgrade',
@@ -136,6 +180,38 @@ export function evaluateHemodynamicModifier({
       explanation_en: `SBP ${sbp} — critical shock → CTAS 1`,
       explanation_ar: `ضغط ${sbp} — صدمة حرجة → CTAS 1`,
       evidence: { sbp },
+      meta: HEMODYNAMIC_RULES_META,
+    };
+  }
+
+  // ── Severe heart rate for age (T1/T2/T4) ──
+  const severe = severeHeartRate(hr, age);
+  if (severe) {
+    const rateText = `HR ${severe.hr} ${severe.kind === 'tachycardia' ? '≥' : '≤'} ${severe.limit} (${severe.band})`;
+    const rateAr = `نبض ${severe.hr} ${severe.kind === 'tachycardia' ? 'تسرع شديد' : 'بطء شديد'} للعمر`;
+    const unstable = [];
+    if (hypotensiveForAge(sbp, age)) unstable.push(`SBP ${sbp}`);
+    if (flags.poor_perfusion) unstable.push('poor perfusion');
+    if (appearance.shocked) unstable.push('shock signs');
+    if (gcs != null && gcs < 15) unstable.push(`GCS ${gcs}`);
+    if (unstable.length) {
+      return {
+        level: 1,
+        rule_id: 'hemo_severe_rate_unstable',
+        tachycardia_class: tachy,
+        explanation_en: `Severe ${severe.kind} for age with ${unstable.join(', ')} → CTAS 1 (${rateText}).`,
+        explanation_ar: `${rateAr} مع عدم استقرار → CTAS 1`,
+        evidence: { severe, unstable, sbp, hr },
+        meta: HEMODYNAMIC_RULES_META,
+      };
+    }
+    return {
+      level: 2,
+      rule_id: 'hemo_severe_rate',
+      tachycardia_class: tachy,
+      explanation_en: `Severe ${severe.kind} for age → CTAS 2 (${rateText}). Needs monitor and ECG now, even with normal blood pressure.`,
+      explanation_ar: `${rateAr} → CTAS 2 (مراقبة وتخطيط قلب فوراً حتى مع ضغط طبيعي)`,
+      evidence: { severe, sbp, hr },
       meta: HEMODYNAMIC_RULES_META,
     };
   }

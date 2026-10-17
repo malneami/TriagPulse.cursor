@@ -1,14 +1,14 @@
 export default function PatientDemographics({ patient, onChange }) {
   const field = (label, labelEn, key, type = 'text', options = null) => (
     <div>
-      <label className="block text-xs font-semibold text-slate-600 mb-1">
-        {label} <span className="text-slate-400 font-normal">{labelEn}</span>
+      <label className="block text-xs font-semibold text-graphite mb-1">
+        {label} <span className="text-graphite font-normal">{labelEn}</span>
       </label>
       {options ? (
         <select
           value={patient[key] || ''}
           onChange={(e) => onChange({ [key]: e.target.value })}
-          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+          className="w-full border border-mist rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
         >
           <option value="">اختر...</option>
           {options.map(o => (
@@ -20,17 +20,17 @@ export default function PatientDemographics({ patient, onChange }) {
           type={type}
           value={patient[key] || ''}
           onChange={(e) => onChange({ [key]: e.target.value })}
-          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+          className="w-full border border-mist rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
         />
       )}
     </div>
   );
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 space-y-4">
+    <div className="bg-white rounded-2xl shadow-sm border border-mist p-4 space-y-4">
       <div>
-        <h3 className="font-bold text-slate-800">بيانات المريض</h3>
-        <p className="text-xs text-slate-400">Patient Demographics</p>
+        <h3 className="font-bold text-ink">بيانات المريض</h3>
+        <p className="text-xs text-graphite">Patient Demographics</p>
       </div>
 
       <div className="grid grid-cols-1 gap-3">

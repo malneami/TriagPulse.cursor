@@ -179,7 +179,12 @@ const saved = await call('/triage/save', {
   method: 'POST',
   body: {
     journeyId,
-    triageRecord: { ctas_level: 4, clinician_final_ctas: 4, chief_complaint: 'Back Pain', missing_fields: '' },
+    triageRecord: {
+      ctas_level: 4, clinician_final_ctas: 4, chief_complaint: 'Back Pain', missing_fields: '',
+      disposition: 'FM_IM | Family Medicine & Internal Medicine',
+      // Sex not captured and a vital typed as text must not fail the save.
+      gender: '', hr: '88',
+    },
     // An attacker-style extra field: must be ignored, not written to the journey (review B3).
     journeyUpdate: { createdById: 'someone-else', arrivalTime: '2000-01-01T00:00:00.000Z' },
   },
@@ -190,11 +195,21 @@ const after = await call(`/journeys/${journeyId}`, { token: nurse });
 check(after.status === 200, 'saved journey can be read back');
 check(after.json.currentStatus === 'completed', 'saved journey is marked completed', after.json.currentStatus);
 check(after.json.clinicianFinalCtas === 4, 'saved journey carries the final CTAS level');
+check(after.json.currentLocation === 'FM_IM | Family Medicine & Internal Medicine', 'saved journey carries the confirmed patient direction', after.json.currentLocation);
 check(after.json.createdById === me.json.id, 'client-sent journey fields are ignored (owner unchanged)');
 check(!String(after.json.arrivalTime).startsWith('2000'), 'client-sent journey fields are ignored (arrival time unchanged)');
 
 const board = await call('/tracking/board', { token: nurse });
 check(board.status === 200 && Array.isArray(board.json), 'tracking board loads');
+const onBoard = board.json.find((j) => j.id === journeyId);
+check(!!onBoard, 'a triaged patient stays on the board until seen');
+check(Number.isInteger(onBoard?.ticketNo) && onBoard.ticketNo > 0, 'board entries carry a ticket number', String(onBoard?.ticketNo));
+
+const seen = await call(`/journeys/${journeyId}/status`, { token: physician, method: 'PATCH', body: { status: 'seen' } });
+check(seen.status === 200 && seen.json?.seenAt, "a physician can mark a nurse's patient as seen", `status ${seen.status} ${seen.text.slice(0, 200)}`);
+
+const boardAfter = await call('/tracking/board', { token: nurse });
+check(!boardAfter.json.some((j) => j.id === journeyId), 'a seen patient leaves the board');
 
 // ── Single-port mode (SERVE_WEB_DIR): the API also serves the web app ─
 if (process.env.EXPECT_WEB === '1') {
@@ -210,5 +225,20 @@ if (process.env.EXPECT_WEB === '1') {
   const apiStill = await call('/health');
   check(apiStill.json?.status === 'ok', 'API still answers alongside the web app');
 }
+
+// ── Security headers and sign-in protection (review H2, H4) ─────────
+const hdr = await fetch(`${BASE}/api/health`);
+check(/default-src 'self'/.test(hdr.headers.get('content-security-policy') || ''), 'content security policy header is set');
+check(hdr.headers.get('x-frame-options') === 'SAMEORIGIN' || /frame-ancestors 'none'/.test(hdr.headers.get('content-security-policy') || ''), 'the app cannot be framed');
+check(hdr.headers.get('x-content-type-options') === 'nosniff', 'no MIME sniffing');
+
+// The admin account is not used above, so locking it here affects nothing else.
+const lockEmail = 'admin@triagepulse.local';
+for (let i = 0; i < 5; i += 1) {
+  await call('/auth/login', { method: 'POST', body: { email: lockEmail, password: 'wrong-password' } });
+}
+const locked = await call('/auth/login', { method: 'POST', body: { email: lockEmail, password: DEMO_PASSWORD } });
+check(locked.status === 429, '5 wrong passwords lock the account (correct password refused with 429)', `got ${locked.status}`);
+check(/locked/i.test(locked.text), 'the lock message says the account is locked', locked.text.slice(0, 120));
 
 console.log(`\nAll ${passed} checks passed.`);

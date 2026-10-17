@@ -3,13 +3,15 @@
  * Displays the official CTAS 2025 complaint-specific modifiers as a tap list.
  */
 import { CTAS_CONFIG } from '@triagepulse/clinical';
+import { ctasFill } from '@/lib/ctasStyle';
 
+// Selected row: thick ink border; the level badge carries the CTAS colour.
 const LEVEL_COLORS = {
-  1: 'border-red-500 bg-red-50 text-red-800',
-  2: 'border-orange-400 bg-orange-50 text-orange-800',
-  3: 'border-green-600 bg-green-50 text-green-800',
-  4: 'border-blue-400 bg-blue-50 text-blue-800',
-  5: 'border-slate-300 bg-slate-50 text-slate-700',
+  1: 'border-ink bg-white text-ink',
+  2: 'border-ink bg-white text-ink',
+  3: 'border-ink bg-white text-ink',
+  4: 'border-ink bg-white text-ink',
+  5: 'border-ink bg-white text-ink',
 };
 
 export default function ComplaintModifierSelector({ match, selectedModifier, onSelect }) {
@@ -17,22 +19,22 @@ export default function ComplaintModifierSelector({ match, selectedModifier, onS
   const { category, complaint, categoryKey } = match;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+    <div className="bg-white rounded-2xl border border-mist shadow-sm p-4 space-y-3">
       {/* Header */}
-      <div className="border-b border-slate-100 pb-2">
+      <div className="border-b border-mist pb-2">
         <div className="flex items-center gap-2 mb-1">
           <span
             className="w-3 h-3 rounded-full shrink-0"
             style={{ backgroundColor: category.color }}
           />
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+          <span className="text-xs font-bold text-graphite uppercase tracking-wide">
             {category.label_en} / {category.label_ar}
           </span>
         </div>
-        <p className="text-sm font-black text-slate-800">
+        <p className="text-sm font-black text-ink">
           {complaint.label_en} — {complaint.label_ar}
         </p>
-        <p className="text-xs text-slate-400 mt-0.5">
+        <p className="text-xs text-graphite mt-0.5">
           الخطوة ٢ — اختر المعدّل المحدد / Step 2 — Select Complaint Specific Modifier
         </p>
       </div>
@@ -49,13 +51,13 @@ export default function ComplaintModifierSelector({ match, selectedModifier, onS
               className={`w-full text-right flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border-2 transition-all font-medium text-sm ${
                 isSelected
                   ? LEVEL_COLORS[m.ctas] + ' shadow-sm scale-[1.01]'
-                  : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                  : 'bg-white border-mist text-ink hover:border-mist'
               }`}
             >
               <span className="flex-1 leading-snug">{m.modifier}</span>
               <span
-                className="shrink-0 text-xs font-black px-2.5 py-1 rounded-full text-white"
-                style={{ backgroundColor: cfg.hex }}
+                className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full"
+                style={ctasFill(m.ctas)}
               >
                 CTAS {m.ctas}
               </span>

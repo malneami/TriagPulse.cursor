@@ -10,6 +10,7 @@ export {
   resolveChiefComplaint,
   getComplaintByKey,
   listAllComplaints,
+  findComplaintMentions,
   COMPLAINT_RESOLVER_VERSION,
   AUTO_MIN,
   AUTO_MARGIN,
@@ -23,6 +24,25 @@ export {
   SYMPTOM_CHRONICITY_VERSION,
 } from './ctas/detectSymptomChronicity.js';
 export { resolveClinicalPathway } from './ctas/resolveClinicalPathway.js';
+export {
+  buildCaseDetails,
+  extractComplaints,
+  extractConditions,
+  extractMedications,
+  classifyMedication,
+  normalizeLlmCaseDetails,
+  evidenceInTranscript,
+  CONDITION_VOCAB,
+  DRUG_CLASSES,
+  CASE_DETAILS_VERSION,
+} from './ctas/caseDetails.js';
+export {
+  evaluateComorbidityRules,
+  extractBedsideTests,
+  COMORBIDITY_RULES,
+  COMORBIDITY_RULES_VERSION,
+  GLUCOSE_HIGH_MMOL,
+} from './ctas/comorbidityRules.js';
 export {
   CLARIFYING_QUESTION_BANK,
   getClarifyingQuestions,
@@ -102,6 +122,7 @@ export type {
 export {
   createEmptySttFields,
   extractFieldsFromTranscript,
+  findVitalConflicts,
   mergeFieldSlot,
   mergeVitalSignEntries,
   mergeLlmExtractIntoFields,
@@ -160,4 +181,23 @@ export type {
   VitalSignEntry,
   CodedTerm,
   SttFieldDefinition,
+  CaseDetails,
+  CaseComplaint,
+  CaseCondition,
 } from './stt/types';
+export {
+  DEFAULT_ROUTING_CONFIG,
+  ROUTING_ENGINE_VERSION,
+  ZONE_KINDS,
+  resolveDirection,
+  validateRoutingConfig,
+  setActiveRoutingConfig,
+  getActiveRoutingConfig,
+  resetRoutingConfigToBuiltin,
+  setZoneStatus,
+  getZoneStatus,
+  departmentFor,
+  ruleMatches,
+  overflowNote,
+  localMinutes,
+} from './routing/routingConfig.js';

@@ -1,47 +1,91 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
-import { Activity, LogOut, Eye, Users, Library, BarChart3, ShieldCheck } from 'lucide-react';
+import { Activity, LogOut, Eye, Users, Library, Signpost, BarChart3, ShieldCheck } from 'lucide-react';
 import PatientStrip from '@/components/PatientStrip';
+import Wordmark from '@/components/Wordmark';
 import { canAccess } from '@/lib/security/roles';
+
+/** Page width per screen: the CTAS rail and the board need room; forms stay narrow. */
+function mainWidth(pathname) {
+  if (pathname.startsWith('/tracking')) return 'max-w-[1600px]';
+  if (pathname.startsWith('/triage') || pathname.startsWith('/visual-triage')) return 'max-w-6xl';
+  if (pathname.startsWith('/admin/')) return 'max-w-5xl';
+  return 'max-w-3xl';
+}
+
+function initials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return (parts[0]?.[0] || '?').toUpperCase() + (parts[1]?.[0] || '').toUpperCase();
+}
 
 export default function Layout({ children }) {
   const location = useLocation();
   const { user, logout } = useAuth();
 
   const navItems = [
-    { path: '/visual-triage', label: 'الفرز البصري', labelEn: 'Visual', Icon: Eye },
-    { path: '/triage', label: 'CTAS', labelEn: 'CTAS', Icon: Activity },
-    { path: '/tracking', label: 'التتبع', labelEn: 'Track', Icon: Users },
+    { path: '/visual-triage', label: 'الفرز البصري', labelEn: 'Visual triage', Icon: Eye },
+    { path: '/triage', label: 'فرز CTAS', labelEn: 'CTAS triage', Icon: Activity },
+    { path: '/tracking', label: 'لوحة التتبع', labelEn: 'Tracking', Icon: Users },
     ...(canAccess(user, 'manage_clinical_libraries')
-      ? [{ path: '/admin/libraries', label: 'المكتبات', labelEn: 'Libs', Icon: Library }]
+      ? [{ path: '/admin/libraries', label: 'المكتبات', labelEn: 'Libraries', Icon: Library }]
+      : []),
+    ...(canAccess(user, 'manage_routing')
+      ? [{ path: '/admin/routing', label: 'التوجيه', labelEn: 'Direction', Icon: Signpost }]
       : []),
     ...(canAccess(user, 'view_clinical_analytics')
       ? [
-          { path: '/admin/analytics', label: 'التحليل', labelEn: 'Stats', Icon: BarChart3 },
-          { path: '/admin/ai-evaluation', label: 'تقييم AI', labelEn: 'AI Eval', Icon: ShieldCheck },
+          { path: '/admin/analytics', label: 'التحليل', labelEn: 'Analytics', Icon: BarChart3 },
+          { path: '/admin/ai-evaluation', label: 'تقييم AI', labelEn: 'AI evaluation', Icon: ShieldCheck },
         ]
       : []),
   ];
 
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-50 flex flex-col">
-      <header className="bg-white text-slate-800 shadow-md border-b-4 border-red-600">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-14 w-14 rounded-xl bg-red-600 flex items-center justify-center text-white font-black text-xl">TP</div>
-            <div className="border-r border-slate-200 pr-3 mr-1">
-              <div className="font-bold text-sm leading-tight text-slate-800">نظام الفرز الطارئ</div>
-              <div className="text-slate-400 text-xs">Emergency Triage System</div>
+    <div dir="rtl" className="min-h-screen bg-paper text-ink flex flex-col">
+      <header className="bg-white border-b border-mist">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <Link to="/visual-triage" aria-label="TriagePulse, الصفحة الرئيسية" className="shrink-0 rounded-lg">
+            <Wordmark />
+          </Link>
+
+          <nav aria-label="الأقسام" className="min-w-0 overflow-x-auto">
+            <div className="flex gap-1 bg-paper rounded-xl p-1 min-w-max">
+              {navItems.map(({ path, label, labelEn, Icon }) => {
+                const active = location.pathname === path || location.pathname.startsWith(`${path}/`);
+                return (
+                  <Link
+                    key={path}
+                    to={path}
+                    aria-current={active ? 'page' : undefined}
+                    title={labelEn}
+                    className={`flex items-center gap-2 h-10 px-4 rounded-lg text-[15px] font-medium whitespace-nowrap transition-colors ${
+                      active ? 'bg-ink text-white' : 'text-ink hover:bg-mist'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-slate-500 text-sm hidden sm:block">{user?.full_name}</span>
-            <button
-              onClick={logout}
-              className="text-slate-400 hover:text-red-600 transition-colors"
-              title="تسجيل الخروج"
+          </nav>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              className="hidden md:flex w-10 h-10 rounded-full border border-mist items-center justify-center text-sm font-semibold"
+              title={user?.full_name}
+              aria-hidden="true"
             >
-              <LogOut className="w-5 h-5" />
+              {initials(user?.full_name)}
+            </span>
+            <button
+              type="button"
+              onClick={logout}
+              aria-label="تسجيل الخروج / Sign out"
+              title="تسجيل الخروج / Sign out"
+              className="w-11 h-11 rounded-xl flex items-center justify-center text-graphite hover:bg-paper hover:text-ink"
+            >
+              <LogOut className="w-5 h-5" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -49,34 +93,7 @@ export default function Layout({ children }) {
 
       <PatientStrip />
 
-      <nav className="bg-red-600 border-b border-red-700">
-        <div className="max-w-5xl mx-auto px-2 sm:px-4 overflow-x-auto">
-          <div className="flex gap-1 min-w-max">
-            {navItems.map(({ path, label, labelEn, Icon }) => {
-              const active = location.pathname === path || location.pathname.startsWith(`${path}/`);
-              return (
-                <Link
-                  key={path}
-                  to={path}
-                  className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${
-                    active
-                      ? 'border-white text-white'
-                      : 'border-transparent text-red-200 hover:text-white'
-                  }`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span>{label}</span>
-                  <span className="text-xs opacity-60">{labelEn}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </nav>
-
-      <main className={`flex-1 mx-auto w-full px-4 py-6 ${
-        location.pathname.startsWith('/admin/') ? 'max-w-5xl' : 'max-w-3xl'
-      }`}>
+      <main className={`flex-1 mx-auto w-full px-4 sm:px-6 py-6 ${mainWidth(location.pathname)}`}>
         {children}
       </main>
     </div>

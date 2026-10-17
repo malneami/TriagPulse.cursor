@@ -53,6 +53,44 @@ export interface SttSessionOutput {
   extraction_method?: 'rules' | 'hybrid';
   llm_used?: boolean;
   transcript_analysis?: import('./transcriptAnalysis').TranscriptCompletenessAnalysis;
+  /** Every complaint, chronic illnesses, regular medicines (see ctas/caseDetails.js). */
+  case_details?: CaseDetails;
+}
+
+export interface CaseComplaint {
+  key: string | null;
+  text: string;
+  label_en: string;
+  label_ar: string;
+  default_ctas: number | null;
+  evidence: string;
+  source: 'rules' | 'llm' | 'nurse';
+}
+
+export interface CaseCondition {
+  id: string;
+  label_en: string;
+  label_ar: string;
+  status: 'present' | 'absent' | 'probable';
+  high_risk: boolean;
+  evidence: string;
+  source: 'rules' | 'llm' | 'medication';
+}
+
+export interface CaseDetails {
+  version: string;
+  complaints: CaseComplaint[];
+  conditions: CaseCondition[];
+  medications: Array<{ name: string; classes: string[]; evidence: string; source: string }>;
+  drug_classes: string[];
+  no_known_history: boolean;
+  history_asked: boolean;
+  llm_rejected: number;
+  vital_conflicts?: Array<{ field: 'hr' | 'spo2' | 'rr' | 'temperature' | 'gcs' | 'bp' | 'pain_score'; values: string[]; evidence: string }>;
+  bedside?: {
+    glucose: { value: number; evidence: string; converted_from_mgdl: boolean } | null;
+    ketones: { value: 'positive' | 'negative'; evidence: string } | null;
+  };
 }
 
 export interface SttFieldDefinition {

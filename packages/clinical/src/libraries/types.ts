@@ -46,6 +46,9 @@ export interface SerializableModifier {
   field: string;
   detect_patterns: string[];
   related_medications?: string[];
+  ask_when_patterns?: string[];
+  cross_pathway_when?: string[];
+  detect_positive_only?: boolean;
   question_ar: string;
   question_en: string;
   answer_type: 'yes_no' | 'options' | 'multiple_choice';
