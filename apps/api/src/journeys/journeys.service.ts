@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { Prisma, JourneyStatus, Gender } from '@prisma/client';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma, JourneyStatus, Gender, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.module';
 import { AuditService } from '../audit/audit.service';
 import { assignDestination, calculateRespiratoryScore } from '@triagepulse/clinical';
@@ -151,5 +151,108 @@ export class JourneysService {
         ...(markingSeen ? { seenAt: new Date() } : {}),
       },
     });
+  }
+
+  // ── HIS encounter number (Stage A) ─────────────────────────────────────
+  /** Format of a scanned or typed encounter number. Override with ENCOUNTER_PATTERN. */
+  private encounterPattern(): RegExp {
+    try { return new RegExp(process.env.ENCOUNTER_PATTERN || '^[A-Za-z0-9][A-Za-z0-9-]{3,24}$'); } catch { return /^[A-Za-z0-9][A-Za-z0-9-]{3,24}$/; }
+  }
+
+  /**
+   * Links the HIS encounter number to a journey. Department-wide (any triage user: nurse or
+   * clerk at the desk), audit-logged. The same number cannot sit on two patients.
+   */
+  async linkEncounter(id: string, raw: string, user: { id: string; role: string; full_name?: string; email?: string }) {
+    const encounterNo = String(raw || '').trim().toUpperCase();
+    if (!this.encounterPattern().test(encounterNo)) {
+      throw new BadRequestException('This does not look like an encounter number. Scan again or check the digits.');
+    }
+    const journey = await this.prisma.patientJourney.findUnique({ where: { id } });
+    if (!journey) throw new NotFoundException('Journey not found');
+    if (journey.encounterNo === encounterNo) return journey;
+    const other = await this.prisma.patientJourney.findUnique({ where: { encounterNo } });
+    if (other && other.id !== id) {
+      throw new ConflictException(`Encounter ${encounterNo} is already linked to ticket T${String(other.ticketNo % 1000).padStart(3, '0')}.`);
+    }
+    const updated = await this.prisma.patientJourney.update({
+      where: { id },
+      data: { encounterNo, encounterLinkedAt: new Date(), encounterLinkedById: user.id },
+    });
+    await this.audit.log('PatientJourney', id, journey.encounterNo ? 'encounter_relinked' : 'encounter_linked', user, {
+      ticketNo: journey.ticketNo,
+      previous: journey.encounterNo || null,
+    });
+    return updated;
+  }
+
+  /** Triaged patients of the last `hours` with no encounter number yet (reconciliation list). */
+  async findUnlinked(hours = 24) {
+    const cutoff = new Date(Date.now() - Math.min(Math.max(hours, 1), 72) * 3600 * 1000);
+    return this.prisma.patientJourney.findMany({
+      where: { encounterNo: null, ctasLevel: { not: null }, arrivalTime: { gte: cutoff } },
+      orderBy: { arrivalTime: 'asc' },
+      select: {
+        id: true, patientId: true, ticketNo: true, patientNameAr: true, patientNameEn: true, age: true, gender: true,
+        arrivalTime: true, ctasLevel: true, ctasCompletedAt: true, currentStatus: true,
+      },
+    });
+  }
+
+  // ── Physician check of the triage level (Stage A reference) ───────────
+  /**
+   * The physician agrees with the triage level or re-triages it, with a reason when it
+   * differs. Optionally marks the patient seen in the same step. The journey keeps the
+   * nurse's level in the record; the board shows the reviewed level from now on.
+   */
+  async reviewCtas(
+    id: string,
+    body: { level: number; reason?: string; markSeen?: boolean; conditionChanged?: boolean },
+    user: { id: string; role: string; full_name?: string; email?: string },
+  ) {
+    const level = Number(body.level);
+    if (!Number.isInteger(level) || level < 1 || level > 5) throw new BadRequestException('CTAS level must be 1–5');
+    const journey = await this.prisma.patientJourney.findUnique({ where: { id } });
+    if (!journey) throw new NotFoundException('Journey not found');
+    const record = await this.prisma.triageRecord.findFirst({ where: { journeyId: id }, orderBy: { createdAt: 'desc' } });
+    const nurseLevel = record?.nurseCtas ?? record?.ctasLevel ?? journey.ctasLevel;
+    if (nurseLevel == null) throw new BadRequestException('This patient has no triage level yet');
+    const agreed = level === nurseLevel;
+    const reason = String(body.reason || '').trim().slice(0, 300) || null;
+    if (!agreed && !reason) throw new BadRequestException('Give a short reason for the new level');
+    const review = await this.prisma.ctasReview.create({
+      data: {
+        journeyId: id,
+        triageRecordId: record?.id ?? null,
+        nurseLevel,
+        reviewedLevel: level,
+        agreed,
+        reason: agreed ? null : reason,
+        conditionChanged: !agreed && !!body.conditionChanged,
+        reviewerId: user.id,
+        reviewerRole: user.role as UserRole,
+      },
+    });
+    const markingSeen = !!body.markSeen && !journey.seenAt;
+    const updated = await this.prisma.patientJourney.update({
+      where: { id },
+      data: {
+        clinicianFinalCtas: level,
+        ctasReviewedAt: new Date(),
+        ...(agreed ? {} : { ctasLevel: level }),
+        ...(body.markSeen ? { currentStatus: JourneyStatus.seen } : {}),
+        ...(markingSeen ? { seenAt: new Date() } : {}),
+      },
+    });
+    if (record) {
+      await this.prisma.triageRecord.update({
+        where: { id: record.id },
+        data: { clinicianFinalCtas: level, clinicianReviewedAt: new Date(), reviewedBy: user.role },
+      });
+    }
+    await this.audit.log('PatientJourney', id, agreed ? 'ctas_review_agreed' : 'ctas_retriaged', user, {
+      ticketNo: journey.ticketNo, from: nurseLevel, to: level, reviewId: review.id, markSeen: !!body.markSeen, conditionChanged: review.conditionChanged,
+    });
+    return { journey: updated, review };
   }
 }

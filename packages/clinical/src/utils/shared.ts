@@ -49,6 +49,10 @@ export const PERMISSIONS: Record<string, Role[]> = {
   manage_routing: ['admin'],
   set_zone_status: ['nurse', 'physician', 'admin'],
   view_clinical_analytics: ['admin', 'physician'],
+  /** Physician agreement at "Seen" or re-triage: the reference for nurse feedback. */
+  review_ctas: ['physician', 'admin'],
+  /** A nurse's own private accuracy page ("My triage"). */
+  view_own_feedback: ['nurse', 'physician', 'admin'],
 };
 
 export function canAccess(role: Role, permission: string): boolean {

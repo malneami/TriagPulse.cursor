@@ -2,7 +2,7 @@ import {
   Body, Controller, Get, Param, Patch, Post, Query, Request, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsEnum, IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Gender, JourneyStatus } from '@prisma/client';
 import { JourneysService } from './journeys.service';
 import { RolesGuard, RequirePermission } from '../auth/roles.guard';
@@ -30,6 +30,18 @@ class VisualTriageDto {
   @IsOptional() @IsInt() vtDurationSec?: number;
 }
 
+class LinkEncounterDto {
+  @IsString() @MaxLength(40) encounterNo: string;
+}
+
+class ReviewCtasDto {
+  @IsInt() @Min(1) @Max(5) level: number;
+  @IsOptional() @IsString() @MaxLength(300) reason?: string;
+  @IsOptional() @IsBoolean() markSeen?: boolean;
+  /** The patient changed after triage: recorded, but not counted against the nurse. */
+  @IsOptional() @IsBoolean() conditionChanged?: boolean;
+}
+
 class UpdateStatusDto {
   @IsEnum(JourneyStatus) status: JourneyStatus;
 }
@@ -50,6 +62,13 @@ export class JourneysController {
   list(@Query('status') status: string | undefined, @Request() req: { user: { id: string; role: string } }) {
     if (status === 'active') return this.journeysService.findActive(req.user);
     return this.journeysService.findActive(req.user);
+  }
+
+  /** Triaged patients with no HIS encounter number yet (reconciliation list). */
+  @Get('unlinked')
+  @RequirePermission('perform_triage')
+  unlinked(@Query('hours') hours?: string) {
+    return this.journeysService.findUnlinked(Number(hours) || 24);
   }
 
   @Get(':id')
@@ -76,5 +95,27 @@ export class JourneysController {
     @Request() req: { user: { id: string; role: string } },
   ) {
     return this.journeysService.updateStatus(id, dto.status, req.user);
+  }
+
+  /** Scan or type the HIS encounter number (department-wide, audit-logged). */
+  @Patch(':id/encounter')
+  @RequirePermission('perform_triage')
+  linkEncounter(
+    @Param('id') id: string,
+    @Body() dto: LinkEncounterDto,
+    @Request() req: { user: { id: string; role: string; full_name?: string; email?: string } },
+  ) {
+    return this.journeysService.linkEncounter(id, dto.encounterNo, req.user);
+  }
+
+  /** Physician agrees with the triage level or re-triages it (reason required if different). */
+  @Post(':id/ctas-review')
+  @RequirePermission('review_ctas')
+  reviewCtas(
+    @Param('id') id: string,
+    @Body() dto: ReviewCtasDto,
+    @Request() req: { user: { id: string; role: string; full_name?: string; email?: string } },
+  ) {
+    return this.journeysService.reviewCtas(id, dto, req.user);
   }
 }

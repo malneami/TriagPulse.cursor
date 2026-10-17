@@ -17,6 +17,7 @@ import RoutingAdmin from './pages/RoutingAdmin';
 import ClinicalAnalytics from './pages/ClinicalAnalytics';
 import AiEvaluationDashboard from './pages/AiEvaluationDashboard';
 import Login from './pages/Login';
+import MyTriage from './pages/MyTriage';
 import { syncClinicalLibrariesFromApi } from '@/lib/clinicalLibrariesSync';
 import { syncRoutingConfigFromApi } from './lib/routingConfigSync';
 
@@ -68,6 +69,7 @@ const AuthenticatedApp = () => {
         <Route path="/visual-triage" element={<Guarded permission="perform_triage"><VisualTriage /></Guarded>} />
         <Route path="/triage" element={<Guarded permission="perform_triage"><Triage /></Guarded>} />
         <Route path="/tracking" element={<Guarded permission="perform_triage"><PatientTracking /></Guarded>} />
+        <Route path="/my-triage" element={<Guarded permission="view_own_feedback"><MyTriage /></Guarded>} />
         <Route path="/admin/libraries" element={<Guarded permission="manage_clinical_libraries"><ClinicalLibrariesAdmin /></Guarded>} />
         <Route path="/admin/routing" element={<Guarded permission="manage_routing"><RoutingAdmin /></Guarded>} />
         <Route path="/admin/analytics" element={<Guarded permission="view_clinical_analytics"><ClinicalAnalytics /></Guarded>} />

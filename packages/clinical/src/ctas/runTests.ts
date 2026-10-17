@@ -18,6 +18,7 @@ import {
 import { CTAS_MODIFIER_LIBRARY } from './modifierLibrary.js';
 import { runComorbidityTests } from './runComorbidityTests.js';
 import { runRoutingTests } from './runRoutingTests.js';
+import { runFeedbackTests } from '../feedback/runFeedbackTests.js';
 import { runSttTests } from '../stt/runSttTests.js';
 import { runFeverValidationSuite } from './ctasFeverValidation.js';
 import { runClarifyingQuestionPipeline } from './questionPipeline.js';
@@ -979,6 +980,7 @@ runSttTests(assert);
 // ── Chronic illness rules, bedside tests, hydration, direction answers ─────
 runComorbidityTests(assert);
 runRoutingTests(assert);
+runFeedbackTests(assert);
 
 console.log(`\nCTAS tests: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

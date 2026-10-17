@@ -47,6 +47,8 @@ model User {
   auditEvents  AuditEvent[]
   libraryPublishes ClinicalLibraryPublish[]
   routingPublishes RoutingConfigPublish[]
+  ctasReviews  CtasReview[]   @relation("CtasReviewer")
+  feedbackAcks TriageFeedback[]
 
   @@map("users")
 }
@@ -112,9 +114,15 @@ model PatientJourney {
   alertAcknowledgedBy String?   @map("alert_acknowledged_by")
   incompleteDataFlags Json?     @map("incomplete_data_flags")
   seenAt              DateTime? @map("seen_at")
+  /// HIS encounter number (scanned from the wristband or registration slip). The only
+  /// link to the hospital record kept here; names and IDs stay in the HIS.
+  encounterNo         String?   @unique @map("encounter_no")
+  encounterLinkedAt   DateTime? @map("encounter_linked_at")
+  encounterLinkedById String?   @map("encounter_linked_by_id")
 
   createdBy     User           @relation("JourneyCreator", fields: [createdById], references: [id])
   triageRecords TriageRecord[]
+  ctasReviews   CtasReview[]
 
   @@index([currentStatus, arrivalTime])
   @@index([createdById])
@@ -257,4 +265,45 @@ model AuditEvent {
   @@index([entityType, entityId])
   @@index([actorId])
   @@map("audit_events")
+}
+
+/// A physician's check of the triage level: agreement at "Seen", or a re-triage.
+/// The reference used for the nurses' private feedback (Stage A, before any HIS link).
+model CtasReview {
+  id             String   @id @default(uuid())
+  journeyId      String   @map("journey_id")
+  triageRecordId String?  @map("triage_record_id")
+  nurseLevel     Int      @map("nurse_level")
+  reviewedLevel  Int      @map("reviewed_level")
+  agreed         Boolean
+  reason         String?
+  /// The patient changed after triage (deteriorated or improved): not counted for or against the nurse.
+  conditionChanged Boolean @default(false) @map("condition_changed")
+  reviewerId     String   @map("reviewer_id")
+  reviewerRole   UserRole @map("reviewer_role")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  journey  PatientJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  reviewer User           @relation("CtasReviewer", fields: [reviewerId], references: [id])
+  feedback TriageFeedback[]
+
+  @@index([journeyId])
+  @@index([triageRecordId])
+  @@map("ctas_reviews")
+}
+
+/// The nurse's response to a reviewed case in "My triage": understood or disputed.
+model TriageFeedback {
+  id        String   @id @default(uuid())
+  reviewId  String   @map("review_id")
+  nurseId   String   @map("nurse_id")
+  action    String
+  comment   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  review CtasReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  nurse  User       @relation(fields: [nurseId], references: [id])
+
+  @@unique([reviewId, nurseId])
+  @@map("triage_feedback")
 }

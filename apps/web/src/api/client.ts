@@ -118,6 +118,9 @@ function mapJourney(j) {
     current_status: statusMap[j.currentStatus] || j.currentStatus,
     current_location: j.currentLocation,
     clinician_final_ctas: j.clinicianFinalCtas,
+    ctas_reviewed_at: j.ctasReviewedAt,
+    encounter_no: j.encounterNo,
+    encounter_linked_at: j.encounterLinkedAt,
     rules_recommended_ctas: j.rulesRecommendedCtas,
     ai_recommended_ctas: j.aiRecommendedCtas,
     wait_mins: j.wait_mins,
@@ -154,6 +157,17 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ status: 'ctas_in_progress' }),
       }).then(mapJourney),
+    /** Attach the HIS encounter number (scanned or typed). */
+    linkEncounter: (id, encounterNo) =>
+      request(`/journeys/${id}/encounter`, { method: 'PATCH', body: JSON.stringify({ encounterNo }) }).then(mapJourney),
+    /** Triaged patients with no encounter number yet. */
+    unlinked: (hours = 24) => request(`/journeys/unlinked?hours=${hours}`).then((list) => list.map(mapJourney)),
+    /** Physician check of the triage level: agree, or a new level with a reason. */
+    reviewCtas: (id, { level, reason, markSeen = false, conditionChanged = false }) =>
+      request(`/journeys/${id}/ctas-review`, {
+        method: 'POST',
+        body: JSON.stringify({ level, reason: reason || undefined, markSeen, conditionChanged }),
+      }).then((r) => ({ journey: mapJourney(r.journey), review: r.review })),
     findByPatientId: async (patientId) => {
       if (!patientId) return null;
       const all = await request('/journeys?status=active');
@@ -195,6 +209,13 @@ export const api = {
     exportValidated: (limit = 200, flaggedOnly = false) =>
       request(`/analytics/export/validated?limit=${limit}&flaggedOnly=${flaggedOnly ? 'true' : 'false'}`),
     evaluation: (days = 30) => request(`/analytics/evaluation?days=${days}`),
+  },
+  feedback: {
+    /** The signed-in nurse's own month. */
+    mine: (month) => request(`/feedback/me${month ? `?month=${month}` : ''}`),
+    respond: (reviewId, action, comment) =>
+      request(`/feedback/${reviewId}/respond`, { method: 'POST', body: JSON.stringify({ action, comment: comment || undefined }) }),
+    department: (month) => request(`/feedback/department${month ? `?month=${month}` : ''}`),
   },
   tracking: {
     board: () => request('/tracking/board').then((list) => list.map(mapJourney)),
