@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
-  FEEDBACK_CLOSE_DAYS, buildCases, learningCases, monthKey, previousMonth, summarise,
+  FEEDBACK_CLOSE_DAYS, buildCases, departmentBreakdown, learningCases, monthKey, previousMonth, summarise,
   type FeedbackRecordRow, type FeedbackReviewRow,
 } from '@triagepulse/clinical';
 import { PrismaService } from '../prisma/prisma.module';
@@ -109,10 +109,17 @@ export class FeedbackService {
     const disputes = c.cases
       .filter((x) => x.response?.action === 'disputed')
       .map(({ response, ...rest }) => ({ ...rest, nurseComment: response?.comment ?? null }));
+    // Physician CTAS 1–2 where triage gave 3–5: listed for case review, without names.
+    const highRisk = c.cases
+      .filter((x) => x.status === 'under_triage' && (x.reviewedLevel ?? 9) <= 2 && (x.nurseLevel ?? 0) >= 3)
+      .map(({ response, ...rest }) => ({ ...rest, nurseResponse: response?.action ?? null }));
     return {
       month,
+      closeDays: this.closeDays(),
       summary: summarise(month, c.cases, c.aiAgree, c.aiCompared),
       previous: summarise(prev, p.cases, p.aiAgree, p.aiCompared),
+      breakdown: departmentBreakdown(c.cases),
+      highRisk,
       disputes,
     };
   }

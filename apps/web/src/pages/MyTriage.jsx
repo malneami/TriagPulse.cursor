@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Lock, MessageSquareWarning, ThumbsUp } from 'lucide-react';
 import { api } from '@/api/client';
 import { ctasFill } from '@/lib/ctasStyle';
+import { monthLabel, shiftMonth } from '@/lib/month';
 
 /**
  * "My triage": the signed-in nurse's own accuracy, private to them.
@@ -11,19 +12,6 @@ import { ctasFill } from '@/lib/ctasStyle';
  * A case is measured once it is closed (7 days by default); accuracy shows from 20 reviewed cases.
  * The nurse answers each disagreement: understood, or disputed with a reason.
  */
-
-const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function shiftMonth(month, delta) {
-  const [y, m] = month.split('-').map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-function monthLabel(month) {
-  const [y, m] = month.split('-').map(Number);
-  return `${MONTHS_AR[m - 1]} ${y} · ${MONTHS_EN[m - 1]} ${y}`;
-}
 
 const ROLE = { physician: 'الطبيب / physician', admin: 'المسؤول / admin', nurse: 'ممرض / nurse' };
 

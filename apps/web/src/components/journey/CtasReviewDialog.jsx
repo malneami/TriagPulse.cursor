@@ -4,6 +4,7 @@ import { api } from '@/api/client';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { CTAS_LEVELS, ctasFill, ctasMeta } from '@/lib/ctasStyle';
 import { ticketCode } from '@/lib/ticket';
+import { REVIEW_REASONS, reasonText } from '@triagepulse/clinical';
 
 /**
  * Physician check of the triage level (Stage A reference for nurse feedback).
@@ -11,13 +12,7 @@ import { ticketCode } from '@/lib/ticket';
  * "Condition changed after triage" keeps a deterioration from counting against the nurse.
  */
 
-const REASONS = [
-  { ar: 'العلامات الحيوية', en: 'Vital signs' },
-  { ar: 'شدة الألم', en: 'Pain' },
-  { ar: 'علامة خطر / القصة', en: 'Red flag / history' },
-  { ar: 'العمر / عامل خطورة', en: 'Age / risk factor' },
-  { ar: 'أقل خطورة مما قُدّر', en: 'Less urgent than rated' },
-];
+const REASONS = REVIEW_REASONS;
 
 export default function CtasReviewDialog({ patient, open, onOpenChange, mode = 'seen', onDone }) {
   const current = patient?.ctas_level ?? null;
@@ -34,7 +29,7 @@ export default function CtasReviewDialog({ patient, open, onOpenChange, mode = '
 
   if (!patient) return null;
   const agreed = level === current;
-  const reason = [...chips, note.trim()].filter(Boolean).join(' — ');
+  const reason = reasonText(chips, note);
   const canSave = level != null && (agreed || reason.length > 0);
 
   const toggleChip = (en) => setChips((c) => (c.includes(en) ? c.filter((x) => x !== en) : [...c, en]));

@@ -16,6 +16,20 @@ export const FEEDBACK_LEARNING_LIMIT = 10;
  * condition_changed: the physician re-triaged because the patient changed after triage.
  * It is shown to the nurse but not counted for or against them.
  */
+/** Quick-pick reasons for a physician re-triage (stored by their English label). */
+export const REVIEW_REASONS: ReadonlyArray<{ en: string; ar: string }> = [
+  { en: 'Vital signs', ar: 'العلامات الحيوية' },
+  { en: 'Pain', ar: 'شدة الألم' },
+  { en: 'Red flag / history', ar: 'علامة خطر / القصة' },
+  { en: 'Age / risk factor', ar: 'العمر / عامل خطورة' },
+  { en: 'Less urgent than rated', ar: 'أقل خطورة مما قُدّر' },
+];
+
+/** Reason text as saved: quick picks joined by ", ", then " — " and the free note. */
+export function reasonText(picks: string[], note?: string | null): string {
+  return [picks.join(', '), String(note || '').trim()].filter(Boolean).join(' — ');
+}
+
 export type CaseStatus = 'agree' | 'under_triage' | 'over_triage' | 'condition_changed' | 'not_reviewed' | 'open';
 
 export interface FeedbackRecordRow {
@@ -201,4 +215,57 @@ export function learningCases(cases: FeedbackCase[], limit = FEEDBACK_LEARNING_L
     .filter((c) => c.status === 'under_triage' || c.status === 'over_triage')
     .sort((a, b) => (a.response ? 1 : 0) - (b.response ? 1 : 0) || b.date.localeCompare(a.date))
     .slice(0, limit);
+}
+
+export interface DepartmentBreakdown {
+  /** matrix[nurseLevel-1][reviewedLevel-1] = closed reviewed cases (condition-changed excluded). */
+  matrix: number[][];
+  /** Physician CTAS 1–2 where the nurse gave 3–5: the under-triage that matters most. */
+  highRiskUnder: number;
+  conditionChanged: number;
+  /** Share of closed cases a physician checked (agree or re-triage). null when nothing is closed. */
+  coveragePct: number | null;
+  /** Re-triage reasons (the quick-pick part before " — "), most common first. */
+  reasons: Array<{ reason: string; count: number }>;
+  responses: { understood: number; disputed: number; pending: number };
+}
+
+/** Department-level breakdown of one month's cases. No nurse or patient identity is used. */
+export function departmentBreakdown(cases: FeedbackCase[]): DepartmentBreakdown {
+  const matrix = Array.from({ length: 5 }, () => [0, 0, 0, 0, 0]);
+  let highRiskUnder = 0;
+  let conditionChanged = 0;
+  let checked = 0;
+  let closed = 0;
+  const reasonCount = new Map<string, number>();
+  const responses = { understood: 0, disputed: 0, pending: 0 };
+  for (const c of cases) {
+    if (c.status === 'open') continue;
+    closed += 1;
+    if (c.status === 'not_reviewed') continue;
+    checked += 1;
+    if (c.status === 'condition_changed') { conditionChanged += 1; continue; }
+    const n = c.nurseLevel;
+    const r = c.reviewedLevel;
+    if (n != null && r != null && n >= 1 && n <= 5 && r >= 1 && r <= 5) matrix[n - 1][r - 1] += 1;
+    if (c.status === 'under_triage' || c.status === 'over_triage') {
+      if (c.status === 'under_triage' && r != null && r <= 2 && n != null && n >= 3) highRiskUnder += 1;
+      const text = String(c.reason || '');
+      const picked = REVIEW_REASONS.map((r) => r.en).filter((en) => text.includes(en));
+      for (const part of picked.length ? picked : ['Other']) {
+        reasonCount.set(part, (reasonCount.get(part) || 0) + 1);
+      }
+      if (c.response?.action === 'understood') responses.understood += 1;
+      else if (c.response?.action === 'disputed') responses.disputed += 1;
+      else responses.pending += 1;
+    }
+  }
+  return {
+    matrix,
+    highRiskUnder,
+    conditionChanged,
+    coveragePct: closed ? Math.round((checked / closed) * 100) : null,
+    reasons: [...reasonCount.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
+    responses,
+  };
 }

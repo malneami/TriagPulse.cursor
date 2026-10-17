@@ -18,6 +18,7 @@ import ClinicalAnalytics from './pages/ClinicalAnalytics';
 import AiEvaluationDashboard from './pages/AiEvaluationDashboard';
 import Login from './pages/Login';
 import MyTriage from './pages/MyTriage';
+import TriageReview from './pages/TriageReview';
 import { syncClinicalLibrariesFromApi } from '@/lib/clinicalLibrariesSync';
 import { syncRoutingConfigFromApi } from './lib/routingConfigSync';
 
@@ -73,6 +74,7 @@ const AuthenticatedApp = () => {
         <Route path="/admin/libraries" element={<Guarded permission="manage_clinical_libraries"><ClinicalLibrariesAdmin /></Guarded>} />
         <Route path="/admin/routing" element={<Guarded permission="manage_routing"><RoutingAdmin /></Guarded>} />
         <Route path="/admin/analytics" element={<Guarded permission="view_clinical_analytics"><ClinicalAnalytics /></Guarded>} />
+        <Route path="/admin/triage-review" element={<Guarded permission="view_clinical_analytics"><TriageReview /></Guarded>} />
         <Route path="/admin/ai-evaluation" element={<Guarded permission="view_clinical_analytics"><AiEvaluationDashboard /></Guarded>} />
       </Route>
       {/* Wall display: full screen, no app chrome, ticket codes only. */}

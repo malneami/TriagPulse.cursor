@@ -243,7 +243,7 @@ check(dispute.status === 201 && dispute.json?.action === 'disputed', 'the nurse 
 const deptNurse = await call('/feedback/department', { token: nurse });
 check(deptNurse.status === 403, 'a nurse cannot open the department feedback view (403)', `got ${deptNurse.status}`);
 const dept = await call('/feedback/department', { token: physician });
-check(dept.status === 200 && dept.json?.summary && !dept.text.includes('nurse@triagepulse') && !dept.text.includes('E2E Test'), 'the department view has totals and no names', `status ${dept.status}`);
+check(dept.status === 200 && dept.json?.summary && dept.json?.breakdown?.matrix?.length === 5 && Array.isArray(dept.json?.highRisk) && !dept.text.includes('nurse@triagepulse') && !dept.text.includes('E2E Test'), 'the department view has totals and no names', `status ${dept.status}`);
 
 const seen = await call(`/journeys/${journeyId}/status`, { token: physician, method: 'PATCH', body: { status: 'seen' } });
 check(seen.status === 200 && seen.json?.seenAt, "a physician can mark a nurse's patient as seen", `status ${seen.status} ${seen.text.slice(0, 200)}`);
