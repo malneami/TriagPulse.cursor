@@ -216,6 +216,13 @@ check(linked.status === 200 && linked.json?.encounterNo === encNo, 'the nurse li
 const other = await call('/journeys', { token: nurse, method: 'POST', body: { patientNameEn: 'E2E Other', age: 30, gender: 'female' } });
 const dupEnc = await call(`/journeys/${other.json.id}/encounter`, { token: nurse, method: 'PATCH', body: { encounterNo: encNo } });
 check(dupEnc.status === 409, 'the same encounter number cannot be linked to a second patient (409)', `got ${dupEnc.status}`);
+const encAtStart = `E2S-${Date.now().toString().slice(-8)}`;
+const started = await call('/journeys', { token: nurse, method: 'POST', body: { patientNameEn: 'E2E Start', age: 25, encounterNo: encAtStart.toLowerCase() } });
+check(started.status === 201 && started.json?.encounterNo === encAtStart && started.json?.encounterLinkedAt, 'a new patient can be started with the encounter number', `status ${started.status} ${started.text.slice(0, 200)}`);
+const dupStart = await call('/journeys', { token: nurse, method: 'POST', body: { patientNameEn: 'E2E Dup', encounterNo: encAtStart } });
+check(dupStart.status === 409, 'starting a second patient with the same encounter number is refused (409)', `got ${dupStart.status}`);
+const badStart = await call('/journeys', { token: nurse, method: 'POST', body: { patientNameEn: 'E2E Bad', encounterNo: 'x!' } });
+check(badStart.status === 400, 'a malformed encounter number at start is refused (400)', `got ${badStart.status}`);
 const unlinked2 = await call('/journeys/unlinked?hours=24', { token: nurse });
 check(!unlinked2.json.some((j) => j.id === journeyId), 'a linked patient leaves the "Not linked" list');
 
