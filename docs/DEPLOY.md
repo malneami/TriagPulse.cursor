@@ -1,12 +1,12 @@
 # TriagePulse deploy checklist
 
-## Current frontend (GitHub Pages)
+## Production server (Google Cloud, Dammam)
 
-- **URL:** https://malneami.github.io/TriagPulse.cursor/
-- **How:** push/merge to `main` → workflow `Deploy GitHub Pages`
-- **Limit:** static UI only. Login, triage save, tracking, and voice STT need a hosted API + Postgres.
-
-Set repository secret `VITE_API_URL` to your public API origin (no trailing slash), e.g. `https://triagepulse-api.onrender.com`, then re-run the Pages workflow so the UI is rebuilt against that API.
+- **URL:** https://triage-pulse.com — the whole app (web + API + database) on one server in me-central2.
+- **How:** see [`deploy/gcp/README.md`](../deploy/gcp/README.md). Setup once with `deploy/gcp/setup.sh`;
+  release with `deploy/gcp/deploy.sh` after merging to `main`.
+- **Image:** the root `Dockerfile` (CI job "Production image" builds and smoke-tests it on every PR).
+- The old GitHub Pages copy of the UI is retired (its workflow is disabled).
 
 ---
 

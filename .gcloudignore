@@ -1,0 +1,16 @@
+# Files not uploaded to Cloud Build (gcloud builds submit).
+.git
+.gitignore
+.github
+.devcontainer
+**/node_modules
+**/dist
+.env
+.env.*
+!.env.example
+**/*.log
+coverage
+reference
+apps/web/public/ocr
+deploy/gcp
+docs

@@ -1,0 +1,58 @@
+# TriagePulse server — Google Cloud, Dammam (me-central2)
+
+One small server runs the whole app at **https://triage-pulse.com**:
+
+| Part | What | Where the data lives |
+|---|---|---|
+| `caddy` | HTTPS (automatic Let's Encrypt certificates), `www` → apex redirect | — |
+| `app` | TriagePulse image: API + web app on one port, migrations on start | — |
+| `db` | Postgres 16 | Server disk in Dammam; daily snapshots kept 14 days in me-central2 |
+
+Secrets are in Secret Manager (stored only in me-central2) and are read by the server at
+start. They are never in the repository, in metadata, or printed by the scripts.
+
+## First setup (once)
+
+1. Google Cloud: create a project and link billing (owner does this in the console).
+2. `gcloud auth login` (owner).
+3. Create everything:
+   ```bash
+   PROJECT=<project-id> ADMIN_EMAIL=<owner email> ADMIN_NAME="Dr Name" bash deploy/gcp/setup.sh
+   ```
+   It prints the server's IP address.
+4. DNS at Namecheap (Advanced DNS): remove the parking records, then
+   `A  @  -> <IP>` and `CNAME  www  -> triage-pulse.com.`
+5. Release: `PROJECT=<project-id> bash deploy/gcp/deploy.sh`
+6. First sign-in: the owner opens Secret Manager → `tp-admin-password` → view the value,
+   signs in with `ADMIN_EMAIL`, and must set a new password. Then add staff under
+   Menu → Staff.
+
+## Speech keys (optional)
+
+Add a version to `tp-speechmatics-key` (and/or `tp-openai-key`) in Secret Manager, then
+make the server re-read secrets:
+```bash
+gcloud compute instances add-metadata triagepulse --zone=me-central2-a --metadata=tp-rev=$(date +%s)
+```
+Empty keys = voice capture is off; the rest of the app works.
+
+## Releases
+
+Merge to `main`, then `PROJECT=<project-id> bash deploy/gcp/deploy.sh`. The server pulls the
+new image within ~20 seconds; downtime is a few seconds while the app restarts.
+
+## Checking the server (no SSH needed)
+
+```bash
+gcloud compute instances get-guest-attributes triagepulse --zone=me-central2-a   # last deploy result
+gcloud logging read 'logName:"gcplogs-docker-driver"' --limit=50 --freshness=1h   # app/db/caddy logs
+```
+
+## Restore from a snapshot
+
+Compute Engine → Snapshots → pick a `triagepulse` snapshot → Create disk → stop the VM,
+swap the boot disk, start. The database is inside the disk (Docker volume `triagepulse_pgdata`).
+
+## Before real patient data
+
+Test patients only until the PDPL decision on identifiers is made and HMG approves hosting.

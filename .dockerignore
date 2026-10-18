@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+.git
+.github
+.devcontainer
+.env
+.env.*
+!.env.example
+**/*.log
+coverage
+reference
+apps/web/public/ocr
+deploy/gcp
+docs
