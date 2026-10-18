@@ -55,6 +55,8 @@ import QuickComplaints from '@/components/triage/QuickComplaints';
 import ChiefComplaintConfirm from '@/components/triage/ChiefComplaintConfirm';
 import { deriveAssessment, nextPrompt } from '@/lib/triageAssessment';
 import { buildTriageDocument } from '@/lib/triageDocument';
+import { buildTriageSummary } from '@/lib/triageSummary';
+import { ticketCode } from '@/lib/ticket';
 import { deriveCase, casePayload, caseSummaryLines } from '@/lib/caseModel';
 import { ComplaintChips, HistoryChips } from '@/components/triage/flow/CaseChips';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1068,6 +1070,19 @@ export default function Triage() {
       });
       setSavedRecord({
         at: now,
+        summary: buildTriageSummary({
+          ...documentInput,
+          finalLevel: nurseValidation?.nurseLevel,
+          direction: finalDirection,
+          overridden: !nurseValidation?.agreed,
+          overrideReason: nurseValidation?.overrideReason,
+          completedAt: now,
+          caseModel: cc,
+          whyGroups,
+          outstandingLabels: outstanding,
+          ticket: activeJourney?.ticket_no != null ? ticketCode(activeJourney.ticket_no) : null,
+          encounterNo: activeJourney?.encounter_no || pendingEncounter || null,
+        }),
         document: buildTriageDocument({
           ...documentInput,
           finalLevel: nurseValidation?.nurseLevel,
@@ -1260,6 +1275,30 @@ export default function Triage() {
     `الشكوى المحددة للمستوى · Set by: ${cc.primary.label_ar} · ${cc.primary.label_en}${cc.chosenByNurse ? ' (اختيار الممرض · nurse choice)' : ''}`,
     `الشكاوى · Complaints: ${cc.complaints.map((c) => `${c.label_en}${c.level ? ` (CTAS ${c.level})` : ''}`).join('، ')}`,
   ] : [];
+  // The same reasons, grouped for the "Why" panel and the case summary.
+  const whyGroups = shownLevel == null ? [] : [
+    {
+      key: 'level', ar: 'ما حدّد المستوى', en: 'What set the level',
+      items: [
+        liveResult?.primary_determinant_ar && { ar: liveResult.primary_determinant_ar, en: liveResult.primary_determinant_en || '' },
+        ...comorb.applied.map((r) => ({ ar: `${r.label_ar} + ${r.trigger_ar} ← CTAS ≤ ${r.floor}`, en: `High-risk history: ${r.label_en} + ${r.trigger_en} [${r.id}]` })),
+        cc.complaints.length >= 2 && cc.primary && {
+          ar: `الشكوى المحددة: ${cc.primary.label_ar}${cc.chosenByNurse ? ' (اختيار الممرض)' : ''}`,
+          en: `Set by complaint: ${cc.primary.label_en}${cc.chosenByNurse ? ' (nurse choice)' : ''}`,
+        },
+        modifierEvaluation?.explanation?.changed && { ar: modifierEvaluation.explanation.ar, en: modifierEvaluation.explanation.en || '' },
+      ].filter(Boolean),
+    },
+    {
+      key: 'complaints', ar: 'الشكاوى', en: 'Complaints',
+      chips: cc.complaints.length >= 2 ? cc.complaints.map((c) => ({ ar: c.label_ar || c.text || c.label_en, level: c.level || null })) : [],
+    },
+    { key: 'modifiers', ar: 'المعدِّلات', en: 'Modifiers', chips: (liveResult?.modifiers || []).map((m) => ({ ar: m.label_ar || m.label_en })) },
+    { key: 'findings', ar: 'نتائج إيجابية', en: 'Positive findings', chips: findings.slice(0, 10).map((f) => ({ ar: f })) },
+    { key: 'direction', ar: 'التوجيه', en: 'Direction', items: directionReason ? [{ ar: directionReason, en: '' }] : [] },
+    { key: 'missing', ar: 'ناقص', en: 'Missing', tone: 'warn', chips: outstanding.map((o) => ({ ar: o })) },
+  ].filter((g) => g.items?.length || g.chips?.length);
+
   const why = [
     ...ruleWhy,
     ...complaintWhy,
@@ -1622,6 +1661,7 @@ export default function Triage() {
       {done ? (
         <CompletedScreen
           document={savedRecord.document}
+          summary={savedRecord.summary}
           onNewPatient={startNewPatient}
           nextPatient={nextPatient}
           onOpenNext={() => nextPatient && handleSwitchPatient(nextPatient.patient_id)}
@@ -1687,7 +1727,8 @@ export default function Triage() {
       )}
 
       {/* CTAS and direction stay in view for the whole session, with the only actions */}
-      <DecisionBar
+      {/* After saving, the case summary shows the decision; the bar would only repeat it. */}
+      {!done && <DecisionBar
         ctas={ctasBox}
         direction={directionBox}
         critical={critical}
@@ -1697,8 +1738,9 @@ export default function Triage() {
         saving={saving}
         done={done}
         why={why}
+        whyGroups={whyGroups}
         showResult={!heroVisible}
-      />
+      />}
     </div>
   );
 }

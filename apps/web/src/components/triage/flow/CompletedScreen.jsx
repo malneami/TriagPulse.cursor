@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { CheckCircle2, ClipboardCopy, FileText, Plus, Printer, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { ctasFill } from '@/lib/ctasStyle';
+import CaseSummary from './CaseSummary';
 
 /** After saving: one confirmation, then the next actions. The record is shown on request. */
-export default function CompletedScreen({ level, direction, document, onNewPatient, nextPatient, onOpenNext }) {
+export default function CompletedScreen({ level, direction, document, summary, onNewPatient, nextPatient, onOpenNext }) {
   const [showRecord, setShowRecord] = useState(false);
 
   const copy = async () => {
@@ -17,23 +18,25 @@ export default function CompletedScreen({ level, direction, document, onNewPatie
     }
   };
   const print = () => {
-    setShowRecord(true);
+    if (!summary) setShowRecord(true);
     setTimeout(() => window.print(), 50);
   };
 
   return (
     <section aria-labelledby="done-title" className="flex flex-col gap-4">
-      <div className="tp-card px-5 py-8 flex flex-col items-center text-center gap-3">
-        <CheckCircle2 className="w-14 h-14 text-ink" aria-hidden="true" />
-        <h2 id="done-title" className="text-2xl font-semibold text-ink">تم إكمال الفرز بنجاح</h2>
-        <p className="text-lg text-graphite">Triage Successfully Completed</p>
-        <div className="flex flex-wrap justify-center items-center gap-3 mt-1">
-          {level && (
-            <span className="px-3 py-1 rounded-lg text-lg font-bold" style={ctasFill(level)}>CTAS {level}</span>
-          )}
-          {direction && <span className="text-lg font-semibold text-ink">{direction.destination_ar} · {direction.destination_en}</span>}
+      <div className="tp-card px-5 py-3 flex items-center gap-3">
+        <CheckCircle2 className="w-8 h-8 text-ink shrink-0" aria-hidden="true" />
+        <div className="flex flex-col">
+          <h2 id="done-title" className="m-0 text-xl font-semibold text-ink">تم إكمال الفرز وحفظه</h2>
+          <p className="m-0 text-sm text-graphite">Triage completed and saved</p>
         </div>
+        {!summary && level && (
+          <span className="ms-auto px-3 py-1 rounded-lg text-lg font-bold" style={ctasFill(level)}>CTAS {level}</span>
+        )}
+        {!summary && direction && <span className="text-lg font-semibold text-ink">{direction.destination_ar} · {direction.destination_en}</span>}
       </div>
+
+      {summary && <CaseSummary summary={summary} printable />}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <button
@@ -49,7 +52,7 @@ export default function CompletedScreen({ level, direction, document, onNewPatie
           aria-expanded={showRecord}
           className="min-h-[60px] rounded-xl border-2 border-ink text-ink text-lg font-semibold flex items-center justify-center gap-2"
         >
-          <FileText className="w-5 h-5" aria-hidden="true" /> عرض السجل · View record
+          <FileText className="w-5 h-5" aria-hidden="true" /> {summary ? 'نص السجل · Text record' : 'عرض السجل · View record'}
         </button>
         <div className="grid grid-cols-2 gap-2">
           <button type="button" onClick={print} className="min-h-[60px] rounded-xl border border-mist text-ink font-semibold flex items-center justify-center gap-2">
@@ -73,7 +76,7 @@ export default function CompletedScreen({ level, direction, document, onNewPatie
       )}
 
       {showRecord && (
-        <pre dir="ltr" className="print-area bg-white rounded-2xl border border-mist px-5 py-4 text-sm leading-relaxed text-ink whitespace-pre-wrap font-sans text-start">
+        <pre dir="ltr" className={`${summary ? '' : 'print-area '}bg-white rounded-2xl border border-mist px-5 py-4 text-sm leading-relaxed text-ink whitespace-pre-wrap font-sans text-start`}>
           {document}
         </pre>
       )}
