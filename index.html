@@ -1,15 +1,189 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="manifest" href="/manifest.json" />
-    <title>TriagePulse | Emergency Triage System</title>
-    <script type="module" crossorigin src="/TriagPulse.cursor/assets/index-WghcvO78.js"></script>
-    <link rel="stylesheet" crossorigin href="/TriagPulse.cursor/assets/index-Cn-aTI7B.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TriagePulse — فرز طوارئ أذكى · Smarter ED triage</title>
+<meta name="description" content="TriagePulse: AI-assisted CTAS triage decision support for emergency departments — visual triage, bilingual voice capture, live CTAS and a private feedback loop for triage nurses. Pilot in development.">
+<meta property="og:title" content="TriagePulse — Smarter ED triage">
+<meta property="og:description" content="AI-assisted CTAS triage decision support for emergency departments. Pilot in development.">
+<meta property="og:url" content="https://triage-pulse.com/">
+<meta name="theme-color" content="#14202B">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Crect width='56' height='56' rx='12' fill='%2314202B'/%3E%3Cpath d='M6 30 H18 L23 16 L31 42 L36 26 L40 30 H50' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14202B; --ink-deep: #0F1A24; --graphite: #4B5765; --paper: #EEF2F5; --mist: #DCE2E8; --white: #FFFFFF;
+    --ctas1: #1D4ED8; --ctas2: #D3242C; --ctas3: #F2C94C; --ctas4: #1F7A4D; --ctas5: #FFFFFF;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: 'Readex Pro', system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--ink); background: var(--paper); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  .en { display: block; color: var(--graphite); font-size: .92em; font-weight: 400; direction: ltr; text-align: right; }
+  header { background: var(--white); border-bottom: 1px solid var(--mist); }
+  .bar { height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .mark { display: inline-flex; align-items: center; gap: 10px; direction: ltr; font-weight: 600; font-size: 22px; letter-spacing: -.01em; text-decoration: none; }
+  .mark svg { width: 36px; height: 26px; }
+  .pill { font-size: 13px; border: 1px solid var(--mist); border-radius: 999px; padding: 6px 12px; color: var(--graphite); background: var(--paper); white-space: nowrap; }
+  .hero { background: var(--ink); color: var(--white); padding: 72px 0 64px; position: relative; overflow: hidden; }
+  .hero .wrap { display: grid; gap: 40px; grid-template-columns: 1.2fr 1fr; align-items: center; }
+  .hero h1 { margin: 0 0 12px; font-size: clamp(32px, 5vw, 52px); line-height: 1.15; font-weight: 700; }
+  .hero h1 .en { color: rgba(255,255,255,.72); font-size: .5em; margin-top: 10px; font-weight: 400; line-height: 1.35; }
+  .hero p { margin: 0; font-size: 18px; color: rgba(255,255,255,.88); max-width: 34em; }
+  .hero p .en { color: rgba(255,255,255,.66); font-size: 15px; margin-top: 6px; }
+  .levels { display: flex; gap: 6px; margin-top: 28px; direction: ltr; justify-content: flex-end; }
+  .levels span { width: 44px; height: 8px; border-radius: 8px; }
+  .card-demo { background: var(--white); color: var(--ink); border-radius: 22px; padding: 22px; box-shadow: 0 30px 60px -30px rgba(0,0,0,.6); }
+  .demo-row { display: flex; align-items: stretch; border-radius: 16px; overflow: hidden; border: 1px solid var(--mist); }
+  .demo-level { background: var(--ctas2); color: #fff; width: 110px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 14px; }
+  .demo-level small { font-size: 12px; opacity: .85; }
+  .demo-level b { font-size: 46px; line-height: 1; }
+  .demo-text { padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+  .demo-text b { font-size: 20px; }
+  .demo-text span { color: var(--graphite); font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  .chip { background: var(--paper); border-radius: 10px; padding: 5px 10px; font-size: 13px; }
+  .vitals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px; direction: ltr; }
+  .vitals div { background: var(--paper); border-radius: 10px; padding: 8px; text-align: center; }
+  .vitals small { display: block; font-size: 11px; color: var(--graphite); }
+  .vitals b { font-size: 17px; }
+  section { padding: 64px 0; }
+  h2 { margin: 0 0 8px; font-size: 30px; line-height: 1.25; }
+  h2 .en { font-size: 16px; margin-top: 4px; }
+  .lead { margin: 0 0 32px; color: var(--graphite); max-width: 46em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .feature { background: var(--white); border: 1px solid var(--mist); border-radius: 20px; padding: 22px; }
+  .feature .ico { width: 44px; height: 44px; border-radius: 12px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+  .feature .ico svg { width: 22px; height: 22px; }
+  .feature h3 { margin: 0 0 6px; font-size: 19px; }
+  .feature h3 .en { font-size: 14px; }
+  .feature p { margin: 0; color: var(--graphite); font-size: 15px; }
+  .steps { counter-reset: s; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; list-style: none; padding: 0; margin: 0; }
+  .steps li { background: var(--white); border-radius: 20px; padding: 22px; border: 1px solid var(--mist); position: relative; }
+  .steps li::before { counter-increment: s; content: counter(s); position: absolute; top: 18px; left: 18px; width: 30px; height: 30px; border-radius: 50%; background: var(--paper); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; }
+  .steps h3 { margin: 0 0 6px; font-size: 18px; padding-left: 40px; }
+  .steps p { margin: 0; color: var(--graphite); font-size: 15px; }
+  .notice { background: var(--white); border: 2px solid var(--ink); border-radius: 20px; padding: 22px 24px; display: grid; gap: 6px; }
+  .notice b { font-size: 18px; }
+  .notice p { margin: 0; color: var(--graphite); }
+  footer { background: var(--white); border-top: 1px solid var(--mist); padding: 28px 0; font-size: 14px; color: var(--graphite); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; }
+  @media (max-width: 860px) {
+    .hero .wrap { grid-template-columns: 1fr; }
+    .hero { padding: 48px 0; }
+    section { padding: 48px 0; }
+  }
+  @media (max-width: 420px) {
+    .vitals { grid-template-columns: repeat(2, 1fr); }
+    .pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <a class="mark" href="/" aria-label="TriagePulse">
+      <svg viewBox="0 0 56 40" aria-hidden="true"><path d="M2 22 H16 L21 8 L29 34 L34 18 L38 22 H54" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      TriagePulse
+    </a>
+    <span class="pill">تجربة قيد التطوير · Pilot in development</span>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <h1>فرز أدق وأسرع في الطوارئ
+        <span class="en">Faster, more consistent emergency triage</span>
+      </h1>
+      <p>نظام دعم قرار لفرز الطوارئ وفق مقياس CTAS: يلتقط الممرض البيانات بالصوت بالعربية والإنجليزية، ويقترح النظام المستوى والتوجيه مع سبب واضح، ويبقى القرار النهائي للممرض.
+        <span class="en">CTAS triage decision support: the nurse speaks in Arabic or English, the system suggests the level and direction with a clear reason, and the nurse makes the final call.</span>
+      </p>
+      <div class="levels" aria-label="CTAS 1–5">
+        <span style="background:var(--ctas1)"></span><span style="background:var(--ctas2)"></span><span style="background:var(--ctas3)"></span><span style="background:var(--ctas4)"></span><span style="background:var(--ctas5)"></span>
+      </div>
+    </div>
+    <div class="card-demo" aria-label="مثال توضيحي · Illustrative example">
+      <div class="demo-row">
+        <div class="demo-level"><small>CTAS</small><b>2</b></div>
+        <div class="demo-text">
+          <b>طارئ · Emergent</b>
+          <span>منطقة الإنعاش · Resuscitation area — خلال ١٥ دقيقة · within 15 min</span>
+        </div>
+      </div>
+      <div class="vitals">
+        <div><small>HR</small><b>112</b></div><div><small>BP</small><b>150/90</b></div><div><small>SpO₂</small><b>95</b></div><div><small>Pain</small><b>7/10</b></div>
+      </div>
+      <div class="chips">
+        <span class="chip">ألم صدري · Chest pain</span><span class="chip">سكري · Diabetes</span><span class="chip">إشعاع الألم · Radiating pain</span>
+      </div>
+      <p style="margin:12px 0 0;font-size:12px;color:var(--graphite)">مثال توضيحي ببيانات وهمية · Illustrative example, made-up data</p>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>ماذا يقدّم TriagePulse<span class="en">What TriagePulse does</span></h2>
+    <p class="lead">مصمم لممرض الفرز على الجهاز اللوحي: شاشتان فقط، وكل خطوة بلمسة واحدة.<span class="en">Built for the triage nurse on a tablet: two screens, one tap per step.</span></p>
+    <div class="grid">
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3>الفرز البصري<span class="en">Visual triage at the door</span></h3>
+        <p>خمس علامات حرجة وفحص الأمراض التنفسية، ثم توجيه فوري للمريض.<span class="en">Five critical signs and respiratory screening, then an immediate direction.</span></p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg></div>
+        <h3>التقاط صوتي ثنائي اللغة<span class="en">Bilingual voice capture</span></h3>
+        <p>يملأ العلامات الحيوية والشكوى والتاريخ المرضي من حديث الممرض مباشرة.<span class="en">Fills vitals, complaint and history live from what the nurse says.</span></p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg></div>
+        <h3>مستوى CTAS مع السبب<span class="en">Live CTAS with the reason</span></h3>
+        <p>محرك قواعد مُصدَّر ومُدقَّق، يوضح ما حدّد المستوى وما ينقص من بيانات.<span class="en">A versioned, audited rule engine that shows what set the level and what is missing.</span></p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></svg></div>
+        <h3>تغذية راجعة خاصة للممرض<span class="en">Private feedback for nurses</span></h3>
+        <p>مراجعة الطبيب للمستوى تعود للممرض شهرياً، دون أسماء، لتحسين دقة الفرز.<span class="en">The physician's check returns to each nurse monthly, without names, to improve accuracy.</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <h2>كيف يعمل<span class="en">How it works</span></h2>
+    <p class="lead">من باب الطوارئ إلى قرار موثّق في دقائق.<span class="en">From the ED door to a documented decision in minutes.</span></p>
+    <ol class="steps">
+      <li><h3>الوصول والفرز البصري</h3><p>رقم العملية يُقرأ بالكاميرا من تذكرة الزيارة، ثم الفرز البصري.<span class="en">The Transaction No. is read from the visit ticket, then visual triage.</span></p></li>
+      <li><h3>فرز CTAS بالصوت</h3><p>يتحدث الممرض، ويعرض النظام المستوى والتوجيه والأسئلة الناقصة.<span class="en">The nurse speaks; the level, direction and missing questions appear.</span></p></li>
+      <li><h3>التأكيد والملخص</h3><p>يؤكد الممرض أو يعدّل مع السبب، ويُحفظ ملخص منظّم للحالة.<span class="en">The nurse confirms or overrides with a reason; a structured summary is saved.</span></p></li>
+      <li><h3>المتابعة والتعلّم</h3><p>لوحة تتبع للطبيب، ومراجعة المستوى، ومؤشرات جودة للقسم.<span class="en">A tracking board for physicians, level review and department quality measures.</span></p></li>
+    </ol>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="notice" role="note">
+      <b>دعم قرار فقط — ليس للاستخدام السريري بعد · Decision support only — not yet for clinical use</b>
+      <p>TriagePulse في مرحلة تطوير وتجربة. المستوى النهائي يحدده ممرض الفرز دائماً. لا تُجمع أي بيانات مرضى عبر هذا الموقع.</p>
+      <p dir="ltr" style="text-align:right">TriagePulse is in development and pilot testing. The triage nurse always sets the final level. This website collects no patient data.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="mark" style="font-size:17px"><svg viewBox="0 0 56 40" aria-hidden="true" style="width:26px;height:19px"><path d="M2 22 H16 L21 8 L29 34 L34 18 L38 22 H54" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>TriagePulse</span>
+    <span dir="ltr">© <span id="y">2026</span> TriagePulse · triage-pulse.com</span>
+  </div>
+</footer>
+<script>document.getElementById('y').textContent = new Date().getFullYear();</script>
+</body>
 </html>
