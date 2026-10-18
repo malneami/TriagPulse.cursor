@@ -1,16 +1,17 @@
 #!/bin/bash
-# Release the current commit to the TriagePulse server (Google Cloud, Dammam).
+# Release the current commit to the TriagePulse server (Google Cloud).
 #
 #   PROJECT=triagepulse-123456 bash deploy/gcp/deploy.sh
 #
-# Builds the image in Cloud Build, stores it in Artifact Registry (me-central2), then sets
+# Builds the image in Cloud Build, stores it in Artifact Registry (same region), then sets
 # the server's tp-image metadata. The server notices within ~20 s, pulls and restarts
 # (database migrations run on start). Prints the server's deploy status at the end.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 : "${PROJECT:?Set PROJECT to the Google Cloud project ID}"
-REGION="${REGION:-me-central2}"
+# Doha for now: Dammam (me-central2) opens only with CNTXT billing. Then set REGION=me-central2.
+REGION="${REGION:-me-central1}"
 ZONE="${ZONE:-${REGION}-a}"
 TAG="${TAG:-$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/triagepulse/app:${TAG}"

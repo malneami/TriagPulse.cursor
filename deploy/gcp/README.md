@@ -1,4 +1,11 @@
-# TriagePulse server — Google Cloud, Dammam (me-central2)
+# TriagePulse server — Google Cloud
+
+> **Current server: Doha (me-central1), project `triagepulse-512022`, IP 34.18.122.113.**
+> Dammam (me-central2) is the target: Google opens it only to accounts billed through
+> CNTXT (Google's Saudi reseller, cloud.cntxt.com) or on invoiced billing. Once the project
+> is on such a billing account, run the scripts with `REGION=me-central2`, restore the
+> database there (`pg_dump` from the Doha server), switch the DNS A record, then delete
+> the Doha server. Until then: **test patients only** (data is outside KSA).
 
 One small server runs the whole app at **https://triage-pulse.com**:
 
@@ -6,9 +13,9 @@ One small server runs the whole app at **https://triage-pulse.com**:
 |---|---|---|
 | `caddy` | HTTPS (automatic Let's Encrypt certificates), `www` → apex redirect | — |
 | `app` | TriagePulse image: API + web app on one port, migrations on start | — |
-| `db` | Postgres 16 | Server disk in Dammam; daily snapshots kept 14 days in me-central2 |
+| `db` | Postgres 16 | Server disk in the region; daily snapshots kept 14 days in the same region |
 
-Secrets are in Secret Manager (stored only in me-central2) and are read by the server at
+Secrets are in Secret Manager (stored only in the server's region) and are read by the server at
 start. They are never in the repository, in metadata, or printed by the scripts.
 
 ## First setup (once)
@@ -32,7 +39,7 @@ start. They are never in the repository, in metadata, or printed by the scripts.
 Add a version to `tp-speechmatics-key` (and/or `tp-openai-key`) in Secret Manager, then
 make the server re-read secrets:
 ```bash
-gcloud compute instances add-metadata triagepulse --zone=me-central2-a --metadata=tp-rev=$(date +%s)
+gcloud compute instances add-metadata triagepulse --zone=me-central1-a --metadata=tp-rev=$(date +%s)
 ```
 Empty keys = voice capture is off; the rest of the app works.
 
@@ -44,7 +51,7 @@ new image within ~20 seconds; downtime is a few seconds while the app restarts.
 ## Checking the server (no SSH needed)
 
 ```bash
-gcloud compute instances get-guest-attributes triagepulse --zone=me-central2-a   # last deploy result
+gcloud compute instances get-guest-attributes triagepulse --zone=me-central1-a   # last deploy result
 gcloud logging read 'logName:"gcplogs-docker-driver"' --limit=50 --freshness=1h   # app/db/caddy logs
 ```
 

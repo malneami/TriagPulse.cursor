@@ -1,13 +1,13 @@
 #!/bin/bash
-# One-time setup of the TriagePulse server in Google Cloud, Dammam (me-central2).
+# One-time setup of the TriagePulse server in Google Cloud (Doha now; Dammam once CNTXT billing is in place).
 # Safe to re-run: existing resources are kept. Needs a signed-in gcloud with Owner/Editor.
 #
 #   PROJECT=triagepulse-123456 ADMIN_EMAIL=you@example.com ADMIN_NAME="Dr Name" \
 #     bash deploy/gcp/setup.sh
 #
 # Creates: Artifact Registry repo, a service account for the server, secrets (kept in
-# me-central2), a static IP, a firewall rule for HTTPS, a daily disk-snapshot schedule
-# (14 days, stored in me-central2) and the VM. Then run deploy/gcp/deploy.sh.
+# the region), a static IP, a firewall rule for HTTPS, a daily disk-snapshot schedule
+# (14 days, stored in the region) and the VM. Then run deploy/gcp/deploy.sh.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -15,7 +15,8 @@ cd "$(dirname "$0")"
 : "${ADMIN_EMAIL:?Set ADMIN_EMAIL for the first admin account}"
 ADMIN_NAME="${ADMIN_NAME:-Administrator}"
 DOMAIN="${DOMAIN:-triage-pulse.com}"
-REGION="${REGION:-me-central2}"
+# Doha for now: Dammam (me-central2) opens only with CNTXT billing. Then set REGION=me-central2.
+REGION="${REGION:-me-central1}"
 ZONE="${ZONE:-${REGION}-a}"
 MACHINE="${MACHINE:-e2-small}"
 VM=triagepulse

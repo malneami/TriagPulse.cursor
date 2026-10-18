@@ -1,4 +1,4 @@
-# TriagePulse on one Google Cloud server (Dammam, me-central2).
+# TriagePulse on one Google Cloud server (Doha now; Dammam once CNTXT billing is in place).
 # Copied to /opt/triagepulse by startup.sh; values come from .env and app.env written there.
 #   db     Postgres 16 — data stays on this server's disk (daily snapshots, 14 days)
 #   app    TriagePulse image from Artifact Registry (API + web app on port 3001, internal only)
