@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { CheckCircle2, ChevronUp, Loader2, PenLine } from 'lucide-react';
+import { CheckCircle2, ChevronUp, Loader2, PenLine, X } from 'lucide-react';
+import { ctasFill } from '@/lib/ctasStyle';
 import ResultBoxes from './ResultBoxes';
 
 /**
@@ -9,7 +10,7 @@ import ResultBoxes from './ResultBoxes';
  * never out of sight and never shown twice.
  */
 export default function DecisionBar({
-  ctas, direction, critical, onConfirm, onChange, blocked = null, saving = false, done = false, why = [],
+  ctas, direction, critical, onConfirm, onChange, blocked = null, saving = false, done = false, why = [], whyGroups = [],
   showResult = true,
 }) {
   const [showWhy, setShowWhy] = useState(false);
@@ -18,19 +19,54 @@ export default function DecisionBar({
       <div className="px-3 pt-2.5 pb-[max(env(safe-area-inset-bottom),0.75rem)] sm:p-3 bg-white/95 backdrop-blur border-t border-mist sm:border sm:rounded-[20px] sm:shadow-[0_12px_32px_-12px_rgba(20,32,43,0.28)] flex flex-col gap-2">
         {showResult && <ResultBoxes ctas={ctas} direction={direction} critical={critical} />}
 
-        {showWhy && why.length > 0 && (
-          <ul className="bg-paper rounded-xl px-4 py-2 list-disc ps-8 m-0 text-sm text-ink flex flex-col gap-1 max-h-40 overflow-y-auto">
-            {why.map((w) => <li key={w}>{w}</li>)}
-          </ul>
+        {showWhy && (whyGroups.length > 0 || why.length > 0) && (
+          <div id="why-panel" className="bg-paper rounded-xl px-4 py-3 max-h-[45vh] overflow-y-auto flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">لماذا هذا المستوى؟ <span className="text-graphite font-normal">· Why this level</span></span>
+              <button type="button" onClick={() => setShowWhy(false)} aria-label="إغلاق / Close" className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-mist">
+                <X className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+            {whyGroups.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {whyGroups.map((g) => (
+                  <section
+                    key={g.key}
+                    className={`rounded-xl bg-white px-3 py-2.5 flex flex-col gap-1.5 ${g.key === 'level' ? 'sm:col-span-2 border-2 border-ink' : g.tone === 'warn' ? 'border border-dashed border-ink' : 'border border-mist'}`}
+                  >
+                    <h4 className="m-0 text-xs font-semibold text-graphite">{g.ar} · {g.en}</h4>
+                    {g.items?.map((it) => (
+                      <p key={it.ar} className={`m-0 ${g.key === 'level' ? 'text-[15px] font-semibold' : 'text-sm'}`}>
+                        {it.ar}{it.en ? <span className="block text-xs font-normal text-graphite" dir="ltr">{it.en}</span> : null}
+                      </p>
+                    ))}
+                    {g.chips?.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {g.chips.map((c) => (
+                          <span key={c.ar} className="inline-flex items-center gap-1 rounded-lg bg-paper px-2 py-1 text-sm">
+                            {c.ar}
+                            {c.level && <span className="rounded px-1 text-xs font-bold" style={ctasFill(c.level)}>{c.level}</span>}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <ul className="list-disc ps-6 m-0 text-sm flex flex-col gap-1">{why.map((w) => <li key={w}>{w}</li>)}</ul>
+            )}
+          </div>
         )}
 
         {!done && (
           <div className="flex items-center gap-2">
-            {why.length > 0 && (
+            {(whyGroups.length > 0 || why.length > 0) && (
               <button
                 type="button"
                 onClick={() => setShowWhy((v) => !v)}
                 aria-expanded={showWhy}
+                aria-controls="why-panel"
                 className="h-12 px-3 rounded-xl bg-paper text-ink text-sm font-medium flex items-center gap-1 shrink-0 hover:bg-mist"
               >
                 لماذا؟ <span className="hidden sm:inline">· Why</span>
