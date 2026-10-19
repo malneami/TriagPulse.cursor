@@ -32,7 +32,14 @@ export class AuthService {
     return this.jwtService.sign({ sub: user.id, email: user.email, role: user.role, sid: sessionId });
   }
 
-  async login(email: string, password: string, userAgent?: string) {
+  async login(rawEmail: string, password: string, userAgent?: string) {
+    // Accounts are always stored lower-cased/trimmed (see UsersService.create and
+    // resetPassword). Without the same normalization here, a new user typing their
+    // e-mail with different capitalization than an admin entered it when creating
+    // the account (very common — "John.Doe@..." vs. the stored "john.doe@...")
+    // simply fails to match and looks like a wrong password: "Invalid credentials"
+    // even though the password is correct.
+    const email = (rawEmail || '').trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
     const now = new Date();
     if (user?.lockedUntil && user.lockedUntil > now) {
