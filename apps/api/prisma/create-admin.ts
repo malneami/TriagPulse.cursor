@@ -46,15 +46,15 @@ async function main() {
   const passwordHash = await bcrypt.hash(password, 12);
 
   if (existing) {
-    await prisma.user.update({ where: { email }, data: { passwordHash, fullName, role } });
+    await prisma.user.update({ where: { email }, data: { passwordHash, fullName, role, mustChangePassword: true, failedLoginCount: 0, lockedUntil: null } });
   } else {
-    await prisma.user.create({ data: { email, fullName, role, passwordHash } });
+    await prisma.user.create({ data: { email, fullName, role, passwordHash, mustChangePassword: true } });
   }
 
   console.log('');
   console.log(`  ${existing ? 'Password reset' : 'User created'}: ${email} (${role})`);
   console.log(`  One-time password: ${password}`);
-  console.log('  Store it in a password manager now. It is not saved anywhere else.');
+  console.log('  It must be changed at first sign-in. It is not saved anywhere else.');
   console.log('');
 }
 

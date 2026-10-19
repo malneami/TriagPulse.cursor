@@ -1,0 +1,57 @@
+# TriagePulse on one Google Cloud server (Doha now; Dammam once CNTXT billing is in place).
+# Copied to /opt/triagepulse by startup.sh; values come from .env and app.env written there.
+#   db     Postgres 16 — data stays on this server's disk (daily snapshots, 14 days)
+#   app    TriagePulse image from Artifact Registry (API + web app on port 3001, internal only)
+#   caddy  HTTPS on 80/443 with automatic certificates; forwards to app
+name: triagepulse
+
+x-logging: &logging
+  driver: gcplogs
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: triagepulse
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: triagepulse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U triagepulse -d triagepulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  app:
+    image: ${IMAGE}
+    restart: always
+    env_file: app.env
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *logging
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    logging: *logging
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
