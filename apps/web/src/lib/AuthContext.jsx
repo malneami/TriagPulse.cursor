@@ -1,7 +1,7 @@
 import { clearAllDrafts } from '@/lib/triageDraft';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { api, setToken, getToken } from '@/api/client';
+import { api, setToken, refreshSession, signOutOnServer } from '@/api/client';
 import { appHref } from '@/lib/appUrl';
 
 const AuthContext = createContext(null);
@@ -30,15 +30,16 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
+  // After a reload the access token is gone (memory only); the session cookie renews it.
   const checkAuth = async () => {
-    if (!getToken()) {
-      setIsLoadingAuth(false);
-      return;
-    }
     try {
-      const me = await api.auth.me();
-      setUser(me);
-      setIsAuthenticated(true);
+      const session = await refreshSession();
+      if (session?.user) {
+        setUser(session.user);
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
     } catch {
       setToken(null);
       setIsAuthenticated(false);
@@ -60,10 +61,10 @@ export const AuthProvider = ({ children }) => {
     // A manual sign-out removes triage drafts from this tab; the idle lock keeps them so
     // the same nurse can sign back in and continue (review H6).
     if (reason !== 'idle') clearAllDrafts();
-    setToken(null);
     setUser(null);
     setIsAuthenticated(false);
-    window.location.href = appHref('/login');
+    // End the session on the server too (H3), then leave; a failed call still signs out here.
+    signOutOnServer().finally(() => { window.location.href = appHref('/login'); });
   }, []);
 
   // ── Idle auto-lock ──────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Activity, BarChart3, ClipboardCheck, Eye, KeyRound, Library, LogOut, Menu, Monitor, ShieldCheck,
+  Activity, BarChart3, ClipboardCheck, Eye, KeyRound, Library, LogOut, Menu, MonitorSmartphone, Monitor, ShieldCheck,
   Signpost, UserCheck, Users, UsersRound, Hourglass,
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
@@ -181,6 +181,16 @@ export default function Layout({ children }) {
                 <DropdownMenuItem onSelect={() => navigate('/account/password')} className="min-h-12 gap-3 rounded-lg text-[15px] cursor-pointer">
                   <KeyRound className="w-5 h-5 shrink-0" aria-hidden="true" />
                   <span>تغيير كلمة المرور <span className="text-graphite text-xs">· Change password</span></span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={async () => {
+                    try { await api.auth.logoutEverywhere(); } catch { /* still sign out here */ }
+                    logout();
+                  }}
+                  className="min-h-12 gap-3 rounded-lg text-[15px] cursor-pointer"
+                >
+                  <MonitorSmartphone className="w-5 h-5 shrink-0" aria-hidden="true" />
+                  <span>الخروج من كل الأجهزة <span className="text-graphite text-xs">· Sign out on all devices</span></span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => logout()} className="min-h-12 gap-3 rounded-lg text-[15px] cursor-pointer">
                   <LogOut className="w-5 h-5 shrink-0" aria-hidden="true" />

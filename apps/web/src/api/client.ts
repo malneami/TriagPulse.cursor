@@ -4,8 +4,20 @@ const API_URL = import.meta.env.DEV
   ? ''
   : (import.meta.env.VITE_API_URL || '');
 
+/**
+ * Sign-in tokens (review H3).
+ * The short access token lives only in this page's memory: never in localStorage, so a
+ * script or a copied browser profile cannot lift a long-lived login. The renewal token is
+ * an HttpOnly cookie the page cannot read; /auth/refresh exchanges it for a new access
+ * token (on page load, and when a request comes back 401).
+ */
+let accessToken: string | null = null;
+
+// Tokens from before H3 were kept in localStorage: remove any leftover copy.
+try { localStorage.removeItem('triagepulse_token'); } catch { /* storage unavailable */ }
+
 export function getToken() {
-  return localStorage.getItem('triagepulse_token');
+  return accessToken;
 }
 
 export function getAuthToken() {
@@ -13,11 +25,63 @@ export function getAuthToken() {
 }
 
 export function setToken(token) {
-  if (token) localStorage.setItem('triagepulse_token', token);
-  else localStorage.removeItem('triagepulse_token');
+  accessToken = token || null;
 }
 
-async function request(path, options = {}) {
+/** Seconds until the access token expires (0 if none or unreadable). */
+function secondsLeft(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return Math.max(0, payload.exp - Date.now() / 1000);
+  } catch {
+    return 0;
+  }
+}
+
+let refreshing = null;
+
+/**
+ * Renew the access token from the session cookie. Concurrent callers share one request.
+ * Resolves to { access_token, user } or null when the session has ended.
+ */
+export function refreshSession() {
+  if (!refreshing) {
+    refreshing = fetch(`${API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-TriagePulse-Refresh': '1' },
+    })
+      .then(async (res) => {
+        if (!res.ok) { setToken(null); return null; }
+        const body = await res.json();
+        setToken(body.access_token);
+        return body;
+      })
+      .catch(() => null)
+      .finally(() => { refreshing = null; });
+  }
+  return refreshing;
+}
+
+/** An access token valid for at least another minute (for the live speech connection). */
+export async function getFreshToken() {
+  if (accessToken && secondsLeft(accessToken) > 60) return accessToken;
+  const renewed = await refreshSession();
+  return renewed?.access_token || null;
+}
+
+/** Ends this device's session on the server (best effort) and forgets the token. */
+export async function signOutOnServer() {
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  setToken(null);
+  try {
+    await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include', headers });
+  } catch { /* offline: the session still ends by itself when idle */ }
+}
+
+const NO_RETRY = ['/auth/login', '/auth/refresh', '/auth/logout'];
+
+async function request(path, options = {}, retried = false) {
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -27,7 +91,7 @@ async function request(path, options = {}) {
 
   let res;
   try {
-    res = await fetch(`${API_URL}/api${path}`, { ...options, headers });
+    res = await fetch(`${API_URL}/api${path}`, { ...options, headers, credentials: 'include' });
   } catch {
     throw new Error(
       import.meta.env.DEV
@@ -35,7 +99,9 @@ async function request(path, options = {}) {
         : 'Cannot reach API server.',
     );
   }
-  if (res.status === 401) {
+  if (res.status === 401 && !NO_RETRY.includes(path)) {
+    // The access token expired (10 min): renew once from the session cookie and retry.
+    if (!retried && await refreshSession()) return request(path, options, true);
     setToken(null);
     window.location.href = appHref('/login');
     throw new Error('Unauthorized');
@@ -133,6 +199,7 @@ export const api = {
     login: (email, password) =>
       request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
     me: () => request('/auth/me'),
+    logoutEverywhere: () => request('/auth/logout-all', { method: 'POST' }),
     changePassword: (currentPassword, newPassword) =>
       request('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   },

@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { Socket } from 'socket.io';
 import { Role, canAccess } from '@triagepulse/clinical';
 import { PrismaService } from '../prisma/prisma.module';
+import { SessionsService } from './sessions.service';
 
 export interface SocketUser {
   id: string;
@@ -23,6 +24,7 @@ export class WsAuthService {
   constructor(
     private jwt: JwtService,
     private prisma: PrismaService,
+    private sessions: SessionsService,
   ) {}
 
   private extractToken(client: Socket): string | null {
@@ -41,7 +43,7 @@ export class WsAuthService {
     const token = this.extractToken(client);
     if (!token) return { refused: 'missing_token' };
 
-    let payload: { sub?: string };
+    let payload: { sub?: string; sid?: string };
     try {
       payload = await this.jwt.verifyAsync(token, { algorithms: ['HS256'] });
     } catch {
@@ -51,6 +53,7 @@ export class WsAuthService {
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.active) return { refused: 'unknown_user' };
+    if (!(await this.sessions.isActive(payload.sid, user.id))) return { refused: 'session_ended' };
     if (user.mustChangePassword) return { refused: 'forbidden' };
     if (!canAccess(user.role as Role, permission)) return { refused: 'forbidden' };
 

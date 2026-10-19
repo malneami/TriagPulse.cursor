@@ -1,5 +1,5 @@
 import { io } from 'socket.io-client';
-import { api, getToken } from '@/api/client';
+import { api, getFreshToken } from '@/api/client';
 import { blobToBase64 } from './voiceCapture';
 
 /**
@@ -31,7 +31,8 @@ export function connectSttSocket(sessionId, handlers = {}) {
     transports: ['websocket', 'polling'],
     upgrade: true,
     path: '/socket.io',
-    auth: { token: getToken() },
+    // Called on every (re)connect, so a long recording reconnects with a fresh token.
+    auth: (cb) => { getFreshToken().then((token) => cb({ token })); },
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 500,

@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
 import { WsAuthService } from './ws-auth.service';
+import { SessionsService } from './sessions.service';
 import { jwtExpiresInFrom, jwtSecretFrom } from './jwt-config';
 
 @Module({
@@ -22,8 +23,8 @@ import { jwtExpiresInFrom, jwtSecretFrom } from './jwt-config';
       }),
     }),
   ],
-  providers: [AuthService, JwtStrategy, RolesGuard, WsAuthService],
+  providers: [AuthService, JwtStrategy, RolesGuard, WsAuthService, SessionsService],
   controllers: [AuthController],
-  exports: [AuthService, JwtModule, RolesGuard, WsAuthService],
+  exports: [AuthService, JwtModule, RolesGuard, WsAuthService, SessionsService],
 })
 export class AuthModule {}

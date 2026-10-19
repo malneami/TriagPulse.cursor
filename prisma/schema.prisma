@@ -54,6 +54,7 @@ model User {
   routingPublishes RoutingConfigPublish[]
   ctasReviews  CtasReview[]   @relation("CtasReviewer")
   feedbackAcks TriageFeedback[]
+  sessions     AuthSession[]
 
   @@map("users")
 }
@@ -311,4 +312,29 @@ model TriageFeedback {
 
   @@unique([reviewId, nurseId])
   @@map("triage_feedback")
+}
+
+/// One signed-in device (review H3). The browser holds an opaque renewal token in an
+/// HttpOnly cookie; only its SHA-256 is stored. Short access tokens carry this id (`sid`)
+/// and are refused as soon as the session is revoked or expired.
+model AuthSession {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  refreshHash     String    @unique @map("refresh_hash")
+  /// The token replaced by the last renewal: reuse after the grace window = stolen cookie.
+  previousHash    String?   @map("previous_hash")
+  rotatedAt       DateTime? @map("rotated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  lastUsedAt      DateTime  @default(now()) @map("last_used_at")
+  /// Hard limit (one shift); renewals never extend it.
+  expiresAt       DateTime  @map("expires_at")
+  revokedAt       DateTime? @map("revoked_at")
+  revokedReason   String?   @map("revoked_reason")
+  userAgent       String?   @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([previousHash])
+  @@map("auth_sessions")
 }

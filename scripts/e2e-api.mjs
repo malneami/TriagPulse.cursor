@@ -320,6 +320,79 @@ check(reset.status === 201 && reset.json?.mustChangePassword === true, 'the admi
 const unlocked = await call(`/users/${newUser.json.id}/unlock`, { token: admin, method: 'POST', body: {} });
 check(unlocked.status === 201, 'the admin can unlock an account', `status ${unlocked.status}`);
 
+// ── Sessions (review H3) ─────────────────────────────────────────────
+/** POST to an auth route with an optional cookie; returns status, body and the new cookie. */
+async function authPost(path, { cookie, token, marker = true, body } = {}) {
+  const res = await fetch(`${API}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(marker ? { 'X-TriagePulse-Refresh': '1' } : {}),
+      ...(cookie ? { Cookie: `tp_refresh=${cookie}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const setCookie = (res.headers.getSetCookie?.() || []).find((c) => c.startsWith('tp_refresh=')) || '';
+  const value = setCookie.match(/^tp_refresh=([^;]*)/)?.[1] || null;
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
+  return { status: res.status, json, setCookie, cookie: value };
+}
+const jwtPayload = (t) => JSON.parse(Buffer.from(t.split('.')[1], 'base64url').toString());
+const sessionEmail = 'physician@triagepulse.local';
+const graceMs = Number(process.env.REFRESH_REUSE_GRACE_SEC || 30) * 1000;
+
+const s1 = await authPost('/auth/login', { marker: false, body: { email: sessionEmail, password: DEMO_PASSWORD } });
+check(s1.status === 201 && !!s1.json?.access_token && !('refreshToken' in (s1.json || {})), 'login returns an access token and no renewal token in the body');
+check(/HttpOnly/i.test(s1.setCookie) && /SameSite=Strict/i.test(s1.setCookie) && /Path=\/api\/auth/i.test(s1.setCookie) && !!s1.cookie,
+  'the renewal token is an HttpOnly, SameSite=Strict cookie limited to /api/auth', s1.setCookie.replace(/=[^;]+/, '=…'));
+const p1 = jwtPayload(s1.json.access_token);
+check(typeof p1.sid === 'string' && p1.exp - p1.iat <= 15 * 60, 'the access token is short-lived and tied to a session', `lifetime ${p1.exp - p1.iat}s`);
+
+const noMarker = await authPost('/auth/refresh', { cookie: s1.cookie, marker: false });
+check(noMarker.status === 401, 'renewal without the app header is refused (401)', `got ${noMarker.status}`);
+const noCookie = await authPost('/auth/refresh', {});
+check(noCookie.status === 401, 'renewal without the cookie is refused (401)', `got ${noCookie.status}`);
+
+const r1 = await authPost('/auth/refresh', { cookie: s1.cookie });
+check(r1.status === 200 && !!r1.json?.access_token && r1.json?.user?.email === sessionEmail, 'the cookie renews the access token', `status ${r1.status}`);
+check(!!r1.cookie && r1.cookie !== s1.cookie, 'each renewal rotates the cookie');
+check(jwtPayload(r1.json.access_token).sid === p1.sid, 'the renewed token belongs to the same session');
+const r2 = await authPost('/auth/refresh', { cookie: r1.cookie });
+check(r2.status === 200 && !!r2.cookie, 'the rotated cookie renews again', `status ${r2.status}`);
+
+// Reusing an old cookie after the grace window = a copied cookie: the whole session ends.
+await new Promise((r) => setTimeout(r, graceMs + 500));
+const reused = await authPost('/auth/refresh', { cookie: r1.cookie });
+check(reused.status === 401, 'an old cookie used again is refused (401)', `got ${reused.status}`);
+const afterReuse = await call('/auth/me', { token: r2.json.access_token });
+check(afterReuse.status === 401, 'a reused cookie ends the session: its current access token stops working', `got ${afterReuse.status}`);
+const afterReuseRenew = await authPost('/auth/refresh', { cookie: r2.cookie });
+check(afterReuseRenew.status === 401, 'a reused cookie ends the session: its current cookie stops working', `got ${afterReuseRenew.status}`);
+
+// Sign-out ends the session on the server, not just in the browser.
+const s2 = await authPost('/auth/login', { marker: false, body: { email: sessionEmail, password: DEMO_PASSWORD } });
+const meBefore = await call('/auth/me', { token: s2.json.access_token });
+check(meBefore.status === 200, 'a new sign-in works');
+const out = await authPost('/auth/logout', { cookie: s2.cookie, token: s2.json.access_token, marker: false });
+check(out.status === 200 && /tp_refresh=;|Max-Age=0|Expires=Thu, 01 Jan 1970/i.test(out.setCookie), 'sign-out succeeds and clears the cookie', out.setCookie.slice(0, 120));
+const meAfterOut = await call('/auth/me', { token: s2.json.access_token });
+check(meAfterOut.status === 401, 'after sign-out a copied access token is refused (401)', `got ${meAfterOut.status}`);
+const renewAfterOut = await authPost('/auth/refresh', { cookie: s2.cookie });
+check(renewAfterOut.status === 401, 'after sign-out the cookie cannot renew (401)', `got ${renewAfterOut.status}`);
+const sockAfterOut = await socketProbe('/tracking', { token: s2.json.access_token, waitFor: ['board_update'] });
+check(sockAfterOut.kind === 'connect_error', 'after sign-out the live board refuses the old token', JSON.stringify(sockAfterOut));
+
+// "Sign out on all devices" ends every session of the user.
+const devA = await authPost('/auth/login', { marker: false, body: { email: sessionEmail, password: DEMO_PASSWORD } });
+const devB = await authPost('/auth/login', { marker: false, body: { email: sessionEmail, password: DEMO_PASSWORD } });
+const all = await call('/auth/logout-all', { token: devA.json.access_token, method: 'POST' });
+check(all.status === 200 && all.json?.sessions >= 2, 'sign out on all devices ends every session', `status ${all.status} ${JSON.stringify(all.json)}`);
+const devBAfter = await call('/auth/me', { token: devB.json.access_token });
+check(devBAfter.status === 401, 'the other device is signed out at once (401)', `got ${devBAfter.status}`);
+
 // ── Security headers and sign-in protection (review H2, H4) ─────────
 const hdr = await fetch(`${BASE}/api/health`);
 check(/default-src 'self'/.test(hdr.headers.get('content-security-policy') || ''), 'content security policy header is set');

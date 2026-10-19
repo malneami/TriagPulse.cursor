@@ -67,6 +67,8 @@ jobs:
       PORT: '3001'
       CORS_ORIGIN: http://localhost:5174
       NODE_ENV: test
+      # Short grace so the copied-cookie check does not wait 30 s (API and checks read it).
+      REFRESH_REUSE_GRACE_SEC: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
