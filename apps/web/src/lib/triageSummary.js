@@ -45,8 +45,6 @@ export function buildTriageSummary(r) {
     direction: r.direction ? { ar: r.direction.destination_ar, en: r.direction.destination_en } : null,
     aiDirection: r.aiDirection ? { ar: r.aiDirection.destination_ar, en: r.aiDirection.destination_en } : null,
     patient: {
-      name: p.patient_name_ar || p.patient_name_en || '',
-      nameEn: p.patient_name_ar && p.patient_name_en ? p.patient_name_en : '',
       age: has(p.age) ? p.age : null,
       sex: p.gender === 'male' ? { ar: 'ذكر', en: 'Male' } : p.gender === 'female' ? { ar: 'أنثى', en: 'Female' } : null,
       ticket: r.ticket || null,

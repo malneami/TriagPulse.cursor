@@ -36,9 +36,6 @@ export default function VisualTriage() {
   const navigate = useNavigate();
   const startRef = useRef(Date.now());
 
-  const [patientNameAr, setPatientNameAr] = useState('');
-  const [patientNameEn, setPatientNameEn] = useState('');
-  const [patientIdNumber, setPatientIdNumber] = useState('');
   const [patientAge, setPatientAge] = useState('');
   const [encounterNo, setEncounterNo] = useState('');
   const [notRegistered, setNotRegistered] = useState(false);
@@ -100,8 +97,6 @@ export default function VisualTriage() {
 
       const created = await api.journeys.create({
         encounterNo: encounterOk ? cleanEncounter(encounterNo) : undefined,
-        patientNameAr: patientNameAr || undefined,
-        patientNameEn: patientNameEn || undefined,
         age: ageInCompletedYears(patientAge),
       });
 
@@ -109,8 +104,6 @@ export default function VisualTriage() {
         sectionA,
         respiratorySymptoms: symptoms,
         monkeypoxRisk: mpoxRisk,
-        patientNameAr: patientNameAr || undefined,
-        patientNameEn: patientNameEn || undefined,
         age: ageInCompletedYears(patientAge),
         vtDurationSec: elapsedSec,
         maskGiven: dest.infectious_protocol || infectiousScore >= 2,
@@ -149,9 +142,6 @@ export default function VisualTriage() {
   };
 
   const resetAll = () => {
-    setPatientNameAr('');
-    setPatientNameEn('');
-    setPatientIdNumber('');
     setPatientAge('');
     setEncounterNo('');
     setNotRegistered(false);
@@ -243,23 +233,15 @@ export default function VisualTriage() {
           </label>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <label className="text-sm text-graphite md:col-span-1">
-            الاسم (عربي)
-            <input className={inputCls} value={patientNameAr} onChange={e => setPatientNameAr(e.target.value)} placeholder="الاسم الكامل" dir="rtl" />
-          </label>
-          <label className="text-sm text-graphite md:col-span-1">
-            Name (English)
-            <input className={inputCls} value={patientNameEn} onChange={e => setPatientNameEn(e.target.value)} placeholder="Full name" dir="ltr" />
-          </label>
-          <label className="text-sm text-graphite">
-            رقم الهوية · ID
-            <input className={inputCls} value={patientIdNumber} onChange={e => setPatientIdNumber(e.target.value)} dir="ltr" inputMode="numeric" />
-          </label>
           <label className="text-sm text-graphite">
             العمر بالسنوات · Age
             <input type="number" min="0" max="120" className={inputCls} value={patientAge} onChange={e => setPatientAge(e.target.value)} dir="ltr" />
           </label>
         </div>
+        <p className="mt-2 text-xs text-graphite">
+          لا يُسجَّل الاسم أو رقم الهوية أو الجوال — رقم العملية يربط المريض بنظام المستشفى
+          <span dir="ltr" className="block text-end">No name, ID or phone is recorded: the Transaction No. links the patient to the HIS.</span>
+        </p>
         {isPediatric && (
           <p className="mt-2 text-sm font-semibold text-ink">طفل: مسار الأطفال مفعّل · Paediatric pathway active</p>
         )}

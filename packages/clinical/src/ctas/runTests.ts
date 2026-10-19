@@ -19,6 +19,7 @@ import { CTAS_MODIFIER_LIBRARY } from './modifierLibrary.js';
 import { runComorbidityTests } from './runComorbidityTests.js';
 import { runRoutingTests } from './runRoutingTests.js';
 import { runFeedbackTests } from '../feedback/runFeedbackTests.js';
+import { runPrivacyTests } from '../privacy/runPrivacyTests.js';
 import { runSttTests } from '../stt/runSttTests.js';
 import { runFeverValidationSuite } from './ctasFeverValidation.js';
 import { runClarifyingQuestionPipeline } from './questionPipeline.js';
@@ -981,6 +982,7 @@ runSttTests(assert);
 runComorbidityTests(assert);
 runRoutingTests(assert);
 runFeedbackTests(assert);
+runPrivacyTests(assert);
 
 console.log(`\nCTAS tests: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

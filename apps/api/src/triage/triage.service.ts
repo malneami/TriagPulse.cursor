@@ -2,7 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Gender, JourneyStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.module';
 import { AuditService } from '../audit/audit.service';
-import { computeLiveCTAS, detectRedFlags, getLibraryVersions, validateTriageReady } from '@triagepulse/clinical';
+import {
+  computeLiveCTAS, detectRedFlags, getLibraryVersions, redactIdentifiers, stripIdentifiers, validateTriageReady,
+} from '@triagepulse/clinical';
 
 /**
  * The triage record comes from the client as loose JSON. Coerce it to the column types
@@ -23,6 +25,14 @@ function toInt(v: unknown): number | undefined {
 }
 function toGender(v: unknown): Gender | undefined {
   return v === 'male' || v === 'female' ? (v as Gender) : undefined;
+}
+/** Free text is stored only after ID/phone numbers and spoken names are removed (PDPL). */
+function safeText(v: unknown): string | undefined {
+  return typeof v === 'string' && v !== '' ? redactIdentifiers(v) : undefined;
+}
+/** JSON blobs are stored without identifier keys and with redacted strings (PDPL). */
+function safeJson<T>(v: T): T | undefined {
+  return v == null ? undefined : stripIdentifiers(v);
 }
 
 @Injectable()
@@ -50,7 +60,8 @@ export class TriageService {
     if (!journey) throw new NotFoundException('Journey not found');
 
     const clinicianName = user.full_name || user.email || user.id;
-    const record = data.triageRecord;
+    // Identifier keys (name, ID, phone, MRN…) are dropped before anything is read from it.
+    const record = stripIdentifiers(data.triageRecord ?? {}) as Record<string, unknown>;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const triageRecord = await tx.triageRecord.create({
@@ -58,15 +69,9 @@ export class TriageService {
           journeyId: data.journeyId,
           createdById: user.id,
           arrivalTime: journey.arrivalTime,
-          patientNameAr: (record.patient_name_ar as string) ?? journey.patientNameAr,
-          patientNameEn: (record.patient_name_en as string) ?? journey.patientNameEn,
-          mrn: record.mrn as string | undefined,
           age: toInt(record.age) ?? journey.age ?? undefined,
           gender: toGender(record.gender) ?? journey.gender ?? undefined,
-          nationality: record.nationality as string | undefined,
-          phone: record.phone as string | undefined,
-          insurance: record.insurance as string | undefined,
-          chiefComplaint: record.chief_complaint as string | undefined,
+          chiefComplaint: safeText(record.chief_complaint),
           hr: toInt(record.hr),
           bpSystolic: toInt(record.bp_systolic),
           bpDiastolic: toInt(record.bp_diastolic),
@@ -75,19 +80,19 @@ export class TriageService {
           temperature: toNum(record.temperature),
           gcs: toInt(record.gcs),
           painScore: toInt(record.pain_score),
-          transcription: record.transcription as string | undefined,
+          transcription: safeText(record.transcription),
           ctasLevel: toInt(record.ctas_level),
           ctasNameAr: record.ctas_name_ar as string | undefined,
           ctasNameEn: record.ctas_name_en as string | undefined,
           maxWaitTime: record.max_wait_time as string | undefined,
-          clinicalSummaryAr: record.clinical_summary_ar as string | undefined,
+          clinicalSummaryAr: safeText(record.clinical_summary_ar),
           redFlags: record.red_flags as object | undefined,
-          disposition: record.disposition as string | undefined,
+          disposition: safeText(record.disposition),
           nurseName: clinicianName,
           aiCtas: toInt(record.ai_ctas),
           nurseCtas: toInt(record.nurse_ctas),
           agreement: record.agreement as boolean | undefined,
-          overrideReason: record.override_reason as string | undefined,
+          overrideReason: safeText(record.override_reason),
           flaggedForReview: (record.flagged_for_review as boolean) ?? false,
           triageDurationMin: toInt(record.triage_duration_min),
           patientId: journey.patientId,
@@ -103,17 +108,17 @@ export class TriageService {
           alertTriggeredAt: record.alert_triggered_at ? new Date(record.alert_triggered_at as string) : undefined,
           alertAcknowledgedAt: record.alert_acknowledged_at ? new Date(record.alert_acknowledged_at as string) : undefined,
           alertResponseSec: toInt(record.alert_response_sec),
-          alertSummary: record.alert_summary as string | undefined,
+          alertSummary: safeText(record.alert_summary),
           aiConfidence: toNum(record.ai_confidence),
-          safetyNote: record.safety_note as string | undefined,
+          safetyNote: safeText(record.safety_note),
           missingFields: record.missing_fields as object | undefined,
           assessmentTrail: typeof record.assessment_trail_json === 'string'
-            ? (() => { try { return JSON.parse(record.assessment_trail_json as string); } catch { return record.assessment_trail_json; } })()
+            ? (() => { try { return safeJson(JSON.parse(record.assessment_trail_json as string)); } catch { return record.assessment_trail_json; } })()
             : (record.assessment_trail_json as object | undefined)
               ?? (record.assessment_trail as object | undefined),
           libraryVersions: (record.library_versions as object | undefined)
             ?? getLibraryVersions(),
-          clinicalSummaryEn: record.clinical_summary_en as string | undefined,
+          clinicalSummaryEn: safeText(record.clinical_summary_en),
           validatedPayload: (record.validated_payload as object | undefined) ?? {
             rules_recommended_ctas: record.rules_recommended_ctas,
             ai_recommended_ctas: record.ai_recommended_ctas,

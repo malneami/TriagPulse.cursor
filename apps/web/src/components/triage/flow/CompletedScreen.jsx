@@ -3,6 +3,7 @@ import { CheckCircle2, ClipboardCopy, FileText, Plus, Printer, Users } from 'luc
 import { toast } from 'sonner';
 import { ctasFill } from '@/lib/ctasStyle';
 import CaseSummary from './CaseSummary';
+import { patientShort } from '@/lib/ticket';
 
 /** After saving: one confirmation, then the next actions. The record is shown on request. */
 export default function CompletedScreen({ level, direction, document, summary, onNewPatient, nextPatient, onOpenNext }) {
@@ -71,7 +72,7 @@ export default function CompletedScreen({ level, direction, document, summary, o
           className="min-h-[52px] rounded-xl border border-mist bg-white text-ink flex items-center justify-center gap-2"
         >
           <Users className="w-5 h-5" aria-hidden="true" />
-          المريض التالي بالانتظار · Next waiting: {nextPatient.patient_name_ar || nextPatient.patient_name_en || nextPatient.patient_id}
+          المريض التالي بالانتظار · Next waiting: <bdi dir="ltr">{patientShort(nextPatient)}</bdi>
         </button>
       )}
 

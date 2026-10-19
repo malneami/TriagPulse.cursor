@@ -46,7 +46,7 @@ function ctasFieldsFromPatientUpdates(updates: Record<string, unknown>) {
 
 function hasLowCtasConfidence(fields: Record<SttFieldKey, SttFieldSlot>): boolean {
   const { updates, fieldConfidence } = mapSttSessionToPatientUpdates(fields);
-  const keys = ['patient_name_ar', 'patient_name_en', 'age', 'chief_complaint', 'pain_score', 'hr', 'bp_systolic', 'spo2', 'rr', 'temperature', 'gcs'];
+  const keys = ['age', 'chief_complaint', 'pain_score', 'hr', 'bp_systolic', 'spo2', 'rr', 'temperature', 'gcs'];
   for (const k of keys) {
     if (updates[k] != null && updates[k] !== '' && (fieldConfidence[k] ?? 1) < 0.75) return true;
   }

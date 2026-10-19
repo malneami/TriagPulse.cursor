@@ -56,7 +56,7 @@ import ChiefComplaintConfirm from '@/components/triage/ChiefComplaintConfirm';
 import { deriveAssessment, nextPrompt } from '@/lib/triageAssessment';
 import { buildTriageDocument } from '@/lib/triageDocument';
 import { buildTriageSummary } from '@/lib/triageSummary';
-import { ticketCode } from '@/lib/ticket';
+import { patientShort, ticketCode } from '@/lib/ticket';
 import { deriveCase, casePayload, caseSummaryLines } from '@/lib/caseModel';
 import { ComplaintChips, HistoryChips } from '@/components/triage/flow/CaseChips';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -65,11 +65,11 @@ const emptyPatient = () => ({
   patient_id: '',
   arrival_time: new Date().toISOString(),
   ctas_started_at: null,
-  patient_name_ar: '', patient_name_en: '', mrn: '',
-  age: '', gender: '', nationality: '', phone: '', insurance: '',
+  // PDPL: no name, ID, phone, MRN, nationality or insurance — the Transaction No. identifies the patient.
+  age: '', gender: '',
   chief_complaint: '', hr: '', bp_systolic: '', bp_diastolic: '',
   spo2: '', rr: '', temperature: '', gcs: '', weight: '',
-  pain_score: null, transcription: '', receipt_image_url: '',
+  pain_score: null, transcription: '',
   onset_duration: '', relevant_history: '', current_medications: '', allergies: '',
   // Case details from the dictation, plus the nurse's corrections.
   case_details: null, primary_complaint: null, dismissed_complaints: [], dismissed_conditions: [],
@@ -199,15 +199,8 @@ export default function Triage() {
       patient_id:       activeJourney.patient_id       || prev.patient_id,
       arrival_time:     activeJourney.arrival_time     || prev.arrival_time,
       ctas_started_at:  activeJourney.ctas_started_at  || prev.ctas_started_at,
-      receipt_image_url: activeJourney.receipt_image_url || prev.receipt_image_url,
-      patient_name_ar: activeJourney.patient_name_ar || prev.patient_name_ar,
-      patient_name_en: activeJourney.patient_name_en || prev.patient_name_en,
-      mrn:             activeJourney.mrn             || prev.mrn,
       age:             activeJourney.age             ? String(activeJourney.age) : prev.age,
       gender:          activeJourney.gender          || prev.gender,
-      nationality:     activeJourney.nationality     || prev.nationality,
-      phone:           activeJourney.phone           || prev.phone,
-      insurance:       activeJourney.insurance       || prev.insurance,
     }));
   }, [activeJourney?.id]);
 
@@ -1053,11 +1046,8 @@ export default function Triage() {
         const ageNum = toNum(patient.age);
         const created = await api.journeys.create({
           encounterNo: pendingEncounter || undefined,
-          patientNameAr: patient.patient_name_ar || undefined,
-          patientNameEn: patient.patient_name_en || undefined,
           age: ageNum != null ? Math.round(ageNum) : undefined,
           gender: ['male', 'female'].includes(patient.gender) ? patient.gender : undefined,
-          phone: patient.phone || undefined,
         });
         journeyId = created.id;
       }
@@ -1085,6 +1075,8 @@ export default function Triage() {
         }),
         document: buildTriageDocument({
           ...documentInput,
+          ticket: activeJourney?.ticket_no != null ? ticketCode(activeJourney.ticket_no) : null,
+          encounterNo: activeJourney?.encounter_no || pendingEncounter || null,
           finalLevel: nurseValidation?.nurseLevel,
           direction: finalDirection,
           overridden: !nurseValidation?.agreed,
@@ -1593,7 +1585,7 @@ export default function Triage() {
       {showNewPatientConfirm && (
         <NewPatientConfirm
           currentPid={urlPid}
-          currentName={patient.patient_name_ar || patient.patient_name_en}
+          currentName={activeJourney ? patientShort(activeJourney) : null}
           onCancel={() => setShowNewPatientConfirm(false)}
           onLeave={() => { if (!urlPid) clearDraft(dKey); }}
         />

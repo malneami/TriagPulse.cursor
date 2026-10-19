@@ -136,10 +136,12 @@ check(foreignField.status === 404, "another user cannot write to the nurse's STT
 const journey = await call('/journeys', {
   token: nurse,
   method: 'POST',
-  body: { patientNameAr: 'اختبار آلي', patientNameEn: 'E2E Test', age: 40 },
+  // An old screen still sending a name and phone: they must not be stored (PDPL).
+  body: { patientNameAr: 'اختبار آلي', patientNameEn: 'E2E Test', phone: '0551234567', age: 40 },
 });
 check(journey.status === 201 && journey.json?.id, 'create journey');
-check(journey.json.patientNameEn === 'E2E Test' && journey.json.age === 40, 'journey keeps the name and age sent');
+check(journey.json.age === 40 && !('patientNameEn' in journey.json) && !('phone' in journey.json) && !journey.text.includes('E2E Test'),
+  'journey keeps the age but stores no name or phone (PDPL)', journey.text.slice(0, 200));
 const journeyId = journey.json.id;
 
 const vt = await call(`/journeys/${journeyId}/visual-triage`, {
@@ -182,6 +184,12 @@ const saved = await call('/triage/save', {
     triageRecord: {
       ctas_level: 4, clinician_final_ctas: 4, chief_complaint: 'Back Pain', missing_fields: '',
       disposition: 'FM_IM | Family Medicine & Internal Medicine',
+      // Identifiers from an old client or dictation: dropped or redacted before storage (PDPL).
+      patient_name_ar: 'محمد', phone: '0551234567', mrn: '1234567',
+      transcription: 'اسمه محمد رقم هويته 1023456789 عنده ألم ظهر',
+      override_reason: 'E2E-PDPL patient Ali, ID 1023456789',
+      clinical_summary_en: 'Back pain. Patient name is Ali Saleh',
+      validated_payload: { patient_name_en: 'Ali Saleh', ctas: 4, nested: { phone: '0551234567', keep: 1 } },
       // Sex not captured and a vital typed as text must not fail the save.
       gender: '', hr: '88',
     },
@@ -283,6 +291,13 @@ if (process.env.EXPECT_WEB === '1') {
 const admin = await login('admin@triagepulse.local');
 const nurseUsers = await call('/users', { token: nurse });
 check(nurseUsers.status === 403, 'a nurse cannot open staff accounts (403)', `got ${nurseUsers.status}`);
+const exported = await call('/analytics/export/validated?limit=50', { token: admin });
+const pdplRow = exported.json?.find?.((r) => String(r.overrideReason || '').startsWith('E2E-PDPL'));
+check(exported.status === 200 && !!pdplRow, 'the saved triage record is in the validated export', `status ${exported.status}`);
+check(!/1023456789|0551234567|محمد|Ali Saleh|patient_name|"phone"|"mrn"/.test(JSON.stringify(pdplRow || {})),
+  'no name, ID or phone survives in the stored record (PDPL)', JSON.stringify(pdplRow || {}).slice(0, 400));
+check(pdplRow?.validatedPayload?.nested?.keep === 1 && pdplRow?.validatedPayload?.ctas === 4, 'clinical values in the stored record are kept');
+
 const staff = await call('/users', { token: admin });
 check(staff.status === 200 && staff.json.some((u) => u.email === 'nurse@triagepulse.local') && !staff.text.includes('passwordHash') && !staff.text.includes('$2'), 'the admin lists staff, with no password data', `status ${staff.status}`);
 const newEmail = `e2e.nurse.${Date.now()}@triagepulse.local`;

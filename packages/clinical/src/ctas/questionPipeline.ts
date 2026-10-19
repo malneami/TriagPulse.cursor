@@ -45,8 +45,6 @@ const PATIENT_FIELD_ALIASES: Record<string, string[]> = {
   pain_score: ['pain_score', 'pain'],
   chief_complaint: ['chief_complaint'],
   age: ['age'],
-  patient_name_ar: ['patient_name_ar', 'name'],
-  patient_name_en: ['patient_name_en', 'name'],
   symptom_chronicity: ['symptom_chronicity'],
   onset_duration: ['onset_duration'],
 };
