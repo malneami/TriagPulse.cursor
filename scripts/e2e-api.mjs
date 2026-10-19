@@ -18,6 +18,11 @@ let passed = 0;
 function check(condition, label, detail = '') {
   if (!condition) {
     console.error(`FAIL  ${label}${detail ? `\n      ${detail}` : ''}`);
+    // On GitHub, also report it as an annotation so it shows on the PR without opening logs.
+    if (process.env.GITHUB_ACTIONS) {
+      const esc = (t) => String(t).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+      console.log(`::error title=E2E check failed::${esc(label)}${detail ? esc(` — ${String(detail).slice(0, 600)}`) : ''}`);
+    }
     process.exit(1);
   }
   passed += 1;
