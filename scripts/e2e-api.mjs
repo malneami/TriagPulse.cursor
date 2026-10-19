@@ -297,11 +297,12 @@ const admin = await login('admin@triagepulse.local');
 const nurseUsers = await call('/users', { token: nurse });
 check(nurseUsers.status === 403, 'a nurse cannot open staff accounts (403)', `got ${nurseUsers.status}`);
 const exported = await call('/analytics/export/validated?limit=50', { token: admin });
-const pdplRow = exported.json?.find?.((r) => String(r.overrideReason || '').startsWith('E2E-PDPL'));
+// The export is { exported_at, count, de_identified, encounters: [...] } with snake_case fields.
+const pdplRow = (exported.json?.encounters || []).find((r) => String(r.override_reason || '').startsWith('E2E-PDPL'));
 check(exported.status === 200 && !!pdplRow, 'the saved triage record is in the validated export', `status ${exported.status}`);
 check(!/1023456789|0551234567|محمد|Ali Saleh|patient_name|"phone"|"mrn"/.test(JSON.stringify(pdplRow || {})),
   'no name, ID or phone survives in the stored record (PDPL)', JSON.stringify(pdplRow || {}).slice(0, 400));
-check(pdplRow?.validatedPayload?.nested?.keep === 1 && pdplRow?.validatedPayload?.ctas === 4, 'clinical values in the stored record are kept');
+check(pdplRow?.validated_payload?.nested?.keep === 1 && pdplRow?.validated_payload?.ctas === 4, 'clinical values in the stored record are kept', JSON.stringify(pdplRow?.validated_payload || {}).slice(0, 200));
 
 const staff = await call('/users', { token: admin });
 check(staff.status === 200 && staff.json.some((u) => u.email === 'nurse@triagepulse.local') && !staff.text.includes('passwordHash') && !staff.text.includes('$2'), 'the admin lists staff, with no password data', `status ${staff.status}`);
