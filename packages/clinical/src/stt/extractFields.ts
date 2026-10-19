@@ -486,19 +486,6 @@ function parseChiefComplaint(rawText: string): { value: string; span: string; co
   return null;
 }
 
-function parseName(text: string): { value: string; span: string; confidence: number } | null {
-  const m = text.match(/(?:patient(?:\s+name)?|name is|اسم(?: المريض)?(?: هو)?)\s*,?\s*([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s'-]{1,60})/i);
-  if (m) {
-    let value = m[1].trim().replace(/^is\s+/i, '');
-    value = value.split(/,|\s+(?:\d|fifty|sixty|seventy|eighty|male|female|ذكر|أنثى|age|عمر)/i)[0].trim();
-    return { value, span: m[0], confidence: 0.84 };
-  }
-  const short = text.match(/\bpatient\s+([A-Za-z][A-Za-z\s'-]{1,40})(?:\s*,|\s+عمر|\s+age|\s+\d)/i);
-  if (short) return { value: short[1].trim(), span: short[0], confidence: 0.8 };
-  const inline = text.match(/^patient\s+([A-Za-z\u0600-\u06FF'-]{2,40})\s*,/i);
-  if (inline) return { value: inline[1].trim(), span: inline[0], confidence: 0.82 };
-  return null;
-}
 
 /** List items after "takes/on …" that are clearly not medicines. */
 const NOT_A_MEDICINE = /^(?:no|not|non|denies|never|nil|none|لا|ليس|ما|بدون)\b|^(?:لا|ما|ليس)\s|allerg|حساسي|history|known|تاريخ|معروف|علاج|مزمن|chronic|regular|examination|arrival|admission|since|for\s+\d|\d+\s*(?:days?|weeks?|months?|years?)|يوم|أسبوع|شهر|سنة|سنوات/i;
@@ -932,7 +919,7 @@ export function extractFieldsFromTranscript(
         source_span: hit.span,
       });
     };
-    apply('name', parseName(chunk));
+    // Names are not captured (PDPL: the Transaction No. identifies the patient).
     apply('age', parseSpokenAge(chunk));
     apply('sex', parseSex(chunk));
     apply('chief_complaint', parseChiefComplaint(chunk));
@@ -1050,11 +1037,6 @@ export function mapSttSessionToPatientUpdates(fields: Record<SttFieldKey, SttFie
     fieldConfidence[key] = confidence;
   };
 
-  const name = fields.name.value as string | null;
-  if (name) {
-    if (/[\u0600-\u06FF]/.test(name)) set('patient_name_ar', name, fields.name.confidence);
-    else set('patient_name_en', name, fields.name.confidence);
-  }
   if (fields.age.value != null) set('age', String(fields.age.value), fields.age.confidence);
   if (fields.sex.value === 'M') set('gender', 'male', fields.sex.confidence);
   if (fields.sex.value === 'F') set('gender', 'female', fields.sex.confidence);
@@ -1141,12 +1123,6 @@ export function mergeLlmExtractIntoFields(
   const cap = (n: number) => Math.min(0.85, Math.max(0, n || 0.75));
   const conf = llm.field_confidence || {};
 
-  if (llm.patient_name_ar) {
-    out.name = mergeFieldSlot(out.name, { value: llm.patient_name_ar, confidence: cap(conf.patient_name_ar ?? 0.8), source_span: 'llm' });
-  }
-  if (llm.patient_name_en) {
-    out.name = mergeFieldSlot(out.name, { value: llm.patient_name_en, confidence: cap(conf.patient_name_en ?? 0.8), source_span: 'llm' });
-  }
   if (llm.age) {
     const spoken = parseSpokenAge(String(llm.age))
       || parseSpokenAge(`age ${llm.age}`)

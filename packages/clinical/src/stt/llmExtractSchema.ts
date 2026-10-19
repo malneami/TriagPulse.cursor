@@ -1,10 +1,9 @@
 /** JSON schema + prompt helpers for OpenAI structured CTAS field extraction. */
 
 import type { CtasFieldKey } from './ctasFieldSchema';
+import { redactIdentifiers } from '../privacy/redact';
 
 export const LLM_CTAS_PATIENT_KEYS = [
-  'patient_name_ar',
-  'patient_name_en',
   'age',
   'chief_complaint',
   'pain_score',
@@ -20,8 +19,6 @@ export const LLM_CTAS_PATIENT_KEYS = [
 export type LlmCtasPatientKey = (typeof LLM_CTAS_PATIENT_KEYS)[number];
 
 export interface LlmCtasExtractResult {
-  patient_name_ar: string | null;
-  patient_name_en: string | null;
   age: string | null;
   chief_complaint: string | null;
   pain_score: number | null;
@@ -40,7 +37,7 @@ export interface LlmCtasExtractResult {
 }
 
 const CONFIDENCE_KEYS = [
-  'patient_name_ar', 'patient_name_en', 'age', 'chief_complaint', 'pain_score',
+  'age', 'chief_complaint', 'pain_score',
   'hr', 'bp_systolic', 'bp_diastolic', 'spo2', 'rr', 'temperature', 'gcs',
 ] as const;
 
@@ -55,8 +52,6 @@ export const LLM_CTAS_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    patient_name_ar: { type: ['string', 'null'] },
-    patient_name_en: { type: ['string', 'null'] },
     age: { type: ['string', 'null'] },
     chief_complaint: { type: ['string', 'null'] },
     pain_score: { type: ['number', 'null'] },
@@ -92,18 +87,21 @@ export const LLM_CTAS_JSON_SCHEMA = {
     },
   },
   required: [
-    'patient_name_ar', 'patient_name_en', 'age', 'chief_complaint', 'pain_score',
+    'age', 'chief_complaint', 'pain_score',
     'hr', 'bp_systolic', 'bp_diastolic', 'spo2', 'rr', 'temperature', 'gcs',
     'field_confidence', 'complaints', 'conditions', 'medications',
   ],
 };
 
 export function buildLlmExtractPrompt(transcript: string, missingFields: CtasFieldKey[]): string {
-  const missingLabels = missingFields.join(', ') || 'none';
+  const missingLabels = missingFields.filter((f) => !/name/.test(String(f))).join(', ') || 'none';
+  // PDPL: ID numbers, phone numbers and spoken names never leave the server.
+  const safeTranscript = redactIdentifiers(transcript);
   return `You are a bilingual ED triage extraction assistant (Arabic + English code-switching).
 
 Extract ONLY explicitly stated clinical facts from this triage dictation transcript.
 Do NOT invent or guess vitals, age, or pain. Use null for any field not clearly spoken.
+Never output a person's name, ID number or phone number; [•••] marks removed identifiers.
 - pain_score: null unless the speaker explicitly states a pain score or "no pain" / "ألم". Never default to 0.
 - age: if stated in months/weeks/days (e.g. "شهرين", "2 months"), return that phrase (e.g. "2 months") — do not convert incorrectly to years.
 
@@ -111,7 +109,7 @@ Missing CTAS fields to prioritize: ${missingLabels}
 
 Transcript:
 """
-${transcript.slice(0, 4000)}
+${safeTranscript.slice(0, 4000)}
 """
 
 Also list the case details, each with "evidence": the exact words copied from the transcript (same language, no translation):
@@ -120,7 +118,7 @@ Also list the case details, each with "evidence": the exact words copied from th
 - medications: regular medicines the patient takes.
 Use empty arrays when nothing was said. Never invent items.
 
-Return JSON with patient_name_ar, patient_name_en, age (string), chief_complaint, pain_score (0-10 or null),
+Return JSON with age (string), chief_complaint, pain_score (0-10 or null),
 hr, bp_systolic, bp_diastolic, spo2, rr, temperature, gcs, complaints, conditions, medications, and field_confidence (0-1 per populated field).`;
 }
 
@@ -144,8 +142,6 @@ export function normalizeLlmExtractResult(raw: unknown): LlmCtasExtractResult {
     return Number.isFinite(n) ? n : null;
   };
   return {
-    patient_name_ar: str(r.patient_name_ar),
-    patient_name_en: str(r.patient_name_en),
     age: str(r.age),
     chief_complaint: str(r.chief_complaint),
     pain_score: num(r.pain_score),

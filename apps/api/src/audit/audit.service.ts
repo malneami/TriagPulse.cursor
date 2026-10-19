@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.module';
-import { createAuditEvent } from '@triagepulse/clinical';
+import { createAuditEvent, stripIdentifiers } from '@triagepulse/clinical';
 
 @Injectable()
 export class AuditService {
@@ -13,7 +13,8 @@ export class AuditService {
     actor: { id: string; full_name?: string; email?: string },
     payload?: Record<string, unknown>,
   ) {
-    const event = createAuditEvent(action, actor, payload);
+    // The audit log never holds patient identifiers (PDPL); staff identity is kept.
+    const event = createAuditEvent(action, actor, payload ? stripIdentifiers(payload) : payload);
     return this.prisma.auditEvent.create({
       data: {
         entityType,

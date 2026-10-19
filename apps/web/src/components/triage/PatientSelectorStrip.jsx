@@ -3,7 +3,7 @@ import { api } from '@/api/client';
 import { ChevronDown, X, Camera, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EncounterDialog } from '@/components/journey/EncounterLink';
-import { ticketCode } from '@/lib/ticket';
+import { patientShort, ticketCode } from '@/lib/ticket';
 
 function waitMins(iso) {
   if (!iso) return null;
@@ -35,9 +35,9 @@ export default function PatientSelectorStrip({ currentPid, onSwitch, journey = n
   const others = patients.filter(p => p.patient_id !== currentPid);
 
   const displayName = (p) => {
-    if (!p) return 'مجهول / Unknown';
-    const name = p.patient_name_ar || p.patient_name_en;
-    return name || 'مجهول / Unknown';
+    // PDPL: ticket code and Transaction No., never a name.
+    if (!p) return '—';
+    return patientShort(p);
   };
 
   const encounter = journey?.encounter_no || (!journey ? pendingEncounter : '');
@@ -64,7 +64,7 @@ export default function PatientSelectorStrip({ currentPid, onSwitch, journey = n
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-graphite text-sm shrink-0">المريض:</span>
           <span className="text-[15px] font-semibold truncate">
-            {currentPid ? `${displayName(current)} · ${currentPid}` : 'غير مرتبط بمريض · No patient linked'}
+            {currentPid ? displayName(current) : 'غير مرتبط بمريض · No patient linked'}
           </span>
           {current?.age && <span className="text-graphite text-sm shrink-0">{current.age} سنة</span>}
           {current?.vt_destination_ar && <span className="text-graphite text-xs shrink-0 hidden sm:block">— {current.vt_destination_ar}</span>}

@@ -64,12 +64,16 @@ export default function CaseSummary({ summary: s, printable = false }) {
       <div className="px-5 py-4 grid gap-5 md:grid-cols-2">
         <Section icon={UserRound} ar="المريض" en="Patient">
           <div className="flex flex-col gap-0.5">
-            <span className="text-[17px] font-semibold">{s.patient.name || 'مريض بلا اسم'}{s.patient.nameEn && <span className="text-graphite font-normal text-sm"> · {s.patient.nameEn}</span>}</span>
+            {/* PDPL: identified by the Transaction No.; the name stays in the HIS. */}
+            <span className="text-[17px] font-semibold">
+              {s.patient.encounterNo
+                ? <>رقم العملية · <span dir="ltr" className="tabular-nums">{s.patient.encounterNo}</span></>
+                : 'غير مربوط برقم العملية · Not linked'}
+            </span>
             <span className="text-sm text-graphite flex flex-wrap gap-x-3">
               {s.patient.age != null && <span>{s.patient.age} سنة · y</span>}
               {sex && <span>{sex}</span>}
               {s.patient.ticket && <span dir="ltr">{s.patient.ticket}</span>}
-              {s.patient.encounterNo && <span>رقم العملية · <span dir="ltr">{s.patient.encounterNo}</span></span>}
             </span>
           </div>
         </Section>

@@ -12,7 +12,8 @@ export function buildTriageDocument(r) {
   const final = CTAS_CONFIG[r.finalLevel] || {};
   const lines = [
     'TriagePulse · CTAS triage record',
-    `Patient: ${p.patient_name_en || p.patient_name_ar || '—'}${r.patientId ? ` (${r.patientId})` : ''}`,
+    // PDPL: the Transaction No. identifies the patient; no name or ID in the note.
+    `Patient: Transaction No. ${r.encounterNo || p.encounter_no || 'not linked'}${r.ticket ? ` · ${r.ticket}` : ''}`,
     `Age/Sex: ${val(p.age, ' y')} / ${p.gender || '—'}    Weight: ${val(p.weight, ' kg')}`,
     `Arrival: ${fmtTime(p.arrival_time)}    Triage completed: ${fmtTime(r.completedAt)}`,
     '',

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { patientShort } from '@/lib/ticket';
 
 function waitMins(iso) {
   if (!iso) return null;
@@ -16,7 +17,7 @@ export default function TriageNextPrompt({ completedPatient, ctasLevel, nextPati
           <h2 className="text-base font-black text-ink">تم تأكيد الفرز — Triage Confirmed</h2>
           {completedPatient && (
             <p className="text-sm text-graphite mt-1">
-              {completedPatient.patient_name_ar || completedPatient.patient_id}
+              <bdi>{patientShort(completedPatient)}</bdi>
               {ctasLevel ? ` — CTAS ${ctasLevel}` : ''}
             </p>
           )}
@@ -26,8 +27,7 @@ export default function TriageNextPrompt({ completedPatient, ctasLevel, nextPati
           <div className="bg-teal-50 border border-teal-200 rounded-xl px-3 py-3 space-y-1">
             <p className="text-xs font-black text-teal-700">المريض التالي في الانتظار / Next waiting:</p>
             <p className="text-sm font-bold text-ink">
-              {nextPatient.patient_name_ar || nextPatient.patient_id}
-              {nextPatient.patient_id && nextPatient.patient_name_ar ? ` — ${nextPatient.patient_id}` : ''}
+              <bdi>{patientShort(nextPatient)}</bdi>
             </p>
             {nextPatient.arrival_time && (
               <p className="text-xs text-graphite">

@@ -66,12 +66,7 @@ export function mapSttSessionToPatientUpdates(fields) {
     fieldConfidence[key] = confidence ?? 0.8;
   };
 
-  const nameSlot = slotValue(fields, 'name');
-  if (nameSlot) {
-    const name = String(nameSlot.value);
-    if (/[\u0600-\u06FF]/.test(name)) set('patient_name_ar', name, nameSlot.confidence);
-    else set('patient_name_en', name, nameSlot.confidence);
-  }
+  // Names are never captured from speech (PDPL).
 
   const ageSlot = slotValue(fields, 'age');
   if (ageSlot) set('age', String(ageSlot.value), ageSlot.confidence);

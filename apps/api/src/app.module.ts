@@ -11,6 +11,7 @@ import { RoutingConfigModule } from './routing-config/routing-config.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { UsersModule } from './users/users.module';
+import { PrivacyModule } from './privacy/privacy.module';
 import { HealthController } from './health.controller';
 import { validateEnv } from './auth/jwt-config';
 
@@ -39,6 +40,7 @@ export const ENV_FILE_PATHS = ['../../.env', '.env'];
     AnalyticsModule,
     FeedbackModule,
     UsersModule,
+    PrivacyModule,
   ],
   controllers: [HealthController],
 })

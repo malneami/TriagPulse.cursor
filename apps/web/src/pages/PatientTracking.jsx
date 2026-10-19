@@ -9,7 +9,7 @@ import CtasReviewDialog from '@/components/journey/CtasReviewDialog';
 import EncounterLink from '@/components/journey/EncounterLink';
 import { api } from '@/api/client';
 import { CTAS_LEVELS, ctasBar, ctasMeta } from '@/lib/ctasStyle';
-import { ticketCode } from '@/lib/ticket';
+import { patientLabel, ticketCode } from '@/lib/ticket';
 
 /** Minutes since arrival (the board's wait clock). */
 export function minutesSince(iso, now = Date.now()) {
@@ -37,9 +37,8 @@ const STATUS_TEXT = {
   complete: 'بانتظار الطبيب',
 };
 
-function patientName(p) {
-  return p.patient_name_ar || p.patient_name_en || 'مريض بلا اسم';
-}
+// PDPL: patients are shown by Transaction No. and ticket code, never by name.
+const patientName = (p) => patientLabel(p);
 
 function ageSex(p) {
   const age = p.age != null ? `${p.age} س` : null;
@@ -66,7 +65,7 @@ function PatientCard({ patient, now, onOpen, onSeen, onReview, physician }) {
       className={`rounded-xl p-3 flex flex-col gap-1.5 ${late ? 'bg-ink text-white' : 'bg-white border border-mist'}`}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-base font-semibold truncate">{patientName(patient)}</span>
+        <span dir="auto" className="text-base font-semibold truncate tabular-nums">{patientName(patient)}</span>
         <span dir="ltr" className={`text-sm font-semibold ${late ? 'text-white' : 'text-graphite'}`}>{ticketCode(patient.ticket_no)}</span>
       </div>
       {(ageSex(patient) || detail) && (
@@ -190,7 +189,6 @@ function NotLinked() {
           {list.map((p) => (
             <li key={p.id} className="flex items-center gap-3 border border-mist rounded-xl px-3 py-2">
               <span dir="ltr" className="font-semibold">{ticketCode(p.ticket_no)}</span>
-              <span className="truncate">{patientName(p)}</span>
               <span className="text-sm text-graphite">{ageSex(p)}</span>
               <span className="text-sm text-graphite">CTAS {p.ctas_level}</span>
               <span className="text-sm text-graphite tabular-nums" dir="ltr">
@@ -231,9 +229,7 @@ export default function PatientTracking() {
     const q = search.trim().toLowerCase();
     return patients.filter((p) =>
       ticketCode(p.ticket_no).toLowerCase().includes(q)
-      || (p.patient_name_ar || '').includes(search.trim())
-      || (p.patient_name_en || '').toLowerCase().includes(q)
-      || (p.mrn || '').toLowerCase().includes(q));
+      || String(p.encounter_no || '').includes(q.replace(/\s+/g, '')));
   }, [patients, search]);
 
   const byLevel = useMemo(() => {
@@ -292,12 +288,12 @@ export default function PatientTracking() {
 
       <div className="flex flex-wrap gap-2 items-center">
         <label className="relative flex-1 min-w-[220px]">
-          <span className="sr-only">بحث بالاسم أو رقم التذكرة أو الملف</span>
+          <span className="sr-only">بحث برقم العملية أو رقم التذكرة</span>
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-graphite" aria-hidden="true" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="بحث بالاسم أو رقم التذكرة أو الملف…"
+            placeholder="بحث برقم العملية أو التذكرة · Transaction No. or ticket…"
             className="w-full h-12 border border-mist rounded-xl pr-10 pl-3 text-[15px] bg-white"
           />
         </label>

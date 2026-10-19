@@ -67,16 +67,10 @@ model PatientJourney {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  mrn              String?
-  idNumber         String?  @map("id_number")
-  patientNameAr    String?  @map("patient_name_ar")
-  patientNameEn    String?  @map("patient_name_en")
-  dob              String?
+  /// PDPL (Oct 2026): no names, national ID, phone, MRN, date of birth, nationality or
+  /// insurance here. The HIS Transaction No. (encounterNo) is the only link to the patient.
   age              Int?
   gender           Gender?
-  nationality      String?
-  phone            String?
-  insurance        String?
   arrivalTime      DateTime @default(now()) @map("arrival_time")
   modeOfArrival    String?  @map("mode_of_arrival")
 
@@ -109,7 +103,6 @@ model PatientJourney {
   chiefComplaint      String?   @map("chief_complaint")
   currentStatus       JourneyStatus @default(visual_triage) @map("current_status")
   currentLocation     String?   @map("current_location")
-  receiptImageUrl     String?   @map("receipt_image_url")
   ctasReviewedAt      DateTime? @map("ctas_reviewed_at")
   clinicianFinalCtas  Int?      @map("clinician_final_ctas")
   rulesRecommendedCtas Int?     @map("rules_recommended_ctas")
@@ -141,14 +134,8 @@ model TriageRecord {
   createdAt DateTime @default(now()) @map("created_at")
 
   arrivalTime       DateTime? @map("arrival_time")
-  patientNameAr     String?   @map("patient_name_ar")
-  patientNameEn     String?   @map("patient_name_en")
-  mrn               String?
   age               Int?
   gender            Gender?
-  nationality       String?
-  phone             String?
-  insurance         String?
   chiefComplaint    String?   @map("chief_complaint")
   hr                Int?
   bpSystolic        Int?      @map("bp_systolic")
@@ -158,8 +145,8 @@ model TriageRecord {
   temperature       Float?
   gcs               Int?
   painScore         Int?      @map("pain_score")
+  /// Redacted (no ID/phone numbers or spoken names); deleted after TRANSCRIPT_RETENTION_DAYS.
   transcription     String?
-  receiptImageUrl   String?   @map("receipt_image_url")
   ctasLevel         Int?      @map("ctas_level")
   ctasNameAr        String?   @map("ctas_name_ar")
   ctasNameEn        String?   @map("ctas_name_en")

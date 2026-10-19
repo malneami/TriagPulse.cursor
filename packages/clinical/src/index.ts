@@ -203,3 +203,5 @@ export {
 } from './routing/routingConfig.js';
 export * from './feedback/nurseFeedback.js';
 export * from './feedback/ticketText.js';
+
+export { redactIdentifiers, stripIdentifiers, findIdentifierKeys, IDENTIFIER_KEYS, REDACTED } from './privacy/redact';

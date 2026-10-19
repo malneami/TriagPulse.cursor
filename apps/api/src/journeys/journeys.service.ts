@@ -14,11 +14,8 @@ export class JourneysService {
 
   async create(
     data: {
-      patientNameAr?: string;
-      patientNameEn?: string;
       age?: number;
       gender?: Gender;
-      phone?: string;
       modeOfArrival?: string;
       encounterNo?: string;
     },
@@ -30,11 +27,8 @@ export class JourneysService {
         ...(encounterNo ? { encounterNo, encounterLinkedAt: new Date(), encounterLinkedById: user.id } : {}),
         patientId: randomUUID(),
         createdById: user.id,
-        patientNameAr: data.patientNameAr,
-        patientNameEn: data.patientNameEn,
         age: data.age,
         gender: data.gender,
-        phone: data.phone,
         modeOfArrival: data.modeOfArrival,
         currentStatus: JourneyStatus.visual_triage,
         currentLocation: 'ARRIVAL',
@@ -77,8 +71,6 @@ export class JourneysService {
       maskGiven?: boolean;
       handHygieneDone?: boolean;
       alertTeamNotified?: boolean;
-      patientNameAr?: string;
-      patientNameEn?: string;
       age?: number;
       gender?: Gender;
       vtDurationSec?: number;
@@ -114,8 +106,6 @@ export class JourneysService {
         vtMaskGiven: data.maskGiven ?? false,
         vtHandHygieneDone: data.handHygieneDone ?? false,
         vtAlertTeamNotified: data.alertTeamNotified ?? false,
-        patientNameAr: data.patientNameAr ?? journey.patientNameAr,
-        patientNameEn: data.patientNameEn ?? journey.patientNameEn,
         age: data.age ?? journey.age,
         gender: data.gender ?? journey.gender,
         currentStatus: destination.bypass_registration ? JourneyStatus.awaiting_ctas : JourneyStatus.awaiting_ctas,
@@ -216,7 +206,7 @@ export class JourneysService {
       where: { encounterNo: null, ctasLevel: { not: null }, arrivalTime: { gte: cutoff } },
       orderBy: { arrivalTime: 'asc' },
       select: {
-        id: true, patientId: true, ticketNo: true, patientNameAr: true, patientNameEn: true, age: true, gender: true,
+        id: true, patientId: true, ticketNo: true, age: true, gender: true,
         arrivalTime: true, ctasLevel: true, ctasCompletedAt: true, currentStatus: true,
       },
     });

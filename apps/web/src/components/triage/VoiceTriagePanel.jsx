@@ -49,19 +49,19 @@ const DEMO_SENTENCES = [
     id: 'ar',
     label: 'عربي فقط / Arabic only',
     dir: 'rtl',
-    text: 'اسم المريض خالد العمر خمسة وعشرين ذكر عنده ألم صدر النبض مئة وعشرة الضغط مئة وأربعين على خمسة وستين الأكسجين تسعة وتسعين',
+    text: 'العمر خمسة وعشرين ذكر عنده ألم صدر النبض مئة وعشرة الضغط مئة وأربعين على خمسة وستين الأكسجين تسعة وتسعين',
   },
   {
     id: 'en',
     label: 'إنجليزي فقط / English only',
     dir: 'ltr',
-    text: 'patient name Sara age twenty five female complaint chest pain HR one ten BP one twenty over sixty five',
+    text: 'age twenty five female complaint chest pain HR one ten BP one twenty over sixty five',
   },
   {
     id: 'mixed',
     label: 'مختلط / Mixed',
     dir: 'rtl',
-    text: 'اسم المريض خالد age twenty five عنده chest pain HR one ten',
+    text: 'العمر age twenty five عنده chest pain HR one ten',
   },
 ];
 
@@ -962,6 +962,10 @@ export default function VoiceTriagePanel({
         <p className="text-xl font-semibold text-ink">بدء التقييم الصوتي</p>
         <p className="text-base text-graphite">Start Voice Assessment</p>
         <p className="text-xs text-graphite mt-1">{modeLabel}</p>
+        <p className="text-xs text-graphite mt-1">
+          لا تذكر اسم المريض أو رقم هويته أو جواله أثناء التسجيل
+          <span dir="ltr" className="block text-end">Do not say the patient's name, ID or phone number while recording.</span>
+        </p>
       </div>
       {notices}
       <button type="button" onClick={() => { setManualFallback(true); setShowText(true); }} className="text-sm text-ink underline min-h-[44px]">

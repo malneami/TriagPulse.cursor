@@ -68,7 +68,7 @@ export function validateTriageReady(patient: Record<string, unknown>) {
 
 export function validateRegistration(form: Record<string, unknown>) {
   const errors: string[] = [];
-  if (!form.patient_name_ar && !form.patient_name_en) errors.push('Patient name is required');
+  // No patient name: the HIS Transaction No. identifies the patient (PDPL).
   const age = toNumber(form.age);
   if (age === null) errors.push('Age is required');
   if (age !== null && (age < 0 || age > 120)) errors.push('Age outside accepted range');

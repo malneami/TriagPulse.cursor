@@ -7,12 +7,13 @@ import { Gender, JourneyStatus } from '@prisma/client';
 import { JourneysService } from './journeys.service';
 import { RolesGuard, RequirePermission } from '../auth/roles.guard';
 
+/**
+ * PDPL: no names, ID or phone. Unknown fields (e.g. an old screen sending a name) are
+ * dropped by the global whitelist validation pipe and never reach the database.
+ */
 class CreateJourneyDto {
-  @IsOptional() @IsString() patientNameAr?: string;
-  @IsOptional() @IsString() patientNameEn?: string;
   @IsOptional() @IsInt() @Min(0) age?: number;
   @IsOptional() @IsEnum(Gender) gender?: Gender;
-  @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() modeOfArrival?: string;
   /** HIS encounter number, scanned or typed when the patient is started. */
   @IsOptional() @IsString() @MaxLength(40) encounterNo?: string;
@@ -25,8 +26,6 @@ class VisualTriageDto {
   @IsOptional() maskGiven?: boolean;
   @IsOptional() handHygieneDone?: boolean;
   @IsOptional() alertTeamNotified?: boolean;
-  @IsOptional() @IsString() patientNameAr?: string;
-  @IsOptional() @IsString() patientNameEn?: string;
   @IsOptional() @IsInt() age?: number;
   @IsOptional() @IsEnum(Gender) gender?: Gender;
   @IsOptional() @IsInt() vtDurationSec?: number;
