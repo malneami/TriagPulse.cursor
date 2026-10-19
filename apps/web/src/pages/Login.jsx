@@ -71,7 +71,10 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      // Accounts are stored lower-cased (see admin "add staff" flow); normalize
+      // here too so "John.Doe@..." and "john.doe@..." are treated the same,
+      // not shown as "Invalid credentials" for an otherwise-correct password.
+      await login(email.trim().toLowerCase(), password);
       toast.success('تم تسجيل الدخول / Logged in');
       navigate('/');
     } catch (err) {
