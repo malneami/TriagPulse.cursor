@@ -47,7 +47,7 @@ Host settings typically:
 |----------|----------|--------|
 | `DATABASE_URL` | Yes | Managed Postgres URL |
 | `JWT_SECRET` | Yes | Long random string (not the example value) |
-| `JWT_EXPIRES_IN` | Optional | Default `8h` |
+| `JWT_EXPIRES_IN` | Optional | Default `10m` (access token; renewed through the session cookie) |
 | `PORT` | Usually set by host | e.g. Render sets `$PORT` |
 | `CORS_ORIGIN` | Yes | Exact Pages URL: `https://malneami.github.io` **or** full site origin if your CORS setup requires path — use the browser origin that loads the SPA (typically `https://malneami.github.io`) |
 | `OPENAI_API_KEY` | Optional | Needed for OpenAI STT / Realtime; leave empty for browser-speech fallback |

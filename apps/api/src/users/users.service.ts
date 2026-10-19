@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.module';
 import { AuditService } from '../audit/audit.service';
 import { passwordProblem } from '../auth/password-policy';
+import { SessionsService } from '../auth/sessions.service';
 
 type Actor = { id: string; role: string; full_name?: string; email?: string };
 
@@ -15,7 +16,7 @@ const PUBLIC = {
 /** Staff accounts, managed by admins. Passwords are never returned or logged. */
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService, private audit: AuditService) {}
+  constructor(private prisma: PrismaService, private audit: AuditService, private sessions: SessionsService) {}
 
   list() {
     return this.prisma.user.findMany({ select: PUBLIC, orderBy: [{ active: 'desc' }, { role: 'asc' }, { fullName: 'asc' }] });
@@ -66,6 +67,8 @@ export class UsersService {
     if (data.role && data.role !== target.role) changes.role = { from: target.role, to: data.role };
     if (data.active !== undefined && data.active !== target.active) changes.active = data.active;
     if (data.fullName !== undefined && data.fullName.trim() !== target.fullName) changes.name = true;
+    // Deactivation signs the person out of every device at once (review H3).
+    if (data.active === false && target.active) changes.sessionsEnded = await this.sessions.revokeAllForUser(id, 'deactivated');
     await this.audit.log('User', id, data.active === false ? 'user_deactivated' : data.active === true && !target.active ? 'user_reactivated' : 'user_updated', actor, changes);
     return user;
   }
@@ -80,7 +83,9 @@ export class UsersService {
       data: { passwordHash: await bcrypt.hash(password, 10), mustChangePassword: true, failedLoginCount: 0, lockedUntil: null },
       select: PUBLIC,
     });
-    await this.audit.log('User', id, 'password_reset', actor, {});
+    // The old password's sign-ins end everywhere; the person signs in with the temporary one.
+    const sessionsEnded = await this.sessions.revokeAllForUser(id, 'password_reset');
+    await this.audit.log('User', id, 'password_reset', actor, { sessionsEnded });
     return user;
   }
 

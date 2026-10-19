@@ -36,8 +36,9 @@ export function jwtSecretFrom(config: ConfigService): string {
   return assertJwtSecret(config.get<string>('JWT_SECRET'));
 }
 
+/** Access tokens are short-lived; the browser renews them through the session cookie (H3). */
 export function jwtExpiresInFrom(config: ConfigService): string {
-  return config.get<string>('JWT_EXPIRES_IN')?.trim() || '8h';
+  return config.get<string>('JWT_EXPIRES_IN')?.trim() || '10m';
 }
 
 /**
