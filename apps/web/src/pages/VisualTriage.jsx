@@ -10,7 +10,7 @@ import DestinationScreen from '@/components/journey/DestinationScreen';
 import JourneyProgress from '@/components/journey/JourneyProgress';
 import { toast } from 'sonner';
 import { ctasFill } from '@/lib/ctasStyle';
-import { EncounterField, cleanEncounter, encounterLooksRight } from '@/components/journey/EncounterLink';
+import { EncounterField, cleanEncounter, cleanPatientNo, encounterLooksRight, suffixFromPatientNo } from '@/components/journey/EncounterLink';
 
 const defaultSectionA = { breathing: null, consciousness: null, bleeding: null, skin: null, mobility: null };
 
@@ -38,6 +38,7 @@ export default function VisualTriage() {
 
   const [patientAge, setPatientAge] = useState('');
   const [encounterNo, setEncounterNo] = useState('');
+  const [mrnSuffix, setMrnSuffix] = useState('');
   const [notRegistered, setNotRegistered] = useState(false);
   const [sectionA, setSectionA] = useState(defaultSectionA);
   const [symptoms, setSymptoms] = useState({});
@@ -97,6 +98,7 @@ export default function VisualTriage() {
 
       const created = await api.journeys.create({
         encounterNo: encounterOk ? cleanEncounter(encounterNo) : undefined,
+        mrnSuffix: suffixFromPatientNo(mrnSuffix) || undefined,
         age: ageInCompletedYears(patientAge),
       });
 
@@ -144,6 +146,7 @@ export default function VisualTriage() {
   const resetAll = () => {
     setPatientAge('');
     setEncounterNo('');
+    setMrnSuffix('');
     setNotRegistered(false);
     setSectionA(defaultSectionA);
     setSymptoms({});
@@ -210,16 +213,35 @@ export default function VisualTriage() {
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="text-sm text-graphite">
             <label htmlFor="vt-encounter" className="font-semibold text-ink">
-              رقم العملية · Transaction No. {!notRegistered && <span aria-hidden="true">*</span>}
+              رقم الزيارة / القسيمة · Visit / voucher number {!notRegistered && <span aria-hidden="true">*</span>}
             </label>
             <EncounterField
               value={encounterNo}
               onChange={setEncounterNo}
+              onMrnSuffix={setMrnSuffix}
               disabled={notRegistered}
               inputClassName={inputCls}
             />
           </div>
-          <label className="flex items-start gap-2 text-sm text-ink md:pt-7">
+          <div className="text-sm text-graphite">
+            <label htmlFor="vt-mrn-suffix" className="font-semibold text-ink">
+              رقم المريض · Patient No. (MRN) <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="vt-mrn-suffix"
+              dir="ltr"
+              inputMode="numeric"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={7}
+              placeholder="1793255"
+              value={mrnSuffix}
+              onChange={(e) => setMrnSuffix(cleanPatientNo(e.target.value))}
+              className={`${inputCls} font-semibold tracking-wide`}
+            />
+            <span className="block mt-1 text-xs">يُحفظ آخر ٣ فقط للتتبع (مثلاً 255) · Only last 3 are kept for tracking</span>
+          </div>
+          <label className="flex items-start gap-2 text-sm text-ink md:col-span-2">
             <input
               type="checkbox"
               checked={notRegistered}
@@ -227,8 +249,8 @@ export default function VisualTriage() {
               className="mt-1 w-4 h-4"
             />
             <span>
-              لم يُسجَّل بعد — يُربط لاحقاً من لوحة التتبع
-              <span className="block text-graphite">Not registered yet — link it later from the tracking board</span>
+              لم يُسجَّل بعد — يُربط رقم الزيارة لاحقاً من لوحة التتبع
+              <span className="block text-graphite">Not registered yet — link the visit number later from the tracking board</span>
             </span>
           </label>
         </div>
@@ -239,8 +261,8 @@ export default function VisualTriage() {
           </label>
         </div>
         <p className="mt-2 text-xs text-graphite">
-          لا يُسجَّل الاسم أو رقم الهوية أو الجوال — رقم العملية يربط المريض بنظام المستشفى
-          <span dir="ltr" className="block text-end">No name, ID or phone is recorded: the Transaction No. links the patient to the HIS.</span>
+          لا يُسجَّل الاسم أو رقم الهوية أو الجوال أو رقم الملف كاملاً — آخر ٣ أرقام للتتبع فقط
+          <span dir="ltr" className="block text-end">No name, ID, phone or full MRN is recorded. Last 3 of the file number is for department matching only.</span>
         </p>
         {isPediatric && (
           <p className="mt-2 text-sm font-semibold text-ink">طفل: مسار الأطفال مفعّل · Paediatric pathway active</p>
@@ -287,7 +309,12 @@ export default function VisualTriage() {
           )}
           {sectionAComplete && !encounterReady && (
             <p className="text-sm font-semibold text-ink mt-1">
-              أدخل رقم العملية أو اختر «لم يُسجَّل بعد» · Enter the Transaction No., or tick “Not registered yet”
+              أدخل رقم الزيارة/القسيمة أو اختر «لم يُسجَّل بعد» · Enter the visit/voucher number, or tick “Not registered yet”
+            </p>
+          )}
+          {sectionAComplete && encounterReady && !suffixFromPatientNo(mrnSuffix) && (
+            <p className="text-sm text-graphite mt-1">
+              التتبع سيظهر Txxx-••• حتى إدخال رقم المريض · Tracking shows Txxx-••• until Patient No. is entered
             </p>
           )}
         </div>

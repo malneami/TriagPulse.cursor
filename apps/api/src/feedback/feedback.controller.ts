@@ -16,11 +16,11 @@ type Req = { user: { id: string; role: string; full_name?: string; email?: strin
 export class FeedbackController {
   constructor(private feedback: FeedbackService) {}
 
-  /** "My triage": the signed-in nurse's own month, never anyone else's. */
+  /** "My triage": the signed-in nurse's own week, never anyone else's. */
   @Get('me')
   @RequirePermission('view_own_feedback')
-  mine(@Request() req: Req, @Query('month') month?: string) {
-    return this.feedback.mine(req.user, month);
+  mine(@Request() req: Req, @Query('week') week?: string) {
+    return this.feedback.mine(req.user, week);
   }
 
   @Post(':reviewId/respond')
@@ -32,7 +32,7 @@ export class FeedbackController {
   /** Department totals and disputed cases, without names. */
   @Get('department')
   @RequirePermission('view_clinical_analytics')
-  department(@Query('month') month?: string) {
-    return this.feedback.department(month);
+  department(@Query('week') week?: string, @Query('month') month?: string) {
+    return this.feedback.department(week, month);
   }
 }

@@ -80,7 +80,7 @@ export { detectRedFlags } from './alerts/redFlagEngine';
 export type { RedFlagResult } from './alerts/redFlagEngine';
 export { validateTriageReady, validateVitals, validateRegistration, getMissingTriageFields, REQUIRED_TRIAGE_FIELDS } from './validation/triageValidation';
 export { createAuditEvent, appendAuditTrail, serializeAuditTrail } from './audit/auditLogger';
-export { waitMins, waitTimeColor, isActiveJourney, ROLES, PERMISSIONS, canAccess } from './utils/shared';
+export { waitMins, waitTimeColor, triageDurationSec, isActiveJourney, ROLES, PERMISSIONS, canAccess } from './utils/shared';
 export type { Role } from './utils/shared';
 export {
   EVALUATION_THRESHOLDS,
@@ -202,6 +202,9 @@ export {
   localMinutes,
 } from './routing/routingConfig.js';
 export * from './feedback/nurseFeedback.js';
+export * from './feedback/journeyOwnership.js';
+export * from './feedback/hisHandoff.js';
+export * from './feedback/outcomeHandoff.js';
 export * from './feedback/ticketText.js';
 
 export { redactIdentifiers, stripIdentifiers, findIdentifierKeys, IDENTIFIER_KEYS, REDACTED } from './privacy/redact';

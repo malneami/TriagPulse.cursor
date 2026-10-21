@@ -138,6 +138,12 @@ function mapJourney(j) {
     visual_triage: 'registration',
     awaiting_ctas: 'ctas_pending',
     ctas_in_progress: 'ctas_in_progress',
+    awaiting_his_link: 'awaiting_his_link',
+    pending_physician_validation: 'pending_physician_validation',
+    validated: 'validated',
+    awaiting_outcome_review: 'awaiting_outcome_review',
+    outcome_reviewed: 'outcome_reviewed',
+    closed: 'closed',
     completed: 'complete',
     seen: 'seen',
   };
@@ -172,13 +178,27 @@ function mapJourney(j) {
     ctas_started_at: j.ctasStartedAt,
     ctas_completed_at: j.ctasCompletedAt,
     ctas_level: j.ctasLevel,
+    nurse_ctas: j.nurseCtas ?? j.ctasLevel,
     chief_complaint: j.chiefComplaint,
+    hr: j.hr,
+    bp_systolic: j.bpSystolic,
+    spo2: j.spo2,
+    rr: j.rr,
+    temperature: j.temperature,
+    gcs: j.gcs,
+    pain_score: j.painScore,
+    triage_duration_sec: j.triage_duration_sec,
     current_status: statusMap[j.currentStatus] || j.currentStatus,
     current_location: j.currentLocation,
     clinician_final_ctas: j.clinicianFinalCtas,
     ctas_reviewed_at: j.ctasReviewedAt,
+    assigned_physician_id: j.assignedPhysicianId,
+    assigned_physician: j.assignedPhysician
+      ? { id: j.assignedPhysician.id, full_name: j.assignedPhysician.fullName, role: j.assignedPhysician.role }
+      : null,
     encounter_no: j.encounterNo,
     encounter_linked_at: j.encounterLinkedAt,
+    mrn_suffix: j.mrnSuffix,
     rules_recommended_ctas: j.rulesRecommendedCtas,
     ai_recommended_ctas: j.aiRecommendedCtas,
     wait_mins: j.wait_mins,
@@ -206,34 +226,35 @@ export const api = {
         journey: mapJourney(r.journey),
         destination: r.destination,
       })),
-    /** Server enum values: visual_triage | awaiting_ctas | ctas_in_progress | completed */
+    /** Server enum values include HIS handoff and outcome-review statuses. */
     setStatus: (id, status) =>
       request(`/journeys/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }).then(mapJourney),
-    /** A physician has seen the patient: they leave the tracking board. */
-    markSeen: (id) =>
-      request(`/journeys/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'seen' }) }).then(mapJourney),
     /** Marks CTAS as started. The server stamps ctas_started_at once, with server time. */
     startCtas: (id) =>
       request(`/journeys/${id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'ctas_in_progress' }),
       }).then(mapJourney),
-    /** Attach the HIS encounter number (scanned or typed). */
-    linkEncounter: (id, encounterNo) =>
-      request(`/journeys/${id}/encounter`, { method: 'PATCH', body: JSON.stringify({ encounterNo }) }).then(mapJourney),
-    /** The patient already linked to this Transaction No., or null. */
+    /** Attach the HIS visit/voucher number and/or last-3 MRN (scanned or typed). */
+    linkEncounter: (id, encounterNoOrBody, mrnSuffix) => {
+      const body = encounterNoOrBody && typeof encounterNoOrBody === 'object'
+        ? encounterNoOrBody
+        : { encounterNo: encounterNoOrBody, mrnSuffix };
+      return request(`/journeys/${id}/encounter`, { method: 'PATCH', body: JSON.stringify(body) }).then(mapJourney);
+    },
+    /** The patient already linked to this visit/voucher number, or null. */
     findByEncounter: (encounterNo) =>
       request(`/journeys/by-encounter/${encodeURIComponent(encounterNo)}`).then(mapJourney).catch((err) => {
         if (/no patient has this/i.test(err?.message || '')) return null;
         throw err;
       }),
-    /** Triaged patients with no encounter number yet. */
+    /** Completed CTAS still waiting for a HIS visit number. */
     unlinked: (hours = 24) => request(`/journeys/unlinked?hours=${hours}`).then((list) => list.map(mapJourney)),
-    /** Physician check of the triage level: agree, or a new level with a reason. */
-    reviewCtas: (id, { level, reason, markSeen = false, conditionChanged = false }) =>
+    /** Physician agrees with the nurse CTAS, or records a different level with a reason. */
+    reviewCtas: (id, { level, reason, conditionChanged = false }) =>
       request(`/journeys/${id}/ctas-review`, {
         method: 'POST',
-        body: JSON.stringify({ level, reason: reason || undefined, markSeen, conditionChanged }),
+        body: JSON.stringify({ level, reason: reason || undefined, conditionChanged }),
       }).then((r) => ({ journey: mapJourney(r.journey), review: r.review })),
     findByPatientId: async (patientId) => {
       if (!patientId) return null;
@@ -287,14 +308,49 @@ export const api = {
     unlock: (id) => request(`/users/${id}/unlock`, { method: 'POST', body: '{}' }),
   },
   feedback: {
-    /** The signed-in nurse's own month. */
-    mine: (month) => request(`/feedback/me${month ? `?month=${month}` : ''}`),
+    /** The signed-in nurse's own Riyadh week (Sunday–Saturday). */
+    mine: (week) => request(`/feedback/me${week ? `?week=${week}` : ''}`),
     respond: (reviewId, action, comment) =>
       request(`/feedback/${reviewId}/respond`, { method: 'POST', body: JSON.stringify({ action, comment: comment || undefined }) }),
-    department: (month) => request(`/feedback/department${month ? `?month=${month}` : ''}`),
+    department: (period) => {
+      if (period && typeof period === 'object') {
+        if (period.month) return request(`/feedback/department?month=${period.month}`);
+        if (period.week) return request(`/feedback/department?week=${period.week}`);
+        return request('/feedback/department');
+      }
+      return request(`/feedback/department${period ? `?week=${period}` : ''}`);
+    },
   },
   tracking: {
     board: () => request('/tracking/board').then((list) => list.map(mapJourney)),
+  },
+  outcomes: {
+    list: ({ status = 'awaiting', q = '' } = {}) => {
+      const p = new URLSearchParams({ status });
+      if (q) p.set('q', q);
+      return request(`/outcomes?${p}`);
+    },
+    awaitingCount: () => request('/outcomes/awaiting-count').then((r) => r.count),
+    physicians: () => request('/outcomes/physicians'),
+    assignPhysician: (journeyId, physicianId) =>
+      request(`/outcomes/${journeyId}/assign`, { method: 'POST', body: JSON.stringify({ physicianId }) }),
+    save: (journeyId, body) =>
+      request(`/outcomes/${journeyId}`, { method: 'PUT', body: JSON.stringify(body) }),
+    close: (journeyId) =>
+      request(`/outcomes/${journeyId}/close`, { method: 'POST', body: '{}' }),
+    exportCsv: async ({ status = 'awaiting', q = '' } = {}) => {
+      const p = new URLSearchParams({ status });
+      if (q) p.set('q', q);
+      const headers = {};
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${API_URL}/api/outcomes/export.csv?${p}`, { credentials: 'include', headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Could not export');
+      }
+      return res.blob();
+    },
   },
   stt: {
     status: () => request('/stt/status'),

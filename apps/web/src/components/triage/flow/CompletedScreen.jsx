@@ -6,7 +6,7 @@ import CaseSummary from './CaseSummary';
 import { patientShort } from '@/lib/ticket';
 
 /** After saving: one confirmation, then the next actions. The record is shown on request. */
-export default function CompletedScreen({ level, direction, document, summary, onNewPatient, nextPatient, onOpenNext }) {
+export default function CompletedScreen({ level, direction, document, summary, onNewPatient, nextPatient, onOpenNext, needsHisLink, onLinkEncounter }) {
   const [showRecord, setShowRecord] = useState(false);
 
   const copy = async () => {
@@ -36,6 +36,24 @@ export default function CompletedScreen({ level, direction, document, summary, o
         )}
         {!summary && direction && <span className="text-lg font-semibold text-ink">{direction.destination_ar} · {direction.destination_en}</span>}
       </div>
+
+      {needsHisLink && (
+        <div className="tp-card px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 border-2 border-ink">
+          <div className="flex flex-col flex-1">
+            <p className="m-0 text-lg font-semibold">مطلوب ربط رقم الزيارة / HIS number required</p>
+            <p className="m-0 text-sm text-graphite">CTAS is saved. Link the visit number so the case can go to the physician board.</p>
+          </div>
+          {onLinkEncounter && (
+            <button
+              type="button"
+              onClick={onLinkEncounter}
+              className="h-12 px-5 rounded-xl bg-ink text-white font-semibold shrink-0"
+            >
+              ربط الزيارة / Link Encounter
+            </button>
+          )}
+        </div>
+      )}
 
       {summary && <CaseSummary summary={summary} printable />}
 

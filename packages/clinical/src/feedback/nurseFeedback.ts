@@ -1,9 +1,12 @@
+import { triageDurationSec } from '../utils/shared.js';
+
 /**
  * Private triage feedback for nurses (Stage A — no HIS link yet).
  *
- * Reference = the physician's check of the triage level (agreement at "Seen", or a
- * re-triage). A case is "closed" once it is older than `closeDays`; only closed cases count,
- * so a level can still be corrected before it is measured. Accuracy is measured per month.
+ * Reference = the physician's validation of the nurse CTAS (agree, or a different level).
+ * A case is "closed" once it is older than `closeDays`; only closed cases count,
+ * so a level can still be corrected before it is measured. Accuracy is measured per
+ * Riyadh calendar week (Sunday–Saturday, UTC+3) once 20 reviewed cases are in.
  *
  * Pure functions: the API passes rows in, nothing here reads a database.
  */
@@ -49,6 +52,9 @@ export interface FeedbackRecordRow {
   gcs: number | null;
   painScore: number | null;
   ticketNo: number | null;
+  mrnSuffix?: string | null;
+  ctasStartedAt?: Date | string | null;
+  ctasCompletedAt?: Date | string | null;
 }
 
 export interface FeedbackReviewRow {
@@ -86,22 +92,31 @@ export interface FeedbackCase {
   reviewId: string | null;
   status: CaseStatus;
   response: { action: string; comment: string | null } | null;
+  triageDurationSec: number | null;
 }
 
-export interface MonthSummary {
-  month: string;
+export interface WeekSummary {
+  week: string;
   cases: number;
   closed: number;
   reviewed: number;
   agree: number;
   underTriage: number;
   overTriage: number;
-  /** null below FEEDBACK_MIN_CASES reviewed cases: too few to mean anything. */
+  /** null below FEEDBACK_MIN_CASES reviewed cases: too few to mean anything. Exact-match = agreement. */
   accuracyPct: number | null;
   aiAgreePct: number | null;
+  /** Share of reviewed cases. Null when nothing has been reviewed. */
+  underPct: number | null;
+  overPct: number | null;
+  /** Mean CTAS start → CTAS complete, in seconds. Null when no timestamps. */
+  meanTriageDurationSec: number | null;
 }
 
 const toDate = (d: Date | string) => (d instanceof Date ? d : new Date(d));
+
+const ymd = (t: Date) =>
+  `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
 
 /** 'YYYY-MM' in Riyadh time (UTC+3, no daylight saving). */
 export function monthKey(d: Date | string): string {
@@ -112,6 +127,65 @@ export function monthKey(d: Date | string): string {
 export function previousMonth(month: string): string {
   const [y, m] = month.split('-').map(Number);
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
+/**
+ * Sunday of the Riyadh week that contains `d`, as YYYY-MM-DD (the Riyadh calendar date).
+ * Weeks run Sunday 00:00 – Saturday 24:00 Arabia Standard Time (UTC+3).
+ */
+export function weekKey(d: Date | string): string {
+  const t = new Date(toDate(d).getTime() + 3 * 3600 * 1000);
+  const sunday = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - t.getUTCDay()));
+  return ymd(sunday);
+}
+
+export function previousWeek(week: string): string {
+  return shiftWeek(week, -1);
+}
+
+export function shiftWeek(week: string, delta: number): string {
+  const [y, m, d] = week.split('-').map(Number);
+  return ymd(new Date(Date.UTC(y, m - 1, d + delta * 7)));
+}
+
+/** Instant bounds of a Sunday–Saturday Riyadh week, as UTC. */
+export function weekRange(week: string): { start: Date; end: Date } {
+  const [y, m, d] = week.split('-').map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d) - 3 * 3600 * 1000);
+  return { start, end: new Date(start.getTime() + 7 * 86400000) };
+}
+
+const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Instant bounds of a Riyadh calendar month, as UTC. */
+export function monthRange(month: string): { start: Date; end: Date } {
+  const [y, m] = month.split('-').map(Number);
+  const start = new Date(Date.UTC(y, m - 1, 1) - 3 * 3600 * 1000);
+  const end = new Date(Date.UTC(y, m, 1) - 3 * 3600 * 1000);
+  return { start, end };
+}
+
+export function monthLabel(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  return `${MONTHS_AR[m - 1]} ${y} · ${MONTHS_EN[m - 1]} ${y}`;
+}
+
+export function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+export function weekLabel(week: string): string {
+  const [y, m, d] = week.split('-').map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d));
+  const end = new Date(Date.UTC(y, m - 1, d + 6));
+  const same = start.getUTCMonth() === end.getUTCMonth() && start.getUTCFullYear() === end.getUTCFullYear();
+  if (same) {
+    return `${start.getUTCDate()}–${end.getUTCDate()} ${MONTHS_AR[start.getUTCMonth()]} ${start.getUTCFullYear()} · ${start.getUTCDate()}–${end.getUTCDate()} ${MONTHS_EN[start.getUTCMonth()]} ${start.getUTCFullYear()}`;
+  }
+  return `${start.getUTCDate()} ${MONTHS_AR[start.getUTCMonth()]} ${start.getUTCFullYear()} – ${end.getUTCDate()} ${MONTHS_AR[end.getUTCMonth()]} ${end.getUTCFullYear()} · ${start.getUTCDate()} ${MONTHS_EN[start.getUTCMonth()]} ${start.getUTCFullYear()} – ${end.getUTCDate()} ${MONTHS_EN[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
 }
 
 export function ageBand(age: number | null): string | null {
@@ -153,24 +227,32 @@ function latestReviewFor(r: FeedbackRecordRow, reviews: FeedbackReviewRow[]): Fe
   return mine.sort((a, b) => toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime())[0];
 }
 
-export function summarise(month: string, cases: FeedbackCase[], aiAgree: number, aiCompared: number): MonthSummary {
+export function summarise(week: string, cases: FeedbackCase[], aiAgree: number, aiCompared: number): WeekSummary {
   const closed = cases.filter((c) => c.status !== 'open');
   const reviewed = closed.filter((c) => c.status === 'agree' || c.status === 'under_triage' || c.status === 'over_triage');
   const agree = reviewed.filter((c) => c.status === 'agree').length;
+  const underTriage = reviewed.filter((c) => c.status === 'under_triage').length;
+  const overTriage = reviewed.filter((c) => c.status === 'over_triage').length;
+  const durations = cases.map((c) => c.triageDurationSec).filter((n): n is number => n != null && n >= 0);
   return {
-    month,
+    week,
     cases: cases.length,
     closed: closed.length,
     reviewed: reviewed.length,
     agree,
-    underTriage: reviewed.filter((c) => c.status === 'under_triage').length,
-    overTriage: reviewed.filter((c) => c.status === 'over_triage').length,
+    underTriage,
+    overTriage,
     accuracyPct: reviewed.length >= FEEDBACK_MIN_CASES ? Math.round((agree / reviewed.length) * 100) : null,
     aiAgreePct: aiCompared >= FEEDBACK_MIN_CASES ? Math.round((aiAgree / aiCompared) * 100) : null,
+    underPct: reviewed.length ? Math.round((underTriage / reviewed.length) * 100) : null,
+    overPct: reviewed.length ? Math.round((overTriage / reviewed.length) * 100) : null,
+    meanTriageDurationSec: durations.length
+      ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+      : null,
   };
 }
 
-/** Cases for one month. */
+/** Cases for one week. */
 export function buildCases(
   records: FeedbackRecordRow[],
   reviews: FeedbackReviewRow[],
@@ -190,7 +272,9 @@ export function buildCases(
     const ack = review ? acks.find((a) => a.reviewId === review.id) : undefined;
     return {
       id: r.id,
-      ticket: r.ticketNo != null ? `T${String(r.ticketNo % 1000).padStart(3, '0')}` : null,
+      ticket: r.ticketNo != null
+        ? `T${String(r.ticketNo % 1000).padStart(3, '0')}-${/^\d{3}$/.test(String(r.mrnSuffix || '')) ? r.mrnSuffix : '•••'}`
+        : null,
       date: toDate(r.createdAt).toISOString().slice(0, 10),
       ageBand: ageBand(r.age),
       sex: r.gender,
@@ -204,6 +288,7 @@ export function buildCases(
       reviewId: review?.id ?? null,
       status,
       response: ack ? { action: ack.action, comment: ack.comment } : null,
+      triageDurationSec: triageDurationSec(r.ctasStartedAt, r.ctasCompletedAt),
     };
   });
   return { cases, aiAgree, aiCompared };
@@ -230,7 +315,7 @@ export interface DepartmentBreakdown {
   responses: { understood: number; disputed: number; pending: number };
 }
 
-/** Department-level breakdown of one month's cases. No nurse or patient identity is used. */
+/** Department-level breakdown of one week's cases. No nurse or patient identity is used. */
 export function departmentBreakdown(cases: FeedbackCase[]): DepartmentBreakdown {
   const matrix = Array.from({ length: 5 }, () => [0, 0, 0, 0, 0]);
   let highRiskUnder = 0;

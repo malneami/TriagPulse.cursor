@@ -16,7 +16,12 @@ function waitMins(iso) {
  * With no patient yet, a number that already belongs to a patient opens that patient;
  * otherwise it is kept and saved with the new patient when the triage is saved.
  */
-export default function PatientSelectorStrip({ currentPid, onSwitch, journey = null, pendingEncounter = '', onPendingEncounter, onLinked }) {
+export default function PatientSelectorStrip({
+  currentPid, onSwitch, journey = null,
+  pendingEncounter = '', onPendingEncounter,
+  pendingMrnSuffix = '', onPendingMrnSuffix,
+  onLinked,
+}) {
   const [open, setOpen] = useState(false);
   const [patients, setPatients] = useState([]);
   const [encOpen, setEncOpen] = useState(false);
@@ -41,15 +46,22 @@ export default function PatientSelectorStrip({ currentPid, onSwitch, journey = n
   };
 
   const encounter = journey?.encounter_no || (!journey ? pendingEncounter : '');
-  const pickEncounter = async (no) => {
-    const found = await api.journeys.findByEncounter(no);
-    if (found && found.patient_id !== currentPid) {
-      toast.success(`${ticketCode(found.ticket_no)} — فتح المريض المرتبط بهذا الرقم / Opening the patient with this Transaction No.`);
-      onSwitch(found.patient_id);
+  const pickEncounter = async (picked) => {
+    const no = typeof picked === 'string' ? picked : picked?.encounterNo;
+    const suffix = typeof picked === 'object' ? picked?.mrnSuffix : undefined;
+    if (suffix) onPendingMrnSuffix?.(suffix);
+    if (no) {
+      const found = await api.journeys.findByEncounter(no);
+      if (found && found.patient_id !== currentPid) {
+        toast.success(`${ticketCode(found)} — فتح المريض المرتبط بهذا الرقم / Opening the patient with this visit number`);
+        onSwitch(found.patient_id);
+        return;
+      }
+      onPendingEncounter?.(no);
+      toast.success(`رقم الزيارة ${no} سيُحفظ مع المريض الجديد / Will be saved with the new patient`);
       return;
     }
-    onPendingEncounter?.(no);
-    toast.success(`رقم العملية ${no} سيُحفظ مع المريض الجديد / Will be saved with the new patient`);
+    if (suffix) toast.success('رقم المريض سيُحفظ مع المريض الجديد / Patient No. will be saved with the new patient');
   };
 
   return (
@@ -74,14 +86,14 @@ export default function PatientSelectorStrip({ currentPid, onSwitch, journey = n
       <button
         type="button"
         onClick={() => setEncOpen(true)}
-        title={encounter ? 'رقم العملية / Transaction No.' : 'قراءة رقم العملية بالكاميرا / Read the Transaction No. with the camera'}
+        title={encounter ? 'رقم الزيارة / Visit number' : 'قراءة رقم الزيارة بالكاميرا / Read the visit number with the camera'}
         className={`h-10 me-1 px-3 rounded-xl flex items-center gap-1.5 text-sm font-semibold shrink-0 ${
           encounter ? 'border border-mist text-ink' : 'bg-ink text-white'
         }`}
       >
         {encounter ? <Link2 className="w-4 h-4" aria-hidden="true" /> : <Camera className="w-4 h-4" aria-hidden="true" />}
-        <span dir="ltr">{encounter || 'Transaction No.'}</span>
-        {!encounter && <span className="hidden md:inline">· رقم العملية</span>}
+        <span dir="ltr">{encounter || 'Visit / voucher'}</span>
+        {!encounter && <span className="hidden md:inline">· رقم الزيارة</span>}
       </button>
       </div>
       <EncounterDialog
@@ -91,6 +103,7 @@ export default function PatientSelectorStrip({ currentPid, onSwitch, journey = n
         onLinked={onLinked}
         onPick={pickEncounter}
         initialValue={!journey ? pendingEncounter : ''}
+        initialMrnSuffix={!journey ? pendingMrnSuffix : ''}
       />
 
       {open && (

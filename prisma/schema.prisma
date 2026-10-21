@@ -27,8 +27,48 @@ enum JourneyStatus {
   visual_triage
   awaiting_ctas
   ctas_in_progress
-  completed // triaged, waiting to be seen by a physician (stays on the board)
-  seen      // seen by a physician (leaves the board)
+  /// Nurse CTAS saved; HIS visit/voucher number still required before the physician board.
+  awaiting_his_link
+  /// CTAS saved and HIS number linked; waiting for physician Agree / Disagree.
+  pending_physician_validation
+  /// Physician has validated the nurse CTAS.
+  validated
+  /// Physician CTAS done; HIS outcome form not yet saved.
+  awaiting_outcome_review
+  /// Outcome form saved; still editable.
+  outcome_reviewed
+  /// Reviewer closed the case after outcome review.
+  closed
+  completed /// legacy: pre-handoff "triaged". Migrated to awaiting_his_link / pending_physician_validation / validated.
+  seen      /// legacy door-to-physician mark
+}
+
+enum OutcomeDisposition {
+  discharged_ed
+  admitted
+  transferred
+  left_before_completion
+  other
+}
+
+enum AdmissionLocation {
+  ward
+  icu
+  picu
+  nicu
+  or
+  other
+}
+
+enum DischargeDestination {
+  home
+  clinic_followup
+}
+
+enum DirectionAppropriate {
+  yes
+  no
+  uncertain
 }
 
 model User {
@@ -53,7 +93,11 @@ model User {
   libraryPublishes ClinicalLibraryPublish[]
   routingPublishes RoutingConfigPublish[]
   ctasReviews  CtasReview[]   @relation("CtasReviewer")
+  assignedJourneys PatientJourney[] @relation("AssignedPhysician")
+  outcomePhysicianJourneys PatientJourney[] @relation("OutcomePhysician")
+  outcomeAssignmentsMade PatientJourney[] @relation("OutcomeAssigner")
   feedbackAcks TriageFeedback[]
+  outcomeReviews OutcomeReview[] @relation("OutcomeReviewer")
   sessions     AuthSession[]
 
   @@map("users")
@@ -62,14 +106,15 @@ model User {
 model PatientJourney {
   id        String   @id @default(uuid())
   patientId String   @unique @map("patient_id")
-  /// Short public number for the wall display (shown as T + last 3 digits). Never a name.
+  /// Short public number for the wall: T + last 3 of this counter + last 3 of MRN.
   ticketNo  Int      @default(autoincrement()) @map("ticket_no")
   createdById String @map("created_by_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  /// PDPL (Oct 2026): no names, national ID, phone, MRN, date of birth, nationality or
-  /// insurance here. The HIS Transaction No. (encounterNo) is the only link to the patient.
+  /// PDPL: no names, national ID, phone, full MRN, date of birth, nationality or insurance.
+  /// Last 3 digits of the file number only — for the public tracking code (T017-255).
+  mrnSuffix        String?  @map("mrn_suffix") @db.VarChar(3)
   age              Int?
   gender           Gender?
   arrivalTime      DateTime @default(now()) @map("arrival_time")
@@ -113,18 +158,30 @@ model PatientJourney {
   alertAcknowledgedBy String?   @map("alert_acknowledged_by")
   incompleteDataFlags Json?     @map("incomplete_data_flags")
   seenAt              DateTime? @map("seen_at")
-  /// HIS encounter number (scanned from the wristband or registration slip). The only
-  /// link to the hospital record kept here; names and IDs stay in the HIS.
+  /// First physician who checked the CTAS level owns later physician actions on this case.
+  assignedPhysicianId String?   @map("assigned_physician_id")
+  assignedAt          DateTime? @map("assigned_at")
+  /// Physician an admin assigned to complete Outcome Review (not the CTAS validator).
+  outcomePhysicianId  String?   @map("outcome_physician_id")
+  outcomeAssignedAt   DateTime? @map("outcome_assigned_at")
+  outcomeAssignedById String?   @map("outcome_assigned_by_id")
+  /// HIS visit number: Transaction No. or, on a follow-up slip, Voucher No. (9–10 digits).
   encounterNo         String?   @unique @map("encounter_no")
   encounterLinkedAt   DateTime? @map("encounter_linked_at")
   encounterLinkedById String?   @map("encounter_linked_by_id")
 
-  createdBy     User           @relation("JourneyCreator", fields: [createdById], references: [id])
-  triageRecords TriageRecord[]
-  ctasReviews   CtasReview[]
+  createdBy           User            @relation("JourneyCreator", fields: [createdById], references: [id])
+  assignedPhysician   User?           @relation("AssignedPhysician", fields: [assignedPhysicianId], references: [id], onDelete: SetNull)
+  outcomePhysician    User?           @relation("OutcomePhysician", fields: [outcomePhysicianId], references: [id], onDelete: SetNull)
+  outcomeAssignedBy   User?           @relation("OutcomeAssigner", fields: [outcomeAssignedById], references: [id], onDelete: SetNull)
+  triageRecords       TriageRecord[]
+  ctasReviews         CtasReview[]
+  outcomeReview       OutcomeReview?
 
   @@index([currentStatus, arrivalTime])
   @@index([createdById])
+  @@index([assignedPhysicianId])
+  @@index([outcomePhysicianId])
   @@map("patient_journeys")
 }
 
@@ -260,8 +317,8 @@ model AuditEvent {
   @@map("audit_events")
 }
 
-/// A physician's check of the triage level: agreement at "Seen", or a re-triage.
-/// The reference used for the nurses' private feedback (Stage A, before any HIS link).
+/// A physician's validation of the nurse CTAS: agree, or a different level with a reason.
+/// Stored separately from the nurse record. Reference for private nurse feedback.
 model CtasReview {
   id             String   @id @default(uuid())
   journeyId      String   @map("journey_id")
@@ -283,6 +340,31 @@ model CtasReview {
   @@index([journeyId])
   @@index([triageRecordId])
   @@map("ctas_reviews")
+}
+
+/// HIS/manual ED outcome after physician CTAS validation. Does not change nurse or physician CTAS.
+model OutcomeReview {
+  id        String   @id @default(uuid())
+  journeyId String   @unique @map("journey_id")
+  disposition OutcomeDisposition
+  admissionSpecialty String? @map("admission_specialty") @db.VarChar(120)
+  admissionLocation  AdmissionLocation? @map("admission_location")
+  hospitalUnitName   String? @map("hospital_unit_name") @db.VarChar(120)
+  dischargeDestination DischargeDestination? @map("discharge_destination")
+  finalDiagnosis     String? @map("final_diagnosis") @db.VarChar(500)
+  reviewerComment    String? @map("reviewer_comment") @db.VarChar(500)
+  directionAppropriate DirectionAppropriate? @map("direction_appropriate")
+  directionComment   String? @map("direction_comment") @db.VarChar(500)
+  source      String   @default("his_manual")
+  reviewerId  String   @map("reviewer_id")
+  reviewedAt  DateTime @default(now()) @map("reviewed_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  journey  PatientJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  reviewer User           @relation("OutcomeReviewer", fields: [reviewerId], references: [id])
+
+  @@index([reviewerId])
+  @@map("outcome_reviews")
 }
 
 /// The nurse's response to a reviewed case in "My triage": understood or disputed.

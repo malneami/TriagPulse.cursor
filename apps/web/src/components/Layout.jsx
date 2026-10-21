@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Activity, BarChart3, ClipboardCheck, Eye, KeyRound, Library, LogOut, Menu, MonitorSmartphone, Monitor, ShieldCheck,
+  Activity, BarChart3, ClipboardCheck, ClipboardList, Eye, KeyRound, Library, LogOut, Menu, MonitorSmartphone, Monitor, ShieldCheck,
   Signpost, UserCheck, Users, UsersRound, Hourglass,
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
@@ -14,7 +14,7 @@ import {
 
 /** Page width per screen: the CTAS rail and the board need room; forms stay narrow. */
 function mainWidth(pathname) {
-  if (pathname.startsWith('/tracking')) return 'max-w-[1600px]';
+  if (pathname.startsWith('/tracking') || pathname.startsWith('/outcomes')) return 'max-w-[1600px]';
   if (pathname.startsWith('/triage') || pathname.startsWith('/visual-triage')) return 'max-w-6xl';
   if (pathname.startsWith('/admin/')) return 'max-w-5xl';
   return 'max-w-3xl';
@@ -36,8 +36,9 @@ function menuGroups(user) {
     {
       ar: 'العمل', en: 'Work',
       items: [
-        { path: '/tracking', ar: 'لوحة التتبع', en: 'Tracking board', Icon: Users },
+        { path: '/tracking', ar: canAccess(user, 'review_ctas') ? 'اعتماد CTAS' : 'لوحة التتبع', en: canAccess(user, 'review_ctas') ? 'CTAS validation' : 'Tracking board', Icon: Users },
         { path: '/tracking/wall', ar: 'شاشة الحائط', en: 'Wall display', Icon: Monitor },
+        ...(canAccess(user, 'review_outcome') ? [{ path: '/outcomes', ar: 'مراجعة النتيجة', en: 'Outcome review', Icon: ClipboardList, badge: 'outcomes' }] : []),
         ...(canAccess(user, 'view_own_feedback') ? [{ path: '/my-triage', ar: 'فرزي', en: 'My triage', Icon: UserCheck, badge: 'feedback' }] : []),
       ],
     },
@@ -73,7 +74,14 @@ export default function Layout({ children }) {
     refetchInterval: 15000,
     enabled: canAccess(user, 'perform_triage'),
   });
-  const waiting = board.filter((p) => !p.ctas_level).length;
+  const waitingCtas = board.filter((p) => !p.ctas_level).length;
+  const awaitingHis = board.filter((p) => p.current_status === 'awaiting_his_link').length;
+  const pendingValidation = board.filter((p) => p.current_status === 'pending_physician_validation').length;
+  const reviewer = canAccess(user, 'review_ctas');
+  const waiting = reviewer ? pendingValidation : awaitingHis + waitingCtas;
+  const waitingLabel = reviewer
+    ? 'بانتظار الاعتماد'
+    : awaitingHis > 0 ? 'مطلوب رقم الزيارة' : 'بانتظار CTAS';
 
   // Cases waiting for the nurse's reply on "My triage" (dot on the menu).
   const { data: mine } = useQuery({
@@ -83,6 +91,13 @@ export default function Layout({ children }) {
     enabled: canAccess(user, 'view_own_feedback'),
   });
   const pendingReplies = mine?.pendingResponses || 0;
+
+  const { data: awaitingOutcomes = 0 } = useQuery({
+    queryKey: ['outcomes-awaiting-count'],
+    queryFn: () => api.outcomes.awaitingCount(),
+    refetchInterval: 60000,
+    enabled: canAccess(user, 'review_outcome'),
+  });
 
   const groups = menuGroups(user);
   const isActive = (path) => location.pathname === path || (path !== '/tracking' && location.pathname.startsWith(`${path}/`));
@@ -121,8 +136,8 @@ export default function Layout({ children }) {
             {canAccess(user, 'perform_triage') && (
               <Link
                 to="/tracking"
-                title="لوحة التتبع / Tracking board"
-                aria-label={`بانتظار CTAS ${waiting} — لوحة التتبع`}
+                title={reviewer ? 'اعتماد CTAS / Physician validation' : 'لوحة التتبع / Tracking board'}
+                aria-label={`${waitingLabel} ${waiting}`}
                 aria-current={location.pathname === '/tracking' ? 'page' : undefined}
                 className={`h-12 px-2.5 sm:px-3 rounded-xl flex items-center gap-1.5 sm:gap-2 text-[15px] font-semibold ${
                   location.pathname === '/tracking'
@@ -131,7 +146,7 @@ export default function Layout({ children }) {
                 }`}
               >
                 <Hourglass className="w-4 h-4" aria-hidden="true" />
-                <span className="hidden md:inline">بانتظار CTAS</span>
+                <span className="hidden md:inline">{waitingLabel}</span>
                 <span className="tabular-nums text-lg leading-none">{waiting}</span>
               </Link>
             )}
@@ -171,6 +186,9 @@ export default function Layout({ children }) {
                         <span className="flex-1"><bdi>{ar}</bdi> <span className="text-graphite text-xs font-normal">· <bdi>{en}</bdi></span></span>
                         {badge === 'feedback' && pendingReplies > 0 && (
                           <span className="min-w-6 h-6 px-1.5 rounded-full bg-[#D3242C] text-white text-xs font-semibold flex items-center justify-center">{pendingReplies}</span>
+                        )}
+                        {badge === 'outcomes' && awaitingOutcomes > 0 && (
+                          <span className="min-w-6 h-6 px-1.5 rounded-full bg-ink text-white text-xs font-semibold flex items-center justify-center">{awaitingOutcomes}</span>
                         )}
                       </DropdownMenuItem>
                     ))}

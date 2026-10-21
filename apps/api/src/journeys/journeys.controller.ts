@@ -2,7 +2,7 @@ import {
   Body, Controller, Get, Param, Patch, Post, Query, Request, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsBoolean, IsEnum, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { Gender, JourneyStatus } from '@prisma/client';
 import { JourneysService } from './journeys.service';
 import { RolesGuard, RequirePermission } from '../auth/roles.guard';
@@ -15,8 +15,10 @@ class CreateJourneyDto {
   @IsOptional() @IsInt() @Min(0) age?: number;
   @IsOptional() @IsEnum(Gender) gender?: Gender;
   @IsOptional() @IsString() modeOfArrival?: string;
-  /** HIS encounter number, scanned or typed when the patient is started. */
+  /** HIS visit number (Transaction No. or Voucher No.), scanned or typed when the patient is started. */
   @IsOptional() @IsString() @MaxLength(40) encounterNo?: string;
+  /** Last 3 digits of the patient file number — for the public tracking code only. */
+  @IsOptional() @IsString() @Matches(/^\d{3}$/) mrnSuffix?: string;
 }
 
 class VisualTriageDto {
@@ -32,13 +34,13 @@ class VisualTriageDto {
 }
 
 class LinkEncounterDto {
-  @IsString() @MaxLength(40) encounterNo: string;
+  @IsOptional() @IsString() @MaxLength(40) encounterNo?: string;
+  @IsOptional() @IsString() @Matches(/^\d{3}$/) mrnSuffix?: string;
 }
 
 class ReviewCtasDto {
   @IsInt() @Min(1) @Max(5) level: number;
   @IsOptional() @IsString() @MaxLength(300) reason?: string;
-  @IsOptional() @IsBoolean() markSeen?: boolean;
   /** The patient changed after triage: recorded, but not counted against the nurse. */
   @IsOptional() @IsBoolean() conditionChanged?: boolean;
 }
@@ -65,7 +67,7 @@ export class JourneysController {
     return this.journeysService.findActive(req.user);
   }
 
-  /** Triaged patients with no HIS encounter number yet (reconciliation list). */
+  /** Completed CTAS still waiting for a HIS visit number (nurse handoff list). */
   @Get('unlinked')
   @RequirePermission('perform_triage')
   unlinked(@Query('hours') hours?: string) {
@@ -113,10 +115,10 @@ export class JourneysController {
     @Body() dto: LinkEncounterDto,
     @Request() req: { user: { id: string; role: string; full_name?: string; email?: string } },
   ) {
-    return this.journeysService.linkEncounter(id, dto.encounterNo, req.user);
+    return this.journeysService.linkEncounter(id, dto, req.user);
   }
 
-  /** Physician agrees with the triage level or re-triages it (reason required if different). */
+  /** Physician agrees with the nurse CTAS or records a different level with a reason. */
   @Post(':id/ctas-review')
   @RequirePermission('review_ctas')
   reviewCtas(

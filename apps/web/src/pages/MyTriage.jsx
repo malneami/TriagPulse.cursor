@@ -4,12 +4,12 @@ import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Lock, MessageSquareWarning, ThumbsUp } from 'lucide-react';
 import { api } from '@/api/client';
 import { ctasFill } from '@/lib/ctasStyle';
-import { monthLabel, shiftMonth } from '@/lib/month';
+import { shiftWeek, weekLabel } from '@triagepulse/clinical';
 
 /**
  * "My triage": the signed-in nurse's own accuracy, private to them.
  * Reference = the physician's check of the level (agree at Seen, or re-triage).
- * A case is measured once it is closed (7 days by default); accuracy shows from 20 reviewed cases.
+ * A case is measured once it is closed (7 days by default); accuracy shows from 20 reviewed cases in the week.
  * The nurse answers each disagreement: understood, or disputed with a reason.
  */
 
@@ -108,12 +108,12 @@ function CaseCard({ c, onAnswered }) {
 
 export default function MyTriage() {
   const queryClient = useQueryClient();
-  const [month, setMonth] = useState(null); // null = this month (server decides, Riyadh time)
+  const [week, setWeek] = useState(null); // null = this week (server decides, Riyadh time)
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['my-feedback', month],
-    queryFn: () => api.feedback.mine(month || undefined),
+    queryKey: ['my-feedback', week],
+    queryFn: () => api.feedback.mine(week || undefined),
   });
-  const current = data?.month || month;
+  const current = data?.week || week;
   const s = data?.summary;
   const prev = data?.previous;
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['my-feedback'] });
@@ -132,11 +132,11 @@ export default function MyTriage() {
         </div>
         {current && (
           <div className="ms-auto flex items-center gap-1 bg-white border border-mist rounded-xl p-1">
-            <button type="button" aria-label="الشهر السابق / Previous month" onClick={() => setMonth(shiftMonth(current, -1))} className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-paper">
+            <button type="button" aria-label="الأسبوع السابق / Previous week" onClick={() => setWeek(shiftWeek(current, -1))} className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-paper">
               <ChevronRight className="w-5 h-5" aria-hidden="true" />
             </button>
-            <span className="px-2 text-[15px] font-medium">{monthLabel(current)}</span>
-            <button type="button" aria-label="الشهر التالي / Next month" onClick={() => setMonth(shiftMonth(current, 1))} className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-paper">
+            <span className="px-2 text-[15px] font-medium">{weekLabel(current)}</span>
+            <button type="button" aria-label="الأسبوع التالي / Next week" onClick={() => setWeek(shiftWeek(current, 1))} className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-paper">
               <ChevronLeft className="w-5 h-5" aria-hidden="true" />
             </button>
           </div>
@@ -154,7 +154,7 @@ export default function MyTriage() {
               label="التطابق مع الطبيب · Agreement"
               value={accuracy != null ? `${accuracy}%` : '—'}
               sub={accuracy != null
-                ? (change != null ? `${change >= 0 ? '+' : ''}${change} عن الشهر السابق · vs last month` : 'لا مقارنة بعد · no previous month')
+                ? (change != null ? `${change >= 0 ? '+' : ''}${change} عن الأسبوع السابق · vs last week` : 'لا مقارنة بعد · no previous week')
                 : `يظهر من ٢٠ حالة مراجَعة · shows from 20 reviewed (${s.reviewed})`}
             />
             <Stat label="حالات مراجَعة · Reviewed" value={s.reviewed} sub={`من ${s.cases} فرز · of ${s.cases} triaged`} />
@@ -186,7 +186,7 @@ export default function MyTriage() {
             </div>
             {data.learning.length === 0 ? (
               <p className="bg-white border border-dashed border-graphite/40 rounded-2xl py-8 text-center text-graphite">
-                لا توجد اختلافات هذا الشهر · No disagreements this month.
+                لا توجد اختلافات هذا الأسبوع · No disagreements this week.
               </p>
             ) : (
               <ul className="list-none m-0 p-0 flex flex-col gap-3">

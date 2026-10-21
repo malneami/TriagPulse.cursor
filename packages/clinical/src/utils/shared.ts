@@ -23,6 +23,18 @@ export function waitTimeColor(waitMins: number | null, ctasLevel?: number | null
   return 'bg-green-50 border-green-200';
 }
 
+/** Seconds from CTAS start to CTAS completion. Not door-to-physician wait. */
+export function triageDurationSec(
+  startedAt: string | Date | null | undefined,
+  completedAt: string | Date | null | undefined,
+): number | null {
+  if (!startedAt || !completedAt) return null;
+  const a = new Date(startedAt).getTime();
+  const b = new Date(completedAt).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return null;
+  return Math.round((b - a) / 1000);
+}
+
 export function isActiveJourney(arrivalTime: string | Date, hoursWindow = 12): boolean {
   const arrival = new Date(arrivalTime);
   if (Number.isNaN(arrival.getTime())) return false;
@@ -49,10 +61,14 @@ export const PERMISSIONS: Record<string, Role[]> = {
   manage_routing: ['admin'],
   set_zone_status: ['nurse', 'physician', 'admin'],
   view_clinical_analytics: ['admin', 'physician'],
-  /** Physician agreement at "Seen" or re-triage: the reference for nurse feedback. */
+  /** Physician agrees or disagrees with the nurse CTAS level (validation, not Seen). */
   review_ctas: ['physician', 'admin'],
   /** A nurse's own private accuracy page ("My triage"). */
   view_own_feedback: ['nurse', 'physician', 'admin'],
+  /** HIS/manual ED outcome after physician CTAS validation. */
+  review_outcome: ['nurse', 'physician', 'admin'],
+  /** Admin assigns the physician who may complete Outcome Review. */
+  assign_outcome_physician: ['admin'],
 };
 
 export function canAccess(role: Role, permission: string): boolean {

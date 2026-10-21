@@ -6,11 +6,10 @@ import { api } from '@/api/client';
 import { CTAS_LEVELS, ctasFill, ctasMeta } from '@/lib/ctasStyle';
 import { ticketCode } from '@/lib/ticket';
 import { PulseMark } from '@/components/Wordmark';
-import { waitState } from '@/pages/PatientTracking';
 
 /**
- * ED wall display: readable across a room, ticket codes only. Patient names
- * and complaints are never shown because the screen is public.
+ * ED wall display: ticket codes of HIS-linked nurse CTAS awaiting physician
+ * validation. No names, complaints, or door-to-physician wait targets.
  */
 export default function TrackingWall() {
   const [now, setNow] = useState(Date.now());
@@ -25,15 +24,21 @@ export default function TrackingWall() {
     refetchInterval: 15000,
   });
 
+  const pending = useMemo(
+    () => patients.filter((p) => p.current_status === 'pending_physician_validation'),
+    [patients],
+  );
+  const awaiting = patients.filter((p) => !p.ctas_level).length;
+
   const lanes = useMemo(() => {
     const out = { 1: [], 2: [], 3: [], 4: [], 5: [] };
-    for (const p of patients) if (p.ctas_level && out[p.ctas_level]) out[p.ctas_level].push(p);
-    for (const k of Object.keys(out)) out[k].sort((a, b) => new Date(a.arrival_time) - new Date(b.arrival_time));
+    for (const p of pending) {
+      const level = p.nurse_ctas ?? p.ctas_level;
+      if (level && out[level]) out[level].push(p);
+    }
     return out;
-  }, [patients]);
+  }, [pending]);
 
-  const awaiting = patients.filter((p) => !p.ctas_level).length;
-  const over = patients.filter((p) => p.ctas_level && waitState(p, now).over).length;
   const clock = new Date(now).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
   const goFullscreen = () => {
@@ -47,9 +52,9 @@ export default function TrackingWall() {
           <PulseMark className="w-14 h-10" />
           <span className="text-4xl font-semibold tracking-tight">TriagePulse</span>
         </span>
-        <span className="text-3xl font-medium">قسم الطوارئ</span>
+        <span className="text-3xl font-medium">اعتماد CTAS</span>
         <div className="ms-auto flex flex-wrap items-baseline gap-x-12 gap-y-2">
-          <span className="text-2xl">تجاوزوا الهدف <span className="text-5xl font-bold tabular-nums">{over}</span></span>
+          <span className="text-2xl">بانتظار الاعتماد <span className="text-5xl font-bold tabular-nums">{pending.length}</span></span>
           <span className="text-2xl text-[#B9C3CE]">بانتظار CTAS <span className="text-5xl font-bold text-white tabular-nums">{awaiting}</span></span>
           <span dir="ltr" className="text-6xl font-semibold tabular-nums">{clock}</span>
         </div>
@@ -68,26 +73,15 @@ export default function TrackingWall() {
             <section key={level} aria-label={`CTAS ${level}`} className="bg-[#16232F] rounded-3xl overflow-hidden flex flex-col">
               <div className="px-6 py-5 flex items-baseline justify-between" style={ctasFill(level)}>
                 <span className="text-4xl font-bold">{level} {m.ar}</span>
-                <span className="text-2xl font-medium">{level === 1 ? 'فوري' : `${m.wait_min} د`}</span>
+                <span className="text-2xl font-medium tabular-nums">{lanes[level].length}</span>
               </div>
               <ul className="p-4 flex flex-col gap-4 list-none m-0">
-                {lanes[level].map((p) => {
-                  const w = waitState(p, now);
-                  return (
-                    <li
-                      key={p.id}
-                      className={`rounded-2xl px-5 py-4 flex flex-col gap-1 ${w.over ? 'bg-white text-ink' : 'bg-[#1F2E3B]'}`}
-                    >
-                      <span className="flex items-baseline justify-between">
-                        <span dir="ltr" className="text-5xl font-bold">{ticketCode(p.ticket_no)}</span>
-                        <span className="text-5xl font-bold tabular-nums">{w.waited ?? '—'} د</span>
-                      </span>
-                      <span className={`text-2xl ${w.over ? 'font-semibold' : 'text-[#B9C3CE]'}`}>
-                        {w.over ? `تجاوز الهدف ${w.overBy} د` : 'بانتظار الطبيب'}
-                      </span>
-                    </li>
-                  );
-                })}
+                {lanes[level].map((p) => (
+                  <li key={p.id} className="rounded-2xl px-5 py-4 flex flex-col gap-1 bg-[#1F2E3B]">
+                    <span dir="ltr" className="text-5xl font-bold">{ticketCode(p)}</span>
+                    <span className="text-2xl text-[#B9C3CE]">بانتظار الاعتماد</span>
+                  </li>
+                ))}
               </ul>
             </section>
           );

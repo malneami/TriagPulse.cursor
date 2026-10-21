@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.module';
 import { AuditService } from '../audit/audit.service';
 import {
   computeLiveCTAS, detectRedFlags, getLibraryVersions, redactIdentifiers, stripIdentifiers, validateTriageReady,
+  statusAfterCtasComplete,
 } from '@triagepulse/clinical';
 
 /**
@@ -137,7 +138,7 @@ export class TriageService {
       const updatedJourney = await tx.patientJourney.update({
         where: { id: data.journeyId },
         data: {
-          currentStatus: JourneyStatus.completed,
+          currentStatus: statusAfterCtasComplete(journey.encounterNo) as JourneyStatus,
           ctasCompletedAt: new Date(),
           ctasLevel: toInt(record.clinician_final_ctas) ?? toInt(record.ctas_level),
           clinicianFinalCtas: toInt(record.clinician_final_ctas),
@@ -146,7 +147,7 @@ export class TriageService {
           chiefComplaint: record.chief_complaint as string | undefined,
           alertAcknowledgedAt: record.alert_acknowledged_at ? new Date(record.alert_acknowledged_at as string) : undefined,
           alertAcknowledgedBy: record.alert_acknowledged_by as string | undefined ?? clinicianName,
-          ctasReviewedAt: new Date(),
+          // Leave ctasReviewedAt null so the case enters the physician validation queue.
           incompleteDataFlags: (record.missing_fields as object | string | undefined) ?? undefined,
           // Final patient direction (nurse-confirmed), shown on the journey.
           currentLocation: typeof record.disposition === 'string' ? record.disposition : undefined,

@@ -57,6 +57,7 @@ import { deriveAssessment, nextPrompt } from '@/lib/triageAssessment';
 import { buildTriageDocument } from '@/lib/triageDocument';
 import { buildTriageSummary } from '@/lib/triageSummary';
 import { patientShort, ticketCode } from '@/lib/ticket';
+import { suffixFromPatientNo } from '@/components/journey/EncounterLink';
 import { deriveCase, casePayload, caseSummaryLines } from '@/lib/caseModel';
 import { ComplaintChips, HistoryChips } from '@/components/triage/flow/CaseChips';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -140,6 +141,12 @@ export default function Triage() {
   const savingRef = useRef(false);
   const questionsGeneratedRef = useRef(false);
   const lastAlertKeyRef = useRef(null);
+  const flushVitalsAlertsRef = useRef(false);
+  const [vitalsAlertTick, setVitalsAlertTick] = useState(0);
+  const settleVitalsAlerts = useCallback(() => {
+    flushVitalsAlertsRef.current = true;
+    setVitalsAlertTick((n) => n + 1);
+  }, []);
   const manualEditedFieldsRef = useRef(new Set());
   const sttFieldConfidenceRef = useRef({});
   // Last value the dictation gave each field. A typed correction is replaced only when
@@ -162,6 +169,7 @@ export default function Triage() {
   const activeJourney = journeyList?.[0] || null;
   // Transaction No. read on this page before a patient exists: saved with the new journey.
   const [pendingEncounter, setPendingEncounter] = useState('');
+  const [pendingMrnSuffix, setPendingMrnSuffix] = useState('');
   const queryClient = useQueryClient();
   const visualTriage = activeJourney?.vt_destination
     ? {
@@ -671,13 +679,24 @@ export default function Triage() {
     }
   }, [readyForClarifying, basicVitalsComplete, patient.chief_complaint, selectedModifier]);
 
+  // Wait until a vital looks finished (pause or blur) before opening the critical
+  // window. Prefixes (HR 1 of 120, GCS 1 of 15) must not alarm, and a popup
+  // already shown for those digits is retracted once the completed value is not critical.
   useEffect(() => {
-    const localAlert = detectRedFlags(patient, answersWithModifier);
-    const confirmed = REQUIRED_FIELDS.filter((f) => f.check(patient)).length;
-    if (localAlert && confirmed >= 3 && ((liveResult?.level ?? 5) <= 2 || localAlert.ctas_level <= 2)) {
-      raiseUrgentAlert(localAlert, 'local_red_flag_engine');
-    }
-  }, [patient.chief_complaint, patient.hr, patient.spo2, patient.bp_systolic, patient.rr, patient.gcs, patient.pain_score, clarifyingAnswers, selectedModifier, liveResult?.level]);
+    const delay = flushVitalsAlertsRef.current ? 0 : 700;
+    flushVitalsAlertsRef.current = false;
+    const timer = setTimeout(() => {
+      const localAlert = detectRedFlags(patient, answersWithModifier);
+      const confirmed = REQUIRED_FIELDS.filter((f) => f.check(patient)).length;
+      if (localAlert && confirmed >= 3 && ((liveResult?.level ?? 5) <= 2 || localAlert.ctas_level <= 2)) {
+        raiseUrgentAlert(localAlert, 'local_red_flag_engine');
+      } else if (lastAlertKeyRef.current) {
+        lastAlertKeyRef.current = null;
+        setUrgentAlert(null);
+      }
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [patient.chief_complaint, patient.hr, patient.spo2, patient.bp_systolic, patient.rr, patient.gcs, patient.pain_score, clarifyingAnswers, selectedModifier, liveResult?.level, vitalsAlertTick]);
 
   const applySttSessionToPatient = useCallback((sessionOutput, { force = false } = {}) => {
     if (!sessionOutput?.fields) return;
@@ -1046,6 +1065,7 @@ export default function Triage() {
         const ageNum = toNum(patient.age);
         const created = await api.journeys.create({
           encounterNo: pendingEncounter || undefined,
+          mrnSuffix: suffixFromPatientNo(pendingMrnSuffix) || pendingMrnSuffix || undefined,
           age: ageNum != null ? Math.round(ageNum) : undefined,
           gender: ['male', 'female'].includes(patient.gender) ? patient.gender : undefined,
         });
@@ -1070,12 +1090,12 @@ export default function Triage() {
           caseModel: cc,
           whyGroups,
           outstandingLabels: outstanding,
-          ticket: activeJourney?.ticket_no != null ? ticketCode(activeJourney.ticket_no) : null,
+          ticket: activeJourney?.ticket_no != null ? ticketCode(activeJourney) : null,
           encounterNo: activeJourney?.encounter_no || pendingEncounter || null,
         }),
         document: buildTriageDocument({
           ...documentInput,
-          ticket: activeJourney?.ticket_no != null ? ticketCode(activeJourney.ticket_no) : null,
+          ticket: activeJourney?.ticket_no != null ? ticketCode(activeJourney) : null,
           encounterNo: activeJourney?.encounter_no || pendingEncounter || null,
           finalLevel: nurseValidation?.nurseLevel,
           direction: finalDirection,
@@ -1627,6 +1647,8 @@ export default function Triage() {
             journey={activeJourney}
             pendingEncounter={pendingEncounter}
             onPendingEncounter={setPendingEncounter}
+            pendingMrnSuffix={pendingMrnSuffix}
+            onPendingMrnSuffix={setPendingMrnSuffix}
             onLinked={() => queryClient.invalidateQueries({ queryKey: ['journey-ctas', urlPid] })}
           />
         </div>
@@ -1657,6 +1679,8 @@ export default function Triage() {
           onNewPatient={startNewPatient}
           nextPatient={nextPatient}
           onOpenNext={() => nextPatient && handleSwitchPatient(nextPatient.patient_id)}
+          needsHisLink={!activeJourney?.encounter_no && !pendingEncounter}
+          onLinkEncounter={() => navigate('/tracking')}
         />
       ) : (
         <>
@@ -1703,6 +1727,7 @@ export default function Triage() {
           <FieldGrid
             patient={patient}
             onChange={(fields) => update(fields)}
+            onSettled={settleVitalsAlerts}
             missingKeys={a.missingKeys}
             total={REQUIRED_FIELDS.length}
             more={more}

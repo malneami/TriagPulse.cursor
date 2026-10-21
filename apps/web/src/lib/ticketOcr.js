@@ -1,18 +1,19 @@
-import { transactionNoFromText } from '@triagepulse/clinical';
+import { patientNoFromText, visitNumberFromText } from '@triagepulse/clinical';
 
 /**
- * On-device reading of the "Transaction No." printed on the visit ticket.
+ * On-device reading of the visit slip (Transaction No. or Voucher No., and Patient No. / MRN).
  * The text reader (tesseract.js) and its English model are served by the app itself
  * (public/ocr) and loaded only the first time a nurse taps "Read number". Camera frames
- * are read on the tablet and discarded; only the number is kept, after the nurse confirms.
+ * are read on the tablet and discarded; only the numbers are kept, after the nurse confirms.
  */
 
 let workerPromise = null;
 let progressListener = null;
 
 function assetUrl(file = '') {
-  const base = `${import.meta.env.BASE_URL || '/'}ocr/`.replace(/\/{2,}/g, '/');
-  return new URL(base + file, window.location.href).href;
+  const folder = `${import.meta.env.BASE_URL || '/'}ocr`.replace(/\/{2,}/g, '/');
+  const rel = file ? `${folder}/${file}` : `${folder}/`;
+  return new URL(rel, window.location.href).href;
 }
 
 export function getTicketReader(onProgress) {
@@ -23,7 +24,7 @@ export function getTicketReader(onProgress) {
       const worker = await createWorker('eng', OEM.LSTM_ONLY, {
         workerPath: assetUrl('worker.min.js'),
         corePath: assetUrl(),
-        langPath: assetUrl(),
+        langPath: assetUrl().replace(/\/$/, ''),
         workerBlobURL: false,
         gzip: true,
         logger: (m) => progressListener?.(m),
@@ -68,11 +69,22 @@ export function frameToCanvas(video, maxWidth = 1600) {
   return canvas;
 }
 
-/** Reads one frame; returns the Transaction No. or null. */
-export async function readTransactionNo(video, pattern) {
+/** Reads one frame; visit number (transaction/voucher) and printed Patient No. (MRN). */
+export async function readTicketFields(video, pattern) {
   const canvas = frameToCanvas(video);
-  if (!canvas) return null;
+  if (!canvas) return { visit: null, patientNo: null, mrnSuffix: null };
   const worker = await getTicketReader(progressListener);
   const { data } = await worker.recognize(canvas);
-  return transactionNoFromText(data.text, pattern);
+  const patientNo = patientNoFromText(data.text);
+  return {
+    visit: visitNumberFromText(data.text, pattern),
+    patientNo,
+    mrnSuffix: patientNo ? patientNo.slice(-3) : null,
+  };
+}
+
+/** Reads one frame; returns the visit number or null. */
+export async function readTransactionNo(video, pattern) {
+  const { visit } = await readTicketFields(video, pattern);
+  return visit;
 }

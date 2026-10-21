@@ -676,6 +676,28 @@ for (const testCase of CTAS_TEST_CASES) {
   );
 }
 
+// ── In-progress vitals must not look like finished critical values ───────────
+{
+  const prefix = { chief_complaint: 'vomiting', age: '40', pain_score: 2 };
+  const flag = (p: Record<string, unknown>) => detectRedFlags({ ...prefix, ...p });
+  const gcsSymptoms = (p: Record<string, unknown>) => (flag(p)?.symptoms || []).some((s) => /GCS/i.test(s.en));
+  const sbpSymptoms = (p: Record<string, unknown>) => (flag(p)?.symptoms || []).some((s) => /SBP/i.test(s.en));
+  const hrSymptoms = (p: Record<string, unknown>) => (flag(p)?.symptoms || []).some((s) => /HR/i.test(s.en));
+  const spo2Symptoms = (p: Record<string, unknown>) => (flag(p)?.symptoms || []).some((s) => /SpO/i.test(s.en));
+
+  assert(!gcsSymptoms({ gcs: '1' }) && !gcsSymptoms({ gcs: '2' }) && gcsSymptoms({ gcs: '8' }) && !gcsSymptoms({ gcs: '15' }),
+    'RF-01', 'GCS 1–2 (typing 15) do not alert; GCS 8 does; GCS 15 does not');
+  assert(!sbpSymptoms({ bp_systolic: '1' }) && !sbpSymptoms({ bp_systolic: '12' }) && sbpSymptoms({ bp_systolic: '60' }) && !sbpSymptoms({ bp_systolic: '120' }),
+    'RF-02', 'SBP 1 / 12 (typing 120) do not alert; SBP 60 does; SBP 120 does not');
+  assert(!hrSymptoms({ hr: '1' }) && !hrSymptoms({ hr: '12' }) && hrSymptoms({ hr: '35' }) && !hrSymptoms({ hr: '80' }),
+    'RF-03', 'HR 1 / 12 (typing 120) do not alert; HR 35 does; HR 80 does not');
+  assert(!spo2Symptoms({ spo2: '9' }) && spo2Symptoms({ spo2: '80' }) && !spo2Symptoms({ spo2: '98' }),
+    'RF-04', 'SpO₂ 9 (typing 98) does not alert; SpO₂ 80 does; SpO₂ 98 does not');
+  assert((computeLiveCTAS as any)({ ...prefix, gcs: '1' }).level >= 3,
+    'RF-05', 'live CTAS does not treat GCS 1 as unconscious while 15 is being typed',
+    String((computeLiveCTAS as any)({ ...prefix, gcs: '1' }).level));
+}
+
 // ── Rare complaint resolver + chronicity ─────────────────────────────────────
 {
   const heat = resolveChiefComplaint({ chiefComplaint: 'heat stroke' });
