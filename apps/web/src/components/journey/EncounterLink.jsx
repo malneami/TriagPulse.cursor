@@ -3,11 +3,12 @@ import { toast } from 'sonner';
 import { Barcode, Camera, CameraOff, Check, Link2 } from 'lucide-react';
 import { api } from '@/api/client';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { patientNoFromBarcode } from '@triagepulse/clinical';
 
 /**
- * HIS encounter number for a journey = the "Transaction No." on the outpatient visit ticket.
- * The camera reads it (printed text, or a barcode if one carries it), or the nurse types it.
- * The camera only fills the box; the nurse checks the number before it is saved.
+ * HIS visit number for a journey = Transaction No. on an outpatient ticket, or Voucher No.
+ * on a follow-up slip (9–10 digits). Last 3 of Patient No. / a 6–7 digit MRN barcode fill
+ * the tracking suffix. The camera only fills the boxes; the nurse checks before save.
  *
  * Barcodes: native BarcodeDetector first, @zxing/browser when missing (iPad Safari).
  * Text: tesseract.js, served by the app, loaded on first use (lib/ticketOcr).
@@ -15,9 +16,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 
 const FORMATS = ['code_128', 'code_39', 'code_93', 'codabar', 'itf', 'ean_13', 'qr_code', 'pdf417', 'data_matrix'];
 /**
- * The encounter is the HIS "Transaction No." on the outpatient visit ticket: 9–10 digits.
- * The 7-digit patient file number (MRN) is the barcode on that ticket and must not be taken
- * for it, nor the 8-digit appointment number. Override with VITE_ENCOUNTER_PATTERN.
+ * Visit / voucher number: 9–10 digits. The 7-digit patient file number (MRN) is the barcode
+ * on the outpatient ticket and must not be taken as the visit number, nor the 8-digit
+ * appointment / Ref. Invoice number. Override with VITE_ENCOUNTER_PATTERN.
  */
 const LOOKS_RIGHT = (() => {
   try { return new RegExp(import.meta.env.VITE_ENCOUNTER_PATTERN || '^\\d{9,10}$'); } catch { return /^\d{9,10}$/; }
@@ -27,9 +28,9 @@ const LOOKS_RIGHT = (() => {
 export function encounterProblem(raw) {
   const v = cleanEncounter(raw);
   if (!v || LOOKS_RIGHT.test(v)) return null;
-  if (/^\d{6,7}$/.test(v)) return 'هذا رقم ملف المريض (MRN) وليس رقم العملية · This is the patient file number (MRN), not the Transaction No.';
-  if (/^\d{8}$/.test(v)) return 'هذا يبدو رقم الموعد · This looks like the Appointment No. Use the Transaction No.';
-  return 'رقم العملية ٩–١٠ أرقام من تذكرة الزيارة · Transaction No. is 9–10 digits on the visit ticket';
+  if (/^\d{6,7}$/.test(v)) return 'هذا رقم المريض (Patient No.) — ضعه في خانة رقم المريض · This is the Patient No. (MRN). Put it in the Patient No. box.';
+  if (/^\d{8}$/.test(v)) return 'هذا يبدو رقم الموعد / المرجع · This looks like the Appointment / Ref. Invoice No. Use the visit or voucher number.';
+  return 'رقم الزيارة أو القسيمة ٩–١٠ أرقام · Visit / voucher number is 9–10 digits';
 }
 
 export function encounterLooksRight(raw) {
@@ -38,6 +39,27 @@ export function encounterLooksRight(raw) {
 
 export function cleanEncounter(raw) {
   return String(raw || '').trim().replace(/\s+/g, '').toUpperCase();
+}
+
+/** Patient No. as printed (6–7 digits) or last 3. Digits only. */
+export function cleanPatientNo(raw) {
+  return String(raw || '').replace(/\D/g, '').slice(0, 7);
+}
+
+/** Last 3 of Patient No. for the tracking code. Empty until 3 digits, or a full 6–7 digit file number. */
+export function suffixFromPatientNo(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 3 || d.length === 6 || d.length === 7) return d.slice(-3);
+  return '';
+}
+
+/** @deprecated Use cleanPatientNo in the input; suffixFromPatientNo on save. */
+export function cleanMrnSuffix(raw) {
+  return suffixFromPatientNo(raw);
+}
+
+export function mrnSuffixLooksRight(raw) {
+  return suffixFromPatientNo(raw).length === 3;
 }
 
 async function nativeDetector() {
@@ -52,11 +74,10 @@ async function nativeDetector() {
 }
 
 /**
- * Camera for the visit ticket. Two readers run on the same picture, on the tablet:
- * - the printed "Transaction No." is read as text (on-device OCR, loaded on first use);
- * - any barcode is decoded, but only a barcode that holds a valid Transaction No. is taken
- *   (the ticket's own barcode is the MRN and is ignored).
- * Frames never leave the device. The number found only fills the box; the nurse confirms.
+ * Camera for the visit slip. Two readers run on the same picture, on the tablet:
+ * - printed Transaction No. or Voucher No. (and Patient No. last 3) via on-device OCR;
+ * - a 9–10 digit barcode is the visit number; a 6–7 digit barcode is MRN (last 3 only).
+ * Frames never leave the device. Numbers found only fill the boxes; the nurse confirms.
  */
 function Scanner({ onResult }) {
   const videoRef = useRef(null);
@@ -72,16 +93,25 @@ function Scanner({ onResult }) {
     let slowTimer = null;
     let zxingControls = null;
 
-    const done = (text) => {
-      if (stopped || !text) return;
-      stopped = true;
-      if (navigator.vibrate) navigator.vibrate(80);
-      onResult(text);
+    const report = (fields) => {
+      if (stopped || (!fields?.visit && !fields?.patientNo && !fields?.mrnSuffix)) return;
+      onResult(fields);
+      if (fields.visit) {
+        stopped = true;
+        if (navigator.vibrate) navigator.vibrate(80);
+      }
     };
     const fromBarcode = (raw) => {
       const v = cleanEncounter(raw);
-      if (LOOKS_RIGHT.test(v)) done(v);
-      else if (/^\d{6,7}$/.test(v)) setNote('الباركود هو رقم الملف (MRN) — تم تجاهله · The barcode is the MRN — ignored');
+      if (LOOKS_RIGHT.test(v)) {
+        report({ visit: v });
+        return;
+      }
+      const patientNo = patientNoFromBarcode(raw);
+      if (patientNo) {
+        report({ patientNo });
+        setNote('رقم المريض من الباركود · Patient No. (MRN) from barcode');
+      }
     };
 
     (async () => {
@@ -126,9 +156,9 @@ function Scanner({ onResult }) {
         }).catch(() => {});
       }
 
-      // Printed text: read frames one after another until the Transaction No. is found.
+      // Printed text: read frames until the visit/voucher number is found (suffix may come too).
       try {
-        const { getTicketReader, readTransactionNo } = await import('@/lib/ticketOcr');
+        const { getTicketReader, readTicketFields } = await import('@/lib/ticketOcr');
         await getTicketReader((m) => {
           if (m?.status && /load|init/i.test(m.status) && typeof m.progress === 'number') {
             setOcr({ phase: 'loading', pct: Math.round(m.progress * 100) });
@@ -137,8 +167,13 @@ function Scanner({ onResult }) {
         if (stopped) return;
         setOcr({ phase: 'reading', pct: 100 });
         while (!stopped) {
-          const found = await readTransactionNo(v, LOOKS_RIGHT).catch(() => null);
-          if (found) { done(found.value); return; }
+          const fields = await readTicketFields(v, LOOKS_RIGHT).catch(() => null);
+          if (fields?.patientNo) report({ patientNo: fields.patientNo });
+          else if (fields?.mrnSuffix) report({ mrnSuffix: fields.mrnSuffix });
+          if (fields?.visit) {
+            report({ visit: fields.visit.value, patientNo: fields.patientNo || undefined, mrnSuffix: fields.mrnSuffix || undefined });
+            return;
+          }
           await new Promise((r) => setTimeout(r, 300));
         }
       } catch {
@@ -176,7 +211,7 @@ function Scanner({ onResult }) {
       {state === 'scanning' && (
         <p aria-live="polite" className="m-0 text-sm text-graphite">
           {ocr.phase === 'loading' && `تحميل قارئ النص (أول مرة فقط) ${ocr.pct}% · Loading the text reader (first time only)`}
-          {ocr.phase === 'reading' && 'ضع «Transaction No.» داخل الإطار، والتذكرة مستوية · Fit “Transaction No.” in the frame, ticket flat'}
+          {ocr.phase === 'reading' && 'ضع رقم العملية أو القسيمة داخل الإطار · Fit Transaction / Voucher No. in the frame'}
           {ocr.phase === 'failed' && 'تعذّر تشغيل قارئ النص — اكتب الرقم · Text reader unavailable — type the number'}
         </p>
       )}
@@ -194,36 +229,56 @@ function Scanner({ onResult }) {
 }
 
 /**
- * Read or type the Transaction No. With a journey, Link saves it on that patient.
- * Without one (CTAS page, no patient yet), onPick receives the checked number instead.
+ * Read or type the visit/voucher number and Patient No. (MRN). With a journey, Link saves
+ * them on that patient. Without one (CTAS page, no patient yet), onPick receives the values.
  */
-export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick, initialValue = '' }) {
+export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick, initialValue = '', initialMrnSuffix = '' }) {
   const [value, setValue] = useState('');
+  const [patientNo, setPatientNo] = useState('');
   const [scanning, setScanning] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (open) { setValue(journey?.encounter_no || initialValue || ''); setScanning(!(journey?.encounter_no || initialValue)); setError(''); }
-  }, [open, journey?.encounter_no, initialValue]);
+    if (open) {
+      setValue(journey?.encounter_no || initialValue || '');
+      setPatientNo(journey?.mrn_suffix || initialMrnSuffix || '');
+      setScanning(!(journey?.encounter_no || initialValue));
+      setError('');
+    }
+  }, [open, journey?.encounter_no, journey?.mrn_suffix, initialValue, initialMrnSuffix]);
 
   // Stable, so the camera is not restarted on every keystroke.
-  const onResult = useCallback((text) => { setValue(cleanEncounter(text)); setScanning(false); setError(''); }, []);
+  const onResult = useCallback((fields) => {
+    if (fields.visit) { setValue(cleanEncounter(fields.visit)); setScanning(false); }
+    if (fields.patientNo) setPatientNo(cleanPatientNo(fields.patientNo));
+    else if (fields.mrnSuffix) setPatientNo(cleanPatientNo(fields.mrnSuffix));
+    setError('');
+  }, []);
   const clean = cleanEncounter(value);
-  const ok = LOOKS_RIGHT.test(clean);
+  const visitOk = LOOKS_RIGHT.test(clean);
+  const suffix = suffixFromPatientNo(patientNo);
+  const suffixOk = suffix.length === 3;
+  const canSave = visitOk || suffixOk;
 
   const save = async () => {
-    if (!ok) return;
+    if (!canSave) return;
     setSaving(true);
     setError('');
+    const payload = {
+      encounterNo: visitOk ? clean : undefined,
+      mrnSuffix: suffixOk ? suffix : undefined,
+    };
     try {
       if (!journey) {
-        await onPick?.(clean);
+        await onPick?.(payload);
         onOpenChange(false);
         return;
       }
-      const updated = await api.journeys.linkEncounter(journey.id, clean);
-      toast.success(`تم ربط رقم العملية ${clean} / Transaction No. linked`);
+      const updated = await api.journeys.linkEncounter(journey.id, payload);
+      toast.success(visitOk
+        ? `تم ربط رقم الزيارة ${clean} / Visit number linked`
+        : `تم حفظ رقم المريض / Patient No. saved`);
       onLinked?.(updated);
       onOpenChange(false);
     } catch (err) {
@@ -236,9 +291,10 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="max-w-md">
-        <DialogTitle className="text-lg">ربط رقم العملية / Link Transaction No.</DialogTitle>
+        <DialogTitle className="text-lg">ربط رقم الزيارة ورقم المريض / Link visit no. and Patient No.</DialogTitle>
         <DialogDescription className="text-sm text-graphite">
-          وجّه الكاميرا إلى تذكرة الزيارة لقراءة «رقم العملية»، ثم تحقق منه. Point the camera at the visit ticket to read the Transaction No., then check it.
+          وجّه الكاميرا إلى التذكرة لقراءة رقم العملية أو القسيمة ورقم المريض (Patient No.)، ثم تحقق منهما.
+          Point the camera at the slip to read the visit/voucher number and Patient No. (MRN), then check them.
         </DialogDescription>
         {scanning ? (
           <Scanner onResult={onResult} />
@@ -252,7 +308,7 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
           </button>
         )}
         <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">رقم العملية / Transaction No.</span>
+          <span className="text-sm font-medium">رقم الزيارة / القسيمة · Visit / voucher number</span>
           <input
             dir="ltr"
             value={value}
@@ -263,17 +319,33 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
             autoComplete="off"
             spellCheck={false}
             maxLength={40}
-            placeholder="Transaction No. (9–10 digits)"
+            placeholder="9–10 digits"
             className="h-12 border border-mist rounded-xl px-3 text-lg font-semibold tracking-wide bg-white"
           />
         </label>
-        {value && !ok && (
+        {value && !visitOk && (
           <p className="text-sm font-semibold text-ink">{encounterProblem(value)}</p>
         )}
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium">رقم المريض · Patient No. (MRN)</span>
+          <input
+            dir="ltr"
+            value={patientNo}
+            onChange={(e) => { setPatientNo(cleanPatientNo(e.target.value)); setError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={7}
+            placeholder="1793255"
+            className="h-12 border border-mist rounded-xl px-3 text-lg font-semibold tracking-wide bg-white"
+          />
+          <span className="text-xs text-graphite">يُحفظ آخر ٣ فقط للتتبع · Only last 3 are kept for tracking</span>
+        </label>
         {error && <p role="alert" className="text-sm font-semibold text-ink border-2 border-ink rounded-lg px-3 py-2">{error}</p>}
         <button
           type="button"
-          disabled={!ok || saving}
+          disabled={!canSave || saving}
           onClick={save}
           className="h-12 rounded-xl bg-ink text-white font-medium flex items-center justify-center gap-2 disabled:opacity-40"
         >
@@ -285,7 +357,7 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
 }
 
 /** Compact chip: shows the linked number, or a button to scan one. */
-export default function EncounterLink({ journey, onLinked, tone = 'light' }) {
+export default function EncounterLink({ journey, onLinked, tone = 'light', prominent = false }) {
   const [open, setOpen] = useState(false);
   if (!journey?.id) return null;
   const linked = journey.encounter_no;
@@ -295,16 +367,18 @@ export default function EncounterLink({ journey, onLinked, tone = 'light' }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title={linked ? 'تغيير رقم الزيارة / Change encounter' : 'ربط رقم الزيارة / Link encounter'}
-        className={`h-9 px-3 rounded-lg flex items-center gap-1.5 text-sm font-medium shrink-0 ${
-          linked
-            ? (dark ? 'border border-white/50 text-white' : 'border border-mist text-ink')
-            : (dark ? 'bg-white text-ink' : 'bg-ink text-white')
-        }`}
+        title={linked ? 'تغيير رقم الزيارة / Change visit number' : 'ربط رقم الزيارة ورقم المريض / Link visit number and Patient No.'}
+        className={prominent
+          ? 'h-12 w-full px-4 rounded-xl bg-ink text-white flex items-center justify-center gap-2 text-[15px] font-semibold'
+          : `h-9 px-3 rounded-lg flex items-center gap-1.5 text-sm font-medium shrink-0 ${
+            linked
+              ? (dark ? 'border border-white/50 text-white' : 'border border-mist text-ink')
+              : (dark ? 'bg-white text-ink' : 'bg-ink text-white')
+          }`}
       >
         {linked ? <Link2 className="w-4 h-4" aria-hidden="true" /> : <Barcode className="w-4 h-4" aria-hidden="true" />}
-        <span dir="ltr">{linked || 'Encounter'}</span>
-        {!linked && <span className="sr-only">ربط رقم الزيارة</span>}
+        <span dir="ltr">{linked || (prominent ? 'ربط الزيارة / Link Encounter' : 'Encounter')}</span>
+        {!linked && !prominent && <span className="sr-only">ربط رقم الزيارة</span>}
       </button>
       <EncounterDialog journey={journey} open={open} onOpenChange={setOpen} onLinked={onLinked} />
     </>
@@ -312,12 +386,18 @@ export default function EncounterLink({ journey, onLinked, tone = 'light' }) {
 }
 
 /**
- * Encounter number box for a new patient (visual triage): type it, or tap Scan and the
- * camera fills the box. Nothing is saved here; the number goes with the new journey.
+ * Visit/voucher box for a new patient (visual triage): type it, or tap Scan and the
+ * camera fills this box and Patient No. when printed. Nothing is saved here; values go
+ * with the new journey.
  */
-export function EncounterField({ value, onChange, disabled = false, inputClassName = '' }) {
+export function EncounterField({ value, onChange, onMrnSuffix, disabled = false, inputClassName = '' }) {
   const [open, setOpen] = useState(false);
-  const onResult = useCallback((text) => { onChange(cleanEncounter(text)); setOpen(false); }, [onChange]);
+  const onResult = useCallback((fields) => {
+    if (fields.visit) onChange(cleanEncounter(fields.visit));
+    if (fields.patientNo) onMrnSuffix?.(cleanPatientNo(fields.patientNo));
+    else if (fields.mrnSuffix) onMrnSuffix?.(cleanPatientNo(fields.mrnSuffix));
+    if (fields.visit) setOpen(false);
+  }, [onChange, onMrnSuffix]);
   const bad = value && !encounterLooksRight(value);
   return (
     <div className="flex flex-col gap-1">
@@ -333,7 +413,7 @@ export function EncounterField({ value, onChange, disabled = false, inputClassNa
           autoComplete="off"
           spellCheck={false}
           maxLength={40}
-          placeholder="Transaction No. (9–10 digits)"
+          placeholder="Visit / voucher no. (9–10 digits)"
           aria-invalid={bad || undefined}
           className={`${inputClassName} flex-1 font-semibold tracking-wide`}
         />
@@ -349,9 +429,9 @@ export function EncounterField({ value, onChange, disabled = false, inputClassNa
       {bad && <span role="alert" className="text-sm font-semibold text-ink">{encounterProblem(value)}</span>}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent dir="rtl" className="max-w-md">
-          <DialogTitle className="text-lg">قراءة رقم العملية / Read the Transaction No.</DialogTitle>
+          <DialogTitle className="text-lg">قراءة التذكرة / Read the slip</DialogTitle>
           <DialogDescription className="text-sm text-graphite">
-            وجّه الكاميرا إلى تذكرة الزيارة · Point the camera at the visit ticket.
+            وجّه الكاميرا إلى تذكرة الزيارة أو قسيمة المتابعة · Point the camera at the visit ticket or follow-up voucher.
           </DialogDescription>
           {open && <Scanner onResult={onResult} />}
         </DialogContent>

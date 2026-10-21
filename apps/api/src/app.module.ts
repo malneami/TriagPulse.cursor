@@ -10,6 +10,7 @@ import { ClinicalLibrariesModule } from './clinical-libraries/clinical-libraries
 import { RoutingConfigModule } from './routing-config/routing-config.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { OutcomesModule } from './outcomes/outcomes.module';
 import { UsersModule } from './users/users.module';
 import { PrivacyModule } from './privacy/privacy.module';
 import { HealthController } from './health.controller';
@@ -39,6 +40,7 @@ export const ENV_FILE_PATHS = ['../../.env', '.env'];
     RoutingConfigModule,
     AnalyticsModule,
     FeedbackModule,
+    OutcomesModule,
     UsersModule,
     PrivacyModule,
   ],

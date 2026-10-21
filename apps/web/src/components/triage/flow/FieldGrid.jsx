@@ -42,7 +42,7 @@ const val = (v) => (v == null ? '' : String(v));
  */
 export default function FieldGrid({
   patient, onChange, missingKeys = [], total = 10, more = null, complaintSlot = null, historySlot = null,
-  bedside = null, confirmKeys = [],
+  bedside = null, confirmKeys = [], onSettled,
 }) {
   const done = total - missingKeys.length;
   const [showMore, setShowMore] = useState(false);
@@ -123,6 +123,7 @@ export default function FieldGrid({
                     inputMode="numeric"
                     value={v}
                     onChange={(e) => onChange({ bp_systolic: e.target.value })}
+                    onBlur={onSettled}
                     className={`w-full min-w-0 h-8 bg-transparent text-[17px] md:text-lg font-semibold tabular-nums focus:outline-none ${critical ? 'text-[#D3242C]' : 'text-ink'}`}
                     placeholder="—"
                   />
@@ -132,6 +133,7 @@ export default function FieldGrid({
                     inputMode="numeric"
                     value={val(patient.bp_diastolic)}
                     onChange={(e) => onChange({ bp_diastolic: e.target.value })}
+                    onBlur={onSettled}
                     className="w-full min-w-0 h-8 bg-transparent text-[17px] md:text-lg font-semibold tabular-nums text-ink focus:outline-none"
                     placeholder="—"
                   />
@@ -145,6 +147,7 @@ export default function FieldGrid({
                   onChange={(e) => onChange(t.key === 'chief_complaint'
                     ? { chief_complaint: e.target.value, confirmed_complaint_key: null }
                     : { [t.key]: e.target.value })}
+                  onBlur={t.text ? undefined : onSettled}
                   placeholder="—"
                   className={`w-full h-8 bg-transparent text-[17px] md:text-lg font-semibold tabular-nums focus:outline-none ${t.text ? '' : 'text-start'} ${critical ? 'text-[#D3242C]' : 'text-ink'}`}
                 />

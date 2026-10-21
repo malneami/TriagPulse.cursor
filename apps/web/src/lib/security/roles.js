@@ -26,6 +26,10 @@ export const PERMISSIONS = {
   review_ctas: ['physician', 'admin'],
   /** A nurse's own private accuracy page ("My triage"). */
   view_own_feedback: ['nurse', 'physician', 'admin'],
+  /** HIS/manual ED outcome after physician CTAS validation. */
+  review_outcome: ['nurse', 'physician', 'admin'],
+  /** Admin assigns the physician who may complete Outcome Review. */
+  assign_outcome_physician: ['admin'],
 };
 
 export function getUserRole(user) {

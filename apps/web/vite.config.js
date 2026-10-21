@@ -1,6 +1,18 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import path from 'path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const webRoot = path.dirname(fileURLToPath(import.meta.url));
+
+/** public/ocr is gitignored — copy tesseract files whenever Vite starts, not only via predev. */
+function ocrAssetsPlugin() {
+  const copy = () => {
+    execFileSync(process.execPath, [path.join(webRoot, 'scripts/copy-ocr-assets.mjs')], { stdio: 'inherit' });
+  };
+  return { name: 'ocr-assets', buildStart: copy, configureServer: copy };
+}
 
 // GitHub Pages project site: set GITHUB_PAGES=true (CI) → base /TriagePulse/
 const pagesBase = process.env.GITHUB_PAGES === 'true'
@@ -10,7 +22,7 @@ const pagesBase = process.env.GITHUB_PAGES === 'true'
 export default defineConfig({
   base: pagesBase,
   envDir: path.resolve(__dirname, '../..'),
-  plugins: [react()],
+  plugins: [react(), ocrAssetsPlugin()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

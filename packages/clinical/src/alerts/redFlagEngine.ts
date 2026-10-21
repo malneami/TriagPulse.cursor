@@ -50,6 +50,17 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Same finished-vital windows as the CTAS engine / save validation.
+ * Prefixes typed on the way to a real value (HR 1→120, SBP 12→120, SpO₂ 9→98,
+ * GCS 1→15) sit outside these ranges and must not raise a critical alert.
+ */
+function toVital(value: unknown, min: number, max: number): number | null {
+  const n = toNumber(value);
+  if (n === null || n < min || n > max) return null;
+  return n;
+}
+
 function textHas(text: string, terms: string[]): boolean {
   const t = String(text || '').toLowerCase();
   return terms.some((term) => t.includes(term.toLowerCase()));
@@ -65,11 +76,11 @@ export function detectRedFlags(
   const complaintText = [patient.chief_complaint, patient.transcription, answers?.notes]
     .filter(Boolean)
     .join(' ');
-  const spo2 = toNumber(patient.spo2);
-  const gcs = toNumber(patient.gcs);
-  const sbp = toNumber(patient.bp_systolic);
-  const hr = toNumber(patient.hr);
-  const rr = toNumber(patient.rr);
+  const spo2 = toVital(patient.spo2, 40, 100);
+  const gcs = toVital(patient.gcs, 3, 15);
+  const sbp = toVital(patient.bp_systolic, 40, 300);
+  const hr = toVital(patient.hr, 20, 250);
+  const rr = toVital(patient.rr, 4, 70);
   const pain = toNumber(patient.pain_score);
   let ctasLevel: number | null = null;
 

@@ -9,6 +9,13 @@ function toNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Drop in-progress prefixes (GCS 1 of 15, SBP 12 of 120) — same windows as the CTAS engine. */
+function toVital(v, min, max) {
+  const n = toNum(v);
+  if (n == null || n < min || n > max) return null;
+  return n;
+}
+
 function answerText(v) {
   return String(v ?? '').toLowerCase().trim();
 }
@@ -91,7 +98,7 @@ export function normalizeClinicalFacts({ patient = {}, answers = {}, transcript 
   const facts = {};
 
   // Heart rate — pulse / tachycardia / HR collapse to one concept
-  let hr = toNum(patient.hr ?? patient.heart_rate ?? patient.pulse ?? answers.hr);
+  let hr = toVital(patient.hr ?? patient.heart_rate ?? patient.pulse ?? answers.hr, 20, 250);
   const tachycardicCue = /\btachycard\w*\b|تسرع\s*(?:قلب|نبض)|نبض\s*(?:سريع|عالي)|high\s+pulse|rapid\s+pulse|fast\s+(?:heart|pulse)/i.test(tx)
     || isYes(answers.tachycardia);
   if (hr == null && tachycardicCue) {
@@ -111,7 +118,7 @@ export function normalizeClinicalFacts({ patient = {}, answers = {}, transcript 
   }
 
   // Temperature — fever / febrile / high temp
-  let temp = toNum(patient.temperature ?? patient.temp ?? answers.temperature);
+  let temp = toVital(patient.temperature ?? patient.temp ?? answers.temperature, 32, 43);
   const feverCue = /\bfebril\w*\b|\bfever\b|حمى|سخون|حرارة\s*عالي/i.test(tx) || isYes(answers.fever);
   if (temp == null && feverCue) {
     facts.temperature = fact('temperature', 'febrile_qualitative', {
@@ -128,7 +135,7 @@ export function normalizeClinicalFacts({ patient = {}, answers = {}, transcript 
   }
 
   // Respiratory rate
-  let rr = toNum(patient.rr ?? patient.respiratory_rate ?? answers.rr);
+  let rr = toVital(patient.rr ?? patient.respiratory_rate ?? answers.rr, 4, 70);
   const tachypneaCue = /\btachypn\w*\b|breathing\s+fast|تنفس\s*سريع|لهثان/i.test(tx) || isYes(answers.tachypnea);
   if (rr == null && tachypneaCue) {
     facts.respiratory_rate = fact('respiratory_rate', 'tachypnea_qualitative', {
@@ -144,13 +151,13 @@ export function normalizeClinicalFacts({ patient = {}, answers = {}, transcript 
     });
   }
 
-  const sbp = toNum(patient.bp_systolic ?? answers.bp_systolic);
+  const sbp = toVital(patient.bp_systolic ?? answers.bp_systolic, 40, 300);
   if (sbp != null) facts.sbp = fact('sbp', sbp, { unit: 'mmHg' });
 
-  const spo2 = toNum(patient.spo2 ?? answers.spo2);
+  const spo2 = toVital(patient.spo2 ?? answers.spo2, 40, 100);
   if (spo2 != null) facts.spo2 = fact('spo2', spo2, { unit: '%' });
 
-  const gcs = toNum(patient.gcs ?? answers.gcs);
+  const gcs = toVital(patient.gcs ?? answers.gcs, 3, 15);
   if (gcs != null) facts.gcs = fact('gcs', gcs, { unit: '/15' });
 
   const pain = toNum(patient.pain_score ?? answers.pain_score);

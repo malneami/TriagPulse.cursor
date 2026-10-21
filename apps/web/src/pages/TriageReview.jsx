@@ -2,13 +2,12 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react';
 import { api } from '@/api/client';
-import { REVIEW_REASONS } from '@triagepulse/clinical';
+import { REVIEW_REASONS, monthKey, monthLabel, shiftMonth, shiftWeek, weekLabel } from '@triagepulse/clinical';
 import { ctasFill } from '@/lib/ctasStyle';
-import { monthLabel, shiftMonth } from '@/lib/month';
 
 /**
- * Department triage review (physician / admin). Monthly totals against the physician check,
- * a nurse-level × physician-level table, re-triage reasons, high-risk under-triage and
+ * Department triage review (physician / admin). Weekly or monthly totals against the physician check,
+ * a nurse-level × physician-level table, disagreement reasons, high-risk under-triage and
  * disputed cases. No nurse or patient names: each nurse sees her own cases on "My triage".
  */
 
@@ -79,7 +78,7 @@ function LevelTable({ matrix }) {
 }
 
 function Reasons({ reasons }) {
-  if (!reasons.length) return <p className="text-graphite text-sm m-0">لا توجد إعادة فرز هذا الشهر · No re-triage this month.</p>;
+  if (!reasons.length) return <p className="text-graphite text-sm m-0">لا توجد اختلافات في هذه الفترة · No disagreements this period.</p>;
   const max = Math.max(...reasons.map((r) => r.count));
   return (
     <ul className="list-none m-0 p-0 flex flex-col gap-2">
@@ -122,36 +121,63 @@ function CaseRow({ c, extra }) {
   );
 }
 
+function formatDur(sec) {
+  if (sec == null) return '—';
+  if (sec < 60) return `${sec} ث`;
+  const m = Math.round(sec / 60);
+  return `${m} د`;
+}
+
 export default function TriageReview() {
+  const [periodType, setPeriodType] = useState('week');
+  const [week, setWeek] = useState(null);
   const [month, setMonth] = useState(null);
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['dept-feedback', month],
-    queryFn: () => api.feedback.department(month || undefined),
+    queryKey: ['dept-feedback', periodType, week, month],
+    queryFn: () => api.feedback.department(periodType === 'month' ? { month: month || undefined } : { week: week || undefined }),
   });
-  const current = data?.month || month;
+  const current = periodType === 'month' ? (data?.month || month) : (data?.week || week);
   const s = data?.summary;
   const prev = data?.previous;
   const b = data?.breakdown;
   const change = s?.accuracyPct != null && prev?.accuracyPct != null ? s.accuracyPct - prev.accuracyPct : null;
+  const vsPrev = periodType === 'month' ? 'vs last month' : 'vs last week';
+  const noPrev = periodType === 'month' ? 'no previous month' : 'no previous week';
 
   return (
     <div dir="rtl" className="space-y-5 pb-10">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col">
           <h1 className="m-0 text-[28px] font-semibold">مراجعة الفرز</h1>
-          <span className="text-sm text-graphite">Triage review — department, against the physician check. No names.</span>
+          <span className="text-sm text-graphite">Triage review — department, against the physician check. No names. Timing is triage duration, not door-to-physician wait.</span>
         </div>
-        {current && (
-          <div className="ms-auto flex items-center gap-1 bg-white border border-mist rounded-xl p-1">
-            <button type="button" aria-label="الشهر السابق / Previous month" onClick={() => setMonth(shiftMonth(current, -1))} className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-paper">
-              <ChevronRight className="w-5 h-5" aria-hidden="true" />
-            </button>
-            <span className="px-2 text-[15px] font-medium">{monthLabel(current)}</span>
-            <button type="button" aria-label="الشهر التالي / Next month" onClick={() => setMonth(shiftMonth(current, 1))} className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-paper">
-              <ChevronLeft className="w-5 h-5" aria-hidden="true" />
-            </button>
+        <div className="ms-auto flex flex-wrap items-center gap-2">
+          <div className="flex bg-white border border-mist rounded-xl p-1">
+            <button type="button" aria-pressed={periodType === 'week'} onClick={() => setPeriodType('week')} className={`h-10 px-3 rounded-lg text-sm font-medium ${periodType === 'week' ? 'bg-ink text-white' : ''}`}>أسبوع · Week</button>
+            <button type="button" aria-pressed={periodType === 'month'} onClick={() => { setPeriodType('month'); if (!month) setMonth(data?.month || monthKey(new Date())); }} className={`h-10 px-3 rounded-lg text-sm font-medium ${periodType === 'month' ? 'bg-ink text-white' : ''}`}>شهر · Month</button>
           </div>
-        )}
+          {current && (
+            <div className="flex items-center gap-1 bg-white border border-mist rounded-xl p-1">
+              <button
+                type="button"
+                aria-label={periodType === 'month' ? 'الشهر السابق / Previous month' : 'الأسبوع السابق / Previous week'}
+                onClick={() => (periodType === 'month' ? setMonth(shiftMonth(current, -1)) : setWeek(shiftWeek(current, -1)))}
+                className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-paper"
+              >
+                <ChevronRight className="w-5 h-5" aria-hidden="true" />
+              </button>
+              <span className="px-2 text-[15px] font-medium">{periodType === 'month' ? monthLabel(current) : weekLabel(current)}</span>
+              <button
+                type="button"
+                aria-label={periodType === 'month' ? 'الشهر التالي / Next month' : 'الأسبوع التالي / Next week'}
+                onClick={() => (periodType === 'month' ? setMonth(shiftMonth(current, 1)) : setWeek(shiftWeek(current, 1)))}
+                className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-paper"
+              >
+                <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {isError && <p role="alert" className="border-2 border-ink rounded-xl px-4 py-3">تعذّر التحميل / Could not load.</p>}
@@ -162,14 +188,15 @@ export default function TriageReview() {
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <Stat
               strong
-              label="التطابق · Agreement"
+              label="التطابق · Exact-match / agreement"
               value={s.accuracyPct != null ? `${s.accuracyPct}%` : '—'}
               sub={s.accuracyPct != null
-                ? (change != null ? `${change >= 0 ? '+' : ''}${change} vs last month` : 'no previous month')
+                ? (change != null ? `${change >= 0 ? '+' : ''}${change} ${vsPrev}` : noPrev)
                 : `from 20 reviewed (${s.reviewed})`}
             />
+            <Stat label="مدة الفرز · Triage duration" value={formatDur(s.meanTriageDurationSec)} sub="mean, start → complete" />
             <Stat label="نسبة المراجعة · Checked" value={b.coveragePct != null ? `${b.coveragePct}%` : '—'} sub={`${s.reviewed + b.conditionChanged} of ${s.closed} closed cases`} />
-            <Stat label="أقل من اللازم · Under" value={s.underTriage} sub={`${pct(s.underTriage, s.reviewed)} of reviewed`} />
+            <Stat label="أقل من اللازم · Under" value={s.underTriage} sub={s.underPct != null ? `${s.underPct}% of reviewed` : `${pct(s.underTriage, s.reviewed)} of reviewed`} />
             <Stat
               strong={b.highRiskUnder > 0}
               icon={b.highRiskUnder > 0 ? <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> : null}
@@ -177,7 +204,7 @@ export default function TriageReview() {
               value={b.highRiskUnder}
               sub="MD CTAS 1–2, triage 3–5"
             />
-            <Stat label="أعلى من اللازم · Over" value={s.overTriage} sub={`${pct(s.overTriage, s.reviewed)} of reviewed`} />
+            <Stat label="أعلى من اللازم · Over" value={s.overTriage} sub={s.overPct != null ? `${s.overPct}% of reviewed` : `${pct(s.overTriage, s.reviewed)} of reviewed`} />
             <Stat
               label="تطابق AI · AI agreement"
               icon={<ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />}
@@ -186,7 +213,7 @@ export default function TriageReview() {
             />
           </div>
           <p className="text-sm text-graphite m-0">
-            {s.cases} فرز هذا الشهر · {s.cases - s.closed} ما زالت مفتوحة (تُحسب بعد {data.closeDays} أيام) · {b.conditionChanged} تغيّرت حالتها بعد الفرز ولم تُحسب.
+            {s.cases} فرز هذه الفترة · {s.cases - s.closed} ما زالت مفتوحة (تُحسب بعد {data.closeDays} أيام) · {b.conditionChanged} تغيّرت حالتها بعد الفرز ولم تُحسب.
             <span className="block" dir="ltr">
               {s.cases} triaged · {s.cases - s.closed} still open (measured after {data.closeDays} days) · {b.conditionChanged} changed after triage, not counted.
             </span>
@@ -198,7 +225,7 @@ export default function TriageReview() {
               <LevelTable matrix={b.matrix} />
             </section>
             <section className="bg-white border border-mist rounded-2xl p-4 space-y-4">
-              <h2 className="m-0 text-lg font-semibold">أسباب إعادة الفرز <span className="text-graphite text-sm font-normal">· Re-triage reasons</span></h2>
+              <h2 className="m-0 text-lg font-semibold">أسباب الاختلاف <span className="text-graphite text-sm font-normal">· Disagreement reasons</span></h2>
               <Reasons reasons={b.reasons} />
               <h3 className="m-0 text-base font-semibold pt-2">ردود الممرضين <span className="text-graphite text-sm font-normal">· Nurse responses</span></h3>
               <div className="grid grid-cols-3 gap-2 text-center">
@@ -218,7 +245,7 @@ export default function TriageReview() {
               أقل من اللازم بخطورة عالية <span className="text-graphite text-base font-normal">· High-risk under-triage</span>
             </h2>
             {data.highRisk.length === 0 ? (
-              <p className="bg-white border border-dashed border-graphite/40 rounded-2xl py-6 text-center text-graphite m-0">لا توجد حالات · None this month.</p>
+              <p className="bg-white border border-dashed border-graphite/40 rounded-2xl py-6 text-center text-graphite m-0">لا توجد حالات · None this period.</p>
             ) : (
               <ul className="list-none m-0 p-0 flex flex-col gap-3">
                 {data.highRisk.map((c) => (
@@ -231,7 +258,7 @@ export default function TriageReview() {
           <section className="space-y-3">
             <h2 className="m-0 text-xl font-semibold">حالات معترض عليها <span className="text-graphite text-base font-normal">· Disputed cases</span></h2>
             {data.disputes.length === 0 ? (
-              <p className="bg-white border border-dashed border-graphite/40 rounded-2xl py-6 text-center text-graphite m-0">لا توجد اعتراضات · No disputes this month.</p>
+              <p className="bg-white border border-dashed border-graphite/40 rounded-2xl py-6 text-center text-graphite m-0">لا توجد اعتراضات · No disputes this period.</p>
             ) : (
               <ul className="list-none m-0 p-0 flex flex-col gap-3">
                 {data.disputes.map((c) => (

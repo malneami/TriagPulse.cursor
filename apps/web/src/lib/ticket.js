@@ -1,23 +1,34 @@
 /**
- * Public ticket code for a journey, e.g. T042: the last three digits of its
- * database ticket number. Used where names must not appear (the wall display)
- * and on staff cards so the two can be matched.
+ * Public tracking code: T + last 3 of the internal counter + last 3 of MRN.
+ * Example: ticket 1017, MRN …255 → T017-255. Until the suffix is entered: T017-•••.
+ * Pass (ticketNo, mrnSuffix) or a patient/journey object with ticket_no / mrn_suffix.
  */
-export function ticketCode(ticketNo) {
-  if (ticketNo == null || Number.isNaN(Number(ticketNo))) return 'T---';
-  return `T${String(Number(ticketNo) % 1000).padStart(3, '0')}`;
+export function ticketCode(ticketNo, mrnSuffix) {
+  if (ticketNo != null && typeof ticketNo === 'object') {
+    return formatTicketCode(ticketNo.ticket_no, ticketNo.mrn_suffix);
+  }
+  return formatTicketCode(ticketNo, mrnSuffix);
+}
+
+function formatTicketCode(ticketNo, mrnSuffix) {
+  const seq = ticketNo == null || Number.isNaN(Number(ticketNo))
+    ? 'T---'
+    : `T${String(Number(ticketNo) % 1000).padStart(3, '0')}`;
+  const suffix = /^\d{3}$/.test(String(mrnSuffix ?? '').trim()) ? String(mrnSuffix).trim() : '•••';
+  return `${seq}-${suffix}`;
 }
 
 /**
- * How a patient is shown on staff screens (PDPL): the HIS Transaction No. — never a name,
+ * How a patient is shown on staff screens (PDPL): the HIS visit/voucher number — never a name,
  * ID or phone. Before the number is linked, "not linked" with the ticket code beside it.
  */
 export function patientLabel(p) {
   return p?.encounter_no ? String(p.encounter_no) : 'غير مربوط · Not linked';
 }
 
-/** Short staff label: ticket code plus the Transaction No. when linked, e.g. "T042 · 4006021234". */
+/** Short staff label: tracking code plus the visit number when linked, e.g. "T017-255 · 264409220". */
 export function patientShort(p) {
   if (!p) return '—';
-  return p.encounter_no ? `${ticketCode(p.ticket_no)} · ${p.encounter_no}` : ticketCode(p.ticket_no);
+  const code = ticketCode(p);
+  return p.encounter_no ? `${code} · ${p.encounter_no}` : code;
 }
