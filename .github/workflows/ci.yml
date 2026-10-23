@@ -104,11 +104,12 @@ jobs:
           echo "API did not start"; cat api.log; exit 1
       - name: End-to-end checks
         run: EXPECT_WEB=1 node scripts/e2e-api.mjs
-      - name: Browser checks (sign-in session)
+      - name: Install browser for the browser checks
         run: |
           npm i --no-save --no-audit --no-fund playwright@1.56.1
           npx playwright install --with-deps chromium
-          node scripts/e2e-browser-session.mjs
+      - name: Browser checks (sign-in session)
+        run: node scripts/e2e-browser-session.mjs
       - name: API log
         if: always()
         run: tail -100 api.log || true

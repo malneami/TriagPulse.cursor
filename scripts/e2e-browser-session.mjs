@@ -37,39 +37,47 @@ process.on('unhandledRejection', (err) => {
   process.exit(1);
 });
 
-const browser = await chromium.launch();
-const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-const page = await context.newPage();
-currentPage = page;
-const signedIn = () => page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 }).then(() => true, () => false);
+try {
+  const browser = await chromium.launch();
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  currentPage = page;
+  const signedIn = () => page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 }).then(() => true, () => false);
 
-await page.goto(`${APP}/login`);
-await page.locator('#login-email').fill(EMAIL);
-await page.locator('#login-password').fill(PASSWORD);
-await page.getByRole('button', { name: /Sign in/ }).click();
-check(await signedIn(), 'the nurse signs in through the login page', page.url());
+  await page.goto(`${APP}/login`);
+  await page.locator('#login-email').fill(EMAIL);
+  await page.locator('#login-password').fill(PASSWORD);
+  await page.getByRole('button', { name: /Sign in/ }).click();
+  check(await signedIn(), 'the nurse signs in through the login page', page.url());
 
-const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
-check(!/eyJ[\w-]+\.[\w-]+\./.test(stored), 'no sign-in token is kept in browser storage');
-check(!(await page.evaluate(() => document.cookie)).includes('tp_refresh'), 'page scripts cannot read the renewal cookie (HttpOnly)');
-const cookies = await context.cookies();
-const refresh = cookies.find((c) => c.name === 'tp_refresh');
-check(!!refresh && refresh.httpOnly && refresh.sameSite === 'Strict' && refresh.path === '/api/auth', 'the browser holds an HttpOnly, SameSite=Strict renewal cookie for /api/auth', JSON.stringify(refresh && { ...refresh, value: '…' }));
+  const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
+  check(!/eyJ[\w-]+\.[\w-]+\./.test(stored), 'no sign-in token is kept in browser storage');
+  check(!(await page.evaluate(() => document.cookie)).includes('tp_refresh'), 'page scripts cannot read the renewal cookie (HttpOnly)');
+  const cookies = await context.cookies();
+  const refresh = cookies.find((c) => c.name === 'tp_refresh');
+  check(!!refresh && refresh.httpOnly && refresh.sameSite === 'Strict' && refresh.path === '/api/auth', 'the browser holds an HttpOnly, SameSite=Strict renewal cookie for /api/auth', JSON.stringify(refresh && { ...refresh, value: '…' }));
 
-await page.reload();
-await page.waitForLoadState('networkidle');
-check(!page.url().includes('/login'), 'a page reload keeps the nurse signed in (renewed from the cookie)', page.url());
-const after = (await context.cookies()).find((c) => c.name === 'tp_refresh');
-check(!!after && after.value !== refresh.value, 'the renewal on reload rotated the cookie');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  check(!page.url().includes('/login'), 'a page reload keeps the nurse signed in (renewed from the cookie)', page.url());
+  const after = (await context.cookies()).find((c) => c.name === 'tp_refresh');
+  check(!!after && after.value !== refresh.value, 'the renewal on reload rotated the cookie');
 
-await page.getByRole('button', { name: /Menu/ }).click();
-await page.getByRole('menuitem', { name: /Sign out$/ }).click();
-await page.waitForURL(/\/login/, { timeout: 15000 });
-check(page.url().includes('/login'), 'sign-out returns to the login page');
-await page.goto(`${APP}/tracking`);
-await page.waitForLoadState('networkidle');
-await page.waitForTimeout(1000);
-check(page.url().includes('/login'), 'after sign-out, opening the app again asks to sign in', page.url());
+  await page.getByRole('button', { name: /Menu/ }).click();
+  await page.getByRole('menuitem', { name: /Sign out$/ }).click();
+  await page.waitForURL(/\/login/, { timeout: 15000 });
+  check(page.url().includes('/login'), 'sign-out returns to the login page');
+  await page.goto(`${APP}/tracking`);
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(1000);
+  check(page.url().includes('/login'), 'after sign-out, opening the app again asks to sign in', page.url());
 
-await browser.close();
+  await browser.close();
+} catch (err) {
+  const where = currentPage ? currentPage.url() : '';
+  const msg = String(err?.message || err).split('\n').slice(0, 4).join(' ');
+  console.error(`FAIL  ${msg} @ ${where}`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::error title=Browser check crashed::${msg} @ ${where}`);
+  process.exit(1);
+}
 console.log(`\nAll ${passed} browser checks passed.`);
