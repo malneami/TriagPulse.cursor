@@ -67,7 +67,17 @@ try {
   await page.getByRole('menuitem', { name: /Sign out$/ }).click();
   await page.waitForURL(/\/login/, { timeout: 15000 });
   check(page.url().includes('/login'), 'sign-out returns to the login page');
-  await page.goto(`${APP}/tracking`);
+  // Sign-out ends with a full page load of /login; let it finish before opening the app
+  // again, otherwise the two navigations collide (net::ERR_ABORTED).
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(500);
+  try {
+    await page.goto(`${APP}/tracking`);
+  } catch (err) {
+    if (!/ERR_ABORTED/.test(String(err?.message))) throw err;
+    await page.waitForTimeout(1000);
+    await page.goto(`${APP}/tracking`);
+  }
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1000);
   check(page.url().includes('/login'), 'after sign-out, opening the app again asks to sign in', page.url());
