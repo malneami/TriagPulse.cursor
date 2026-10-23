@@ -1,8 +1,33 @@
 import { Injectable } from '@nestjs/common';
-import { computeEvaluationReport } from '@triagepulse/clinical';
+import { computeEvaluationReport, highAcuityOutcome } from '@triagepulse/clinical';
 import { PrismaService } from '../prisma/prisma.module';
 
-/** Strip direct identifiers for governed export. */
+type ExportOutcome = {
+  disposition: string;
+  admissionLocation: string | null;
+  dischargeDestination: string | null;
+  finalDiagnosisCode: string | null;
+  interventions: string[];
+  icuWithin24h: string | null;
+  death: string | null;
+  resources: string[];
+  resourceCount: number | null;
+  return72h: string | null;
+  reviewedAt: Date;
+} | null;
+
+/** Nurse (or engine) level compared with the reference: agree, under-triage or over-triage. */
+function versusReference(level: number | null, reference: number | null): 'agree' | 'under' | 'over' | null {
+  if (level == null || reference == null) return null;
+  if (level === reference) return 'agree';
+  // CTAS 1 is most urgent: a higher number than the reference is under-triage.
+  return level > reference ? 'under' : 'over';
+}
+
+/**
+ * One de-identified row of the accuracy dataset. Only physician-validated records reach here.
+ * No names, ID, phone, visit number or MRN; the record id is a random UUID.
+ */
 function deIdentifyRecord(r: {
   id: string;
   createdAt: Date;
@@ -10,9 +35,12 @@ function deIdentifyRecord(r: {
   gender: string | null;
   chiefComplaint: string | null;
   ctasLevel: number | null;
+  nurseCtas: number | null;
   rulesRecommendedCtas: number | null;
   aiRecommendedCtas: number | null;
-  clinicianFinalCtas: number | null;
+  physicianCtas: number | null;
+  physicianValidatedAt: Date | null;
+  physicianConditionChanged: boolean | null;
   agreement: boolean | null;
   overrideReason: string | null;
   flaggedForReview: boolean;
@@ -23,17 +51,29 @@ function deIdentifyRecord(r: {
   assessmentTrail: unknown;
   validatedPayload: unknown;
   aiConfidence: number | null;
+  journey: { outcomeReview: ExportOutcome };
 }) {
+  const nurse = r.nurseCtas ?? r.ctasLevel;
+  const engine = r.aiRecommendedCtas ?? r.rulesRecommendedCtas;
+  const reference = r.physicianConditionChanged ? null : r.physicianCtas;
+  const o = r.journey?.outcomeReview ?? null;
   return {
     record_id: r.id,
     created_at: r.createdAt.toISOString(),
     age_band: r.age == null ? null : r.age < 14 ? 'pediatric' : r.age < 65 ? 'adult' : 'elderly',
     gender: r.gender,
     chief_complaint: r.chiefComplaint,
+    nurse_ctas: nurse,
+    engine_ctas: engine,
     rules_recommended_ctas: r.rulesRecommendedCtas,
     ai_recommended_ctas: r.aiRecommendedCtas,
-    clinician_final_ctas: r.clinicianFinalCtas ?? r.ctasLevel,
-    agreement: r.agreement,
+    physician_ctas: r.physicianCtas,
+    physician_validated_at: r.physicianValidatedAt?.toISOString() ?? null,
+    condition_changed: !!r.physicianConditionChanged,
+    /** Scored against the physician level; null when the condition changed after triage. */
+    nurse_vs_physician: versusReference(nurse, reference),
+    engine_vs_physician: versusReference(engine, reference),
+    nurse_accepted_engine: r.agreement,
     override_reason: r.overrideReason,
     flagged_for_review: r.flaggedForReview,
     triage_duration_min: r.triageDurationMin,
@@ -43,6 +83,23 @@ function deIdentifyRecord(r: {
     assessment_trail: r.assessmentTrail,
     validated_payload: r.validatedPayload,
     ai_confidence: r.aiConfidence,
+    outcome: o
+      ? {
+          disposition: o.disposition,
+          admission_location: o.admissionLocation,
+          discharge_destination: o.dischargeDestination,
+          final_diagnosis_icd10: o.finalDiagnosisCode,
+          interventions: o.interventions,
+          icu_within_24h: o.icuWithin24h,
+          death: o.death,
+          resources: o.resources,
+          resource_count: o.resourceCount,
+          return_72h: o.return72h,
+          /** Any life-saving intervention, ICU within 24 h or death; null while still unknown. */
+          high_acuity_outcome: highAcuityOutcome(o),
+          reviewed_at: o.reviewedAt.toISOString(),
+        }
+      : null,
   };
 }
 
@@ -94,9 +151,17 @@ export class AnalyticsService {
     };
   }
 
+  /**
+   * Accuracy dataset: only records a physician has validated (the reference). Unvalidated
+   * records are left out, never scored against the nurse's own level.
+   */
   async exportValidated(limit = 200, flaggedOnly = false) {
     const rows = await this.prisma.triageRecord.findMany({
-      where: flaggedOnly ? { flaggedForReview: true } : undefined,
+      where: {
+        physicianValidatedAt: { not: null },
+        physicianCtas: { not: null },
+        ...(flaggedOnly ? { flaggedForReview: true } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 1000),
       select: {
@@ -106,9 +171,12 @@ export class AnalyticsService {
         gender: true,
         chiefComplaint: true,
         ctasLevel: true,
+        nurseCtas: true,
         rulesRecommendedCtas: true,
         aiRecommendedCtas: true,
-        clinicianFinalCtas: true,
+        physicianCtas: true,
+        physicianValidatedAt: true,
+        physicianConditionChanged: true,
         agreement: true,
         overrideReason: true,
         flaggedForReview: true,
@@ -119,6 +187,25 @@ export class AnalyticsService {
         assessmentTrail: true,
         validatedPayload: true,
         aiConfidence: true,
+        journey: {
+          select: {
+            outcomeReview: {
+              select: {
+                disposition: true,
+                admissionLocation: true,
+                dischargeDestination: true,
+                finalDiagnosisCode: true,
+                interventions: true,
+                icuWithin24h: true,
+                death: true,
+                resources: true,
+                resourceCount: true,
+                return72h: true,
+                reviewedAt: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -126,6 +213,7 @@ export class AnalyticsService {
       exported_at: new Date().toISOString(),
       count: rows.length,
       de_identified: true,
+      reference: 'physician_validated_ctas',
       encounters: rows.map(deIdentifyRecord),
     };
   }
@@ -148,6 +236,9 @@ export class AnalyticsService {
         aiRecommendedCtas: true,
         rulesRecommendedCtas: true,
         clinicianFinalCtas: true,
+        physicianCtas: true,
+        physicianValidatedAt: true,
+        physicianConditionChanged: true,
         ctasLevel: true,
         agreement: true,
         overrideReason: true,
@@ -178,6 +269,9 @@ export class AnalyticsService {
         aiRecommendedCtas: r.aiRecommendedCtas,
         rulesRecommendedCtas: r.rulesRecommendedCtas,
         clinicianFinalCtas: r.clinicianFinalCtas,
+        physicianCtas: r.physicianCtas,
+        physicianValidatedAt: r.physicianValidatedAt,
+        physicianConditionChanged: r.physicianConditionChanged,
         ctasLevel: r.ctasLevel,
         agreement: r.agreement,
         overrideReason: r.overrideReason,

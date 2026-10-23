@@ -16,6 +16,19 @@ const FILTERS = [
   { id: 'all', ar: 'الكل', en: 'All' },
 ];
 
+const AGE_PRESETS = [
+  { id: 'all', ar: 'كل الأعمار', en: 'All ages', min: '', max: '' },
+  { id: 'child', ar: 'أطفال <١٤', en: 'Children <14', min: '0', max: '13' },
+  { id: 'adult', ar: 'بالغون ١٤–٦٤', en: 'Adults 14–64', min: '14', max: '64' },
+  { id: 'older', ar: '٦٥+', en: '65+', min: '65', max: '' },
+];
+
+const SKIP_REASON = {
+  not_found: 'not found',
+  not_eligible: 'not validated / no visit number',
+  triaged_by_this_physician: 'this physician did the triage',
+};
+
 const DISPOSITIONS = [
   { id: 'discharged_ed', ar: 'خرج من الطوارئ', en: 'Discharged from ED' },
   { id: 'admitted', ar: 'أُدخل', en: 'Admitted' },
@@ -43,6 +56,96 @@ const DIRECTION = [
   { id: 'no', ar: 'لا', en: 'No' },
   { id: 'uncertain', ar: 'غير متأكد', en: 'Uncertain' },
 ];
+
+// Reference measures for the accuracy study (same codes as the server).
+const INTERVENTIONS = [
+  { id: 'intubation', ar: 'تنبيب', en: 'Intubation' },
+  { id: 'noninvasive_ventilation', ar: 'تهوية غير جراحية / قناع وكيس', en: 'NIV / bag-mask' },
+  { id: 'cpr', ar: 'إنعاش قلبي رئوي', en: 'CPR' },
+  { id: 'defibrillation_cardioversion_pacing', ar: 'صدمة / تنظيم / منظم', en: 'Defibrillation / cardioversion / pacing' },
+  { id: 'vasopressors_inotropes', ar: 'رافعات ضغط', en: 'Vasopressors / inotropes' },
+  { id: 'blood_transfusion', ar: 'نقل دم', en: 'Blood transfusion' },
+  { id: 'emergency_surgery_procedure', ar: 'جراحة / إجراء طارئ', en: 'Emergency surgery / procedure' },
+  { id: 'thrombolysis_pci', ar: 'مذيب جلطة / قسطرة', en: 'Thrombolysis / PCI' },
+  { id: 'other_lifesaving', ar: 'إجراء منقذ آخر', en: 'Other life-saving' },
+];
+
+const RESOURCES = [
+  { id: 'labs', ar: 'تحاليل', en: 'Labs' },
+  { id: 'ecg_xray', ar: 'تخطيط قلب / أشعة عادية', en: 'ECG / X-ray' },
+  { id: 'advanced_imaging', ar: 'أشعة مقطعية / رنين / موجات', en: 'CT / MRI / ultrasound' },
+  { id: 'iv_fluids', ar: 'سوائل وريدية', en: 'IV fluids' },
+  { id: 'iv_im_neb_meds', ar: 'أدوية وريد / عضل / بخار', en: 'IV / IM / nebulised meds' },
+  { id: 'specialty_consult', ar: 'استشارة تخصص', en: 'Specialty consult' },
+  { id: 'simple_procedure', ar: 'إجراء بسيط', en: 'Simple procedure' },
+  { id: 'complex_procedure', ar: 'إجراء معقد (=٢)', en: 'Complex procedure (=2)' },
+];
+
+const YES_NO_UNKNOWN = [
+  { id: 'yes', ar: 'نعم', en: 'Yes' },
+  { id: 'no', ar: 'لا', en: 'No' },
+  { id: 'unknown', ar: 'غير معروف', en: 'Unknown' },
+];
+
+const DEATH = [
+  { id: 'none', ar: 'لا وفاة', en: 'No death' },
+  { id: 'died_in_ed', ar: 'وفاة في الطوارئ', en: 'Died in ED' },
+  { id: 'died_in_hospital', ar: 'وفاة في المستشفى', en: 'Died in hospital' },
+  { id: 'unknown', ar: 'غير معروف', en: 'Unknown' },
+];
+
+const RETURN_72H = [
+  { id: 'no', ar: 'لا', en: 'No' },
+  { id: 'yes_discharged', ar: 'عاد وخرج', en: 'Returned, discharged' },
+  { id: 'yes_admitted', ar: 'عاد وأُدخل', en: 'Returned, admitted' },
+  { id: 'unknown', ar: 'غير معروف بعد', en: 'Not known yet' },
+];
+
+/** Multi-pick with an exclusive "None". */
+function togglePick(list, id) {
+  if (id === 'none') return list.includes('none') ? [] : ['none'];
+  const rest = list.filter((x) => x !== 'none');
+  return rest.includes(id) ? rest.filter((x) => x !== id) : [...rest, id];
+}
+
+function Choices({ legend, name, options, value, onChange }) {
+  return (
+    <fieldset>
+      <legend className="text-sm font-medium mb-1">{legend}</legend>
+      <div className="flex flex-wrap gap-1">
+        {options.map((d) => (
+          <button
+            key={d.id}
+            type="button"
+            name={name}
+            aria-pressed={value === d.id}
+            onClick={() => onChange(d.id)}
+            className={`min-h-11 px-3 rounded-xl border text-sm ${value === d.id ? 'bg-ink text-white border-ink' : 'border-mist bg-white'}`}
+          >
+            {d.ar} · {d.en}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function Picks({ legend, options, value, onChange }) {
+  const all = [...options, { id: 'none', ar: 'لا شيء', en: 'None' }];
+  return (
+    <fieldset>
+      <legend className="text-sm font-medium mb-1">{legend}</legend>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+        {all.map((d) => (
+          <label key={d.id} className="flex items-center gap-2 min-h-11 px-3 rounded-xl border border-mist">
+            <input type="checkbox" checked={value.includes(d.id)} onChange={() => onChange(togglePick(value, d.id))} />
+            <span className="text-sm">{d.ar} · {d.en}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
 
 function labelOf(list, id) {
   const hit = list.find((x) => x.id === id);
@@ -86,6 +189,12 @@ const emptyForm = {
   reviewerComment: '',
   directionAppropriate: '',
   directionComment: '',
+  finalDiagnosisCode: '',
+  interventions: [],
+  icuWithin24h: '',
+  death: '',
+  resources: [],
+  return72h: '',
 };
 
 function formFromOutcome(o) {
@@ -100,6 +209,12 @@ function formFromOutcome(o) {
     reviewerComment: o.reviewerComment || '',
     directionAppropriate: o.directionAppropriate || '',
     directionComment: o.directionComment || '',
+    finalDiagnosisCode: o.finalDiagnosisCode || '',
+    interventions: o.interventions || [],
+    icuWithin24h: o.icuWithin24h || '',
+    death: o.death || '',
+    resources: o.resources || [],
+    return72h: o.return72h || '',
   };
 }
 
@@ -127,6 +242,12 @@ function OutcomeForm({ row, open, onOpenChange, onSaved }) {
     reviewerComment: form.reviewerComment || undefined,
     directionAppropriate: form.directionAppropriate || undefined,
     directionComment: form.directionComment || undefined,
+    finalDiagnosisCode: form.finalDiagnosisCode || undefined,
+    interventions: form.interventions,
+    icuWithin24h: form.icuWithin24h || undefined,
+    death: form.death || undefined,
+    resources: form.resources,
+    return72h: form.return72h || undefined,
   });
 
   const save = async (close) => {
@@ -150,7 +271,7 @@ function OutcomeForm({ row, open, onOpenChange, onSaved }) {
       <DialogContent dir="rtl" className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogTitle className="text-lg">مراجعة النتيجة / Outcome review <span dir="ltr" className="text-graphite">{ticketCode(row.ticketNo, row.mrnSuffix)}</span></DialogTitle>
         <DialogDescription className="text-sm text-graphite">
-          Add the HIS discharge or admission. Nurse and physician CTAS are not changed.
+          From the HIS record. These answers are the outcome reference for triage accuracy; nurse and physician CTAS are not changed.
         </DialogDescription>
         <p className="m-0 text-sm text-graphite">
           CTAS ممرض {row.nurseCtas ?? '—'} · طبيب {row.physicianCtas ?? '—'} · {row.direction || '—'}
@@ -207,7 +328,25 @@ function OutcomeForm({ row, open, onOpenChange, onSaved }) {
         )}
 
         <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">التشخيص النهائي من النظام / Final diagnosis from HIS</span>
+          <span className="text-sm font-medium">رمز التشخيص ICD-10 / Final diagnosis ICD-10 code</span>
+          <input
+            dir="ltr"
+            value={form.finalDiagnosisCode}
+            onChange={(e) => set('finalDiagnosisCode', e.target.value.toUpperCase())}
+            placeholder="R07.4"
+            maxLength={10}
+            className="h-12 border border-mist rounded-xl px-3 font-mono tracking-wide"
+          />
+        </label>
+
+        <Picks legend="إجراءات منقذة للحياة / Life-saving interventions" options={INTERVENTIONS} value={form.interventions} onChange={(v) => set('interventions', v)} />
+        <Choices legend="عناية مركزة خلال ٢٤ ساعة (ICU/PICU/NICU/CCU) / ICU within 24 h of arrival" name="icu24" options={YES_NO_UNKNOWN} value={form.icuWithin24h} onChange={(v) => set('icuWithin24h', v)} />
+        <Choices legend="الوفاة / Death" name="death" options={DEATH} value={form.death} onChange={(v) => set('death', v)} />
+        <Picks legend="موارد الطوارئ المستخدمة / ED resources used" options={RESOURCES} value={form.resources} onChange={(v) => set('resources', v)} />
+        <Choices legend="عودة للطوارئ خلال ٧٢ ساعة / Return to ED within 72 h" name="ret72" options={RETURN_72H} value={form.return72h} onChange={(v) => set('return72h', v)} />
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium">وصف التشخيص (اختياري) / Diagnosis description (optional)</span>
           <textarea value={form.finalDiagnosis} onChange={(e) => set('finalDiagnosis', e.target.value)} rows={2} maxLength={500} className="border border-mist rounded-xl px-3 py-2" />
         </label>
         <label className="flex flex-col gap-1">
@@ -249,8 +388,11 @@ function OutcomeForm({ row, open, onOpenChange, onSaved }) {
             </button>
           </div>
         ) : (
-          <p className="text-sm text-graphite m-0">Only the CTAS nurse or the assigned physician can save this review.</p>
+          <p className="text-sm text-graphite m-0">Only the physician assigned by an admin can save this review (never the triage nurse).</p>
         )}
+        <p className="text-xs text-graphite m-0">
+          يُغلق بعد ٧٢ ساعة من الوصول بعد تسجيل العودة · Close 72 h after arrival, once the return visit is recorded.
+        </p>
       </DialogContent>
     </Dialog>
   );
@@ -266,11 +408,56 @@ export default function OutcomeReview() {
   const [active, setActive] = useState(null);
   const [pick, setPick] = useState({});
   const [assigning, setAssigning] = useState('');
+  // Admin filters to pick a set of cases: arrival dates, age range, unassigned only.
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [ageMin, setAgeMin] = useState('');
+  const [ageMax, setAgeMax] = useState('');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkPhysician, setBulkPhysician] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
 
+  const filters = { status, q, from, to, ageMin, ageMax, assigned: unassignedOnly ? 'unassigned' : '' };
   const { data: rows = [], isFetching, isError, refetch } = useQuery({
-    queryKey: ['outcomes', status, q],
-    queryFn: () => api.outcomes.list({ status, q }),
+    queryKey: ['outcomes', filters],
+    queryFn: () => api.outcomes.list(filters),
   });
+
+  // Keep only selections that are still in the filtered list.
+  useEffect(() => {
+    setSelected((prev) => {
+      const ids = new Set(rows.map((r) => r.id));
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rows]);
+
+  const toggle = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
+  const agePreset = AGE_PRESETS.find((p) => p.min === ageMin && p.max === ageMax)?.id;
+
+  const assignSelected = async () => {
+    if (!bulkPhysician) { toast.error('Select a physician'); return; }
+    if (!selected.size) { toast.error('Select cases first'); return; }
+    setBulkBusy(true);
+    try {
+      const res = await api.outcomes.assignBulk([...selected], bulkPhysician);
+      const reasons = [...new Set(res.skipped.map((x) => SKIP_REASON[x.reason] || x.reason))].join(', ');
+      toast.success(`عُيّن ${res.assigned} · Assigned ${res.assigned}${res.skipped.length ? ` · skipped ${res.skipped.length} (${reasons})` : ''}`);
+      setSelected(new Set());
+      refresh();
+    } catch (err) {
+      toast.error(err?.message || 'Could not assign');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const { data: physicians = [] } = useQuery({
     queryKey: ['outcomes-physicians'],
@@ -285,7 +472,7 @@ export default function OutcomeReview() {
 
   const exportFile = async () => {
     try {
-      const blob = await api.outcomes.exportCsv({ status, q });
+      const blob = await api.outcomes.exportCsv(filters);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -369,6 +556,73 @@ export default function OutcomeReview() {
         </button>
       </div>
 
+      <div className="bg-white border border-mist rounded-2xl p-3 flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">من تاريخ · From</span>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">إلى تاريخ · To</span>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
+        <div className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">العمر · Age</span>
+          <div className="flex flex-wrap items-center gap-1">
+            {AGE_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={agePreset === p.id}
+                onClick={() => { setAgeMin(p.min); setAgeMax(p.max); }}
+                className={`h-11 px-3 rounded-xl border text-sm ${agePreset === p.id ? 'bg-ink text-white border-ink' : 'bg-white border-mist'}`}
+              >
+                {p.ar} · {p.en}
+              </button>
+            ))}
+            <input aria-label="Age from" inputMode="numeric" value={ageMin} onChange={(e) => setAgeMin(e.target.value.replace(/\D/g, ''))} placeholder="من" className="h-11 w-16 border border-mist rounded-xl px-2 text-center" />
+            <span aria-hidden="true">–</span>
+            <input aria-label="Age to" inputMode="numeric" value={ageMax} onChange={(e) => setAgeMax(e.target.value.replace(/\D/g, ''))} placeholder="إلى" className="h-11 w-16 border border-mist rounded-xl px-2 text-center" />
+          </div>
+        </div>
+        {canAssign && (
+          <label className="flex items-center gap-2 h-11 px-3 rounded-xl border border-mist text-sm">
+            <input type="checkbox" checked={unassignedOnly} onChange={(e) => setUnassignedOnly(e.target.checked)} />
+            غير معيّن فقط · Unassigned only
+          </label>
+        )}
+        {(from || to || ageMin || ageMax || unassignedOnly) && (
+          <button
+            type="button"
+            onClick={() => { setFrom(''); setTo(''); setAgeMin(''); setAgeMax(''); setUnassignedOnly(false); }}
+            className="h-11 px-3 rounded-xl border border-mist text-sm"
+          >
+            مسح · Clear
+          </button>
+        )}
+      </div>
+
+      {canAssign && selected.size > 0 && (
+        <div className="sticky top-2 z-10 bg-ink text-white rounded-2xl p-3 flex flex-wrap items-center gap-2">
+          <span className="font-semibold">{selected.size} محددة · selected</span>
+          <select
+            aria-label="Physician for selected cases"
+            value={bulkPhysician}
+            onChange={(e) => setBulkPhysician(e.target.value)}
+            className="h-11 rounded-xl px-2 text-ink bg-white min-w-[200px]"
+          >
+            <option value="">اختر الطبيب · Choose physician</option>
+            {physicians.map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
+          </select>
+          <button type="button" disabled={bulkBusy} onClick={assignSelected} className="h-11 px-4 rounded-xl bg-white text-ink font-semibold disabled:opacity-50">
+            تعيين للمحدد · Assign to selected
+          </button>
+          <button type="button" onClick={() => setSelected(new Set())} className="h-11 px-3 rounded-xl border border-white/50">
+            إلغاء · Clear
+          </button>
+          <span className="text-xs opacity-80">Cases this physician triaged are skipped.</span>
+        </div>
+      )}
+
       {isError && (
         <p role="alert" className="bg-white border-2 border-ink rounded-xl px-4 py-3">تعذّر التحميل · Could not load.</p>
       )}
@@ -377,6 +631,11 @@ export default function OutcomeReview() {
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="text-start text-graphite border-b border-mist">
+              {canAssign && (
+                <th className="p-3">
+                  <input type="checkbox" aria-label="Select all in this list" checked={allSelected} onChange={toggleAll} />
+                </th>
+              )}
               <th className="p-3 font-medium">التذكرة</th>
               <th className="p-3 font-medium">الزيارة</th>
               <th className="p-3 font-medium">آخر ٣</th>
@@ -396,7 +655,12 @@ export default function OutcomeReview() {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id} className="border-b border-mist last:border-0">
+              <tr key={row.id} className={`border-b border-mist last:border-0 ${selected.has(row.id) ? 'bg-paper' : ''}`}>
+                {canAssign && (
+                  <td className="p-3">
+                    <input type="checkbox" aria-label={`Select ${ticketCode(row.ticketNo, row.mrnSuffix)}`} checked={selected.has(row.id)} onChange={() => toggle(row.id)} />
+                  </td>
+                )}
                 <td dir="ltr" className="p-3 font-semibold whitespace-nowrap">{ticketCode(row.ticketNo, row.mrnSuffix)}</td>
                 <td dir="ltr" className="p-3 tabular-nums whitespace-nowrap">{row.encounterNo || '—'}</td>
                 <td dir="ltr" className="p-3">{row.mrnSuffix || '—'}</td>
@@ -442,14 +706,22 @@ export default function OutcomeReview() {
                     </button>
                   )}
                   {row.canAct && row.outcome && row.currentStatus !== 'closed' && (
-                    <button type="button" onClick={() => closeCase(row)} className="h-10 px-3 rounded-lg border border-mist ms-1">إغلاق</button>
+                    <button
+                      type="button"
+                      onClick={() => closeCase(row)}
+                      disabled={!!row.closeProblem}
+                      title={row.closeProblem || 'Close'}
+                      className="h-10 px-3 rounded-lg border border-mist ms-1 disabled:opacity-40"
+                    >
+                      إغلاق
+                    </button>
                   )}
                 </td>
               </tr>
             ))}
             {!isFetching && rows.length === 0 && (
               <tr>
-                <td colSpan={15} className="p-8 text-center text-graphite">لا توجد حالات في هذا المرشح · No cases in this filter.</td>
+                <td colSpan={canAssign ? 16 : 15} className="p-8 text-center text-graphite">لا توجد حالات في هذا المرشح · No cases in this filter.</td>
               </tr>
             )}
           </tbody>

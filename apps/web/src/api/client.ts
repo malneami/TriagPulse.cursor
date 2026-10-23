@@ -206,6 +206,14 @@ function mapJourney(j) {
   };
 }
 
+function outcomeParams({ status = 'awaiting', q = '', from = '', to = '', ageMin = '', ageMax = '', assigned = '' } = {}) {
+  const p = new URLSearchParams({ status });
+  for (const [k, v] of Object.entries({ q, from, to, ageMin, ageMax, assigned })) {
+    if (v !== '' && v != null) p.set(k, String(v));
+  }
+  return p;
+}
+
 export const api = {
   auth: {
     login: (email, password) =>
@@ -325,22 +333,21 @@ export const api = {
     board: () => request('/tracking/board').then((list) => list.map(mapJourney)),
   },
   outcomes: {
-    list: ({ status = 'awaiting', q = '' } = {}) => {
-      const p = new URLSearchParams({ status });
-      if (q) p.set('q', q);
-      return request(`/outcomes?${p}`);
-    },
+    /** Filters: status, q, from/to (YYYY-MM-DD arrival), ageMin/ageMax, assigned='unassigned'. */
+    list: (filters = {}) => request(`/outcomes?${outcomeParams(filters)}`),
     awaitingCount: () => request('/outcomes/awaiting-count').then((r) => r.count),
     physicians: () => request('/outcomes/physicians'),
     assignPhysician: (journeyId, physicianId) =>
       request(`/outcomes/${journeyId}/assign`, { method: 'POST', body: JSON.stringify({ physicianId }) }),
+    /** Admin: one physician for many cases. Returns { assigned, skipped: [{ id, reason }] }. */
+    assignBulk: (journeyIds, physicianId) =>
+      request('/outcomes/assign-bulk', { method: 'POST', body: JSON.stringify({ journeyIds, physicianId }) }),
     save: (journeyId, body) =>
       request(`/outcomes/${journeyId}`, { method: 'PUT', body: JSON.stringify(body) }),
     close: (journeyId) =>
       request(`/outcomes/${journeyId}/close`, { method: 'POST', body: '{}' }),
-    exportCsv: async ({ status = 'awaiting', q = '' } = {}) => {
-      const p = new URLSearchParams({ status });
-      if (q) p.set('q', q);
+    exportCsv: async (filters = {}) => {
+      const p = outcomeParams(filters);
       const headers = {};
       const token = getToken();
       if (token) headers.Authorization = `Bearer ${token}`;

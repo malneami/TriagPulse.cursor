@@ -344,6 +344,7 @@ export class JourneysService {
       where: { id },
       data: {
         clinicianFinalCtas: level,
+        physicianCtas: level,
         ctasReviewedAt: new Date(),
         currentStatus: JourneyStatus.awaiting_outcome_review,
         ...(claiming ? { assignedPhysicianId: user.id, assignedAt: new Date() } : {}),
@@ -352,7 +353,15 @@ export class JourneysService {
     if (record) {
       await this.prisma.triageRecord.update({
         where: { id: record.id },
-        data: { clinicianFinalCtas: level, clinicianReviewedAt: new Date(), reviewedBy: user.role },
+        data: {
+          clinicianFinalCtas: level,
+          clinicianReviewedAt: new Date(),
+          reviewedBy: user.role,
+          // The accuracy reference lives in its own fields, set only here (never at save).
+          physicianCtas: level,
+          physicianValidatedAt: review.createdAt,
+          physicianConditionChanged: review.conditionChanged,
+        },
       });
     }
     await this.audit.log('PatientJourney', id, agreed ? 'ctas_validated_agreed' : 'ctas_validated_disagreed', user, {
