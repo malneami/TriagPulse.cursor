@@ -105,7 +105,8 @@ jobs:
           done
           echo "API did not start"; cat api.log; exit 1
       - name: Boosthis kit attached (local only, sends nothing)
-        run: grep -q "Boosthis starting: no project key" api.log
+        run: |
+          grep -q "Boosthis starting: no project key" api.log
       - name: End-to-end checks
         run: EXPECT_WEB=1 node scripts/e2e-api.mjs
       - name: Install browser for the browser checks
