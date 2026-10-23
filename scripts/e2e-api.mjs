@@ -206,7 +206,8 @@ check(saved.status === 201 && saved.json?.success, 'triage save succeeds', `stat
 
 const after = await call(`/journeys/${journeyId}`, { token: nurse });
 check(after.status === 200, 'saved journey can be read back');
-check(after.json.currentStatus === 'completed', 'saved journey is marked completed', after.json.currentStatus);
+// HIS handoff (#19): a CTAS saved without a visit number waits for the HIS link.
+check(after.json.currentStatus === 'awaiting_his_link', 'saved CTAS without a visit number waits for the HIS link', after.json.currentStatus);
 check(after.json.clinicianFinalCtas === 4, 'saved journey carries the final CTAS level');
 check(after.json.currentLocation === 'FM_IM | Family Medicine & Internal Medicine', 'saved journey carries the confirmed patient direction', after.json.currentLocation);
 check(after.json.createdById === me.json.id, 'client-sent journey fields are ignored (owner unchanged)');
@@ -215,7 +216,7 @@ check(!String(after.json.arrivalTime).startsWith('2000'), 'client-sent journey f
 const board = await call('/tracking/board', { token: nurse });
 check(board.status === 200 && Array.isArray(board.json), 'tracking board loads');
 const onBoard = board.json.find((j) => j.id === journeyId);
-check(!!onBoard, 'a triaged patient stays on the board until seen');
+check(!!onBoard, 'a triaged patient stays on the board until validated');
 check(Number.isInteger(onBoard?.ticketNo) && onBoard.ticketNo > 0, 'board entries carry a ticket number', String(onBoard?.ticketNo));
 
 // ── Stage A: encounter number, physician re-triage, private nurse feedback ─
@@ -223,9 +224,12 @@ const unlinked = await call('/journeys/unlinked?hours=24', { token: nurse });
 check(unlinked.status === 200 && unlinked.json.some((j) => j.id === journeyId), 'a triaged patient with no encounter number is on the "Not linked" list');
 const badEnc = await call(`/journeys/${journeyId}/encounter`, { token: nurse, method: 'PATCH', body: { encounterNo: 'x!' } });
 check(badEnc.status === 400, 'a malformed encounter number is rejected (400)', `got ${badEnc.status}`);
+const tooEarly = await call(`/journeys/${journeyId}/ctas-review`, { token: physician, method: 'POST', body: { level: 4 } });
+check(tooEarly.status === 400 && /HIS/i.test(tooEarly.text), 'a physician cannot validate before the HIS visit number is linked (400)', `got ${tooEarly.status} ${tooEarly.text.slice(0, 160)}`);
 const encNo = `9${Date.now().toString().slice(-8)}`;
 const linked = await call(`/journeys/${journeyId}/encounter`, { token: nurse, method: 'PATCH', body: { encounterNo: ` ${encNo} ` } });
 check(linked.status === 200 && linked.json?.encounterNo === encNo, 'the nurse links the Transaction No. (spaces trimmed)', `status ${linked.status} ${linked.text.slice(0, 200)}`);
+check(linked.json?.currentStatus === 'pending_physician_validation', 'linking the visit number sends the case to physician validation', linked.json?.currentStatus);
 const other = await call('/journeys', { token: nurse, method: 'POST', body: { patientNameEn: 'E2E Other', age: 30, gender: 'female' } });
 const dupEnc = await call(`/journeys/${other.json.id}/encounter`, { token: nurse, method: 'PATCH', body: { encounterNo: encNo } });
 check(dupEnc.status === 409, 'the same encounter number cannot be linked to a second patient (409)', `got ${dupEnc.status}`);
@@ -252,10 +256,14 @@ check(noReason.status === 400, 'a re-triage to a different level needs a reason 
 const retriage = await call(`/journeys/${journeyId}/ctas-review`, { token: physician, method: 'POST', body: { level: 3, reason: 'Pain — e2e', markSeen: false } });
 check(retriage.status === 201 && retriage.json?.review?.nurseLevel === 4 && retriage.json?.review?.reviewedLevel === 3 && retriage.json?.review?.reviewerRole === 'physician',
   'the physician re-triages 4 → 3 with a reason; role is recorded', `status ${retriage.status} ${retriage.text.slice(0, 300)}`);
-check(retriage.json?.journey?.ctasLevel === 3 && retriage.json?.journey?.ctasReviewedAt, 'the board level follows the re-triage');
+check(retriage.json?.journey?.clinicianFinalCtas === 3 && retriage.json?.journey?.ctasLevel === 4 && retriage.json?.journey?.ctasReviewedAt,
+  "the physician level is recorded and the nurse's level is kept", JSON.stringify({ final: retriage.json?.journey?.clinicianFinalCtas, nurse: retriage.json?.journey?.ctasLevel }));
+check(retriage.json?.journey?.currentStatus === 'awaiting_outcome_review', 'a validated case moves to outcome review', retriage.json?.journey?.currentStatus);
+const again = await call(`/journeys/${journeyId}/ctas-review`, { token: physician, method: 'POST', body: { level: 4 } });
+check(again.status === 409, 'a case cannot be validated twice (409)', `got ${again.status}`);
 const reviewId = retriage.json?.review?.id;
 const boardRt = await call('/tracking/board', { token: nurse });
-check(boardRt.json.some((j) => j.id === journeyId), 're-triage without Seen keeps the patient on the board');
+check(!boardRt.json.some((j) => j.id === journeyId), 'a validated case leaves the tracking board');
 
 const mine = await call('/feedback/me', { token: nurse });
 check(mine.status === 200 && mine.json?.summary?.cases >= 1, "the nurse's own feedback page loads", `status ${mine.status} ${mine.text.slice(0, 200)}`);
