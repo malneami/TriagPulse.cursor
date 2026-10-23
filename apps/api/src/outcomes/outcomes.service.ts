@@ -63,7 +63,33 @@ const ROW_INCLUDE = {
   outcomeReview: { include: { reviewer: { select: { fullName: true } } } },
 };
 
-export type OutcomeListQuery = { status?: string; q?: string };
+export type OutcomeListQuery = {
+  status?: string;
+  q?: string;
+  /** Arrival date range, YYYY-MM-DD (Riyadh days, inclusive). */
+  from?: string;
+  to?: string;
+  /** Age range in years, inclusive. */
+  ageMin?: string | number;
+  ageMax?: string | number;
+  /** 'unassigned' = no outcome physician yet. */
+  assigned?: string;
+};
+
+/** Riyadh is UTC+3 all year: a Riyadh calendar day starts at 21:00 UTC the day before. */
+function riyadhDayStart(day: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const d = new Date(`${day}T00:00:00+03:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function ageBound(raw: unknown): number | null {
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 130 ? n : null;
+}
+
+export const BULK_ASSIGN_LIMIT = 500;
 
 @Injectable()
 export class OutcomesService {
@@ -92,6 +118,32 @@ export class OutcomesService {
     if (/^\d{3}$/.test(digits)) or.push({ mrnSuffix: digits });
     if (ticketMatch) or.push({ ticketNo: Number(ticketMatch[1]) });
     return { OR: or };
+  }
+
+  /** Date, age and assignment filters (admin uses them to pick a set of cases). */
+  private filterWhere(query: OutcomeListQuery) {
+    const where: Record<string, unknown> = {};
+    const from = query.from ? riyadhDayStart(query.from) : null;
+    const toStart = query.to ? riyadhDayStart(query.to) : null;
+    if (query.from && !from) throw new BadRequestException('From date must be YYYY-MM-DD.');
+    if (query.to && !toStart) throw new BadRequestException('To date must be YYYY-MM-DD.');
+    if (from || toStart) {
+      where.arrivalTime = {
+        ...(from ? { gte: from } : {}),
+        ...(toStart ? { lt: new Date(toStart.getTime() + 24 * 3600 * 1000) } : {}),
+      };
+    }
+    const ageMin = ageBound(query.ageMin);
+    const ageMax = ageBound(query.ageMax);
+    if ((query.ageMin != null && query.ageMin !== '' && ageMin == null) || (query.ageMax != null && query.ageMax !== '' && ageMax == null)) {
+      throw new BadRequestException('Age must be a whole number of years (0–130).');
+    }
+    if (ageMin != null && ageMax != null && ageMin > ageMax) throw new BadRequestException('Age from is above age to.');
+    if (ageMin != null || ageMax != null) {
+      where.age = { ...(ageMin != null ? { gte: ageMin } : {}), ...(ageMax != null ? { lte: ageMax } : {}) };
+    }
+    if (String(query.assigned || '').toLowerCase() === 'unassigned') where.outcomePhysicianId = null;
+    return where;
   }
 
   private actorWhere(user: Actor) {
@@ -245,6 +297,7 @@ export class OutcomesService {
         encounterNo: { not: null },
         ...this.actorWhere(user),
         ...this.searchWhere(query.q),
+        ...this.filterWhere(query),
       },
       orderBy: { ctasReviewedAt: 'desc' },
       include: ROW_INCLUDE,
@@ -305,6 +358,57 @@ export class OutcomesService {
     });
     const fresh = await this.requireEligible(journeyId);
     return this.mapRow(fresh, user);
+  }
+
+  /**
+   * Assign one physician to a set of cases in one step (admin). Each case is checked like a
+   * single assignment: it must be eligible, and the physician must not have triaged it.
+   */
+  async assignPhysicianBulk(journeyIds: string[], physicianId: string, user: Actor) {
+    if (user.role !== 'admin') {
+      throw new ForbiddenException('Only an admin can assign the outcome physician.');
+    }
+    const ids = [...new Set((journeyIds || []).map(String).filter(Boolean))];
+    if (!ids.length) throw new BadRequestException('Select at least one case.');
+    if (ids.length > BULK_ASSIGN_LIMIT) throw new BadRequestException(`Assign at most ${BULK_ASSIGN_LIMIT} cases at a time.`);
+    const physician = await this.prisma.user.findUnique({ where: { id: physicianId } });
+    if (!physician || !physician.active || physician.role !== UserRole.physician) {
+      throw new BadRequestException('Select an active physician.');
+    }
+    const journeys = await this.prisma.patientJourney.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true, ticketNo: true, ctasReviewedAt: true, encounterNo: true, outcomePhysicianId: true,
+        triageRecords: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdById: true } },
+      },
+    });
+    const found = new Map(journeys.map((j) => [j.id, j]));
+    const skipped: Array<{ id: string; reason: string }> = [];
+    const toAssign: typeof journeys = [];
+    for (const id of ids) {
+      const j = found.get(id);
+      if (!j) { skipped.push({ id, reason: 'not_found' }); continue; }
+      if (!outcomeReviewEligible({ ctasReviewedAt: j.ctasReviewedAt, encounterNo: j.encounterNo })) {
+        skipped.push({ id, reason: 'not_eligible' }); continue;
+      }
+      if (j.triageRecords[0]?.createdById === physician.id) {
+        skipped.push({ id, reason: 'triaged_by_this_physician' }); continue;
+      }
+      toAssign.push(j);
+    }
+    if (toAssign.length) {
+      const now = new Date();
+      await this.prisma.patientJourney.updateMany({
+        where: { id: { in: toAssign.map((j) => j.id) } },
+        data: { outcomePhysicianId: physician.id, outcomeAssignedAt: now, outcomeAssignedById: user.id },
+      });
+      for (const j of toAssign) {
+        await this.audit.log('PatientJourney', j.id, 'outcome_physician_assigned', user, {
+          ticketNo: j.ticketNo, physicianId: physician.id, previousPhysicianId: j.outcomePhysicianId, bulk: true,
+        });
+      }
+    }
+    return { assigned: toAssign.length, skipped };
   }
 
   async upsert(

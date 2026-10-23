@@ -16,6 +16,19 @@ const FILTERS = [
   { id: 'all', ar: 'الكل', en: 'All' },
 ];
 
+const AGE_PRESETS = [
+  { id: 'all', ar: 'كل الأعمار', en: 'All ages', min: '', max: '' },
+  { id: 'child', ar: 'أطفال <١٤', en: 'Children <14', min: '0', max: '13' },
+  { id: 'adult', ar: 'بالغون ١٤–٦٤', en: 'Adults 14–64', min: '14', max: '64' },
+  { id: 'older', ar: '٦٥+', en: '65+', min: '65', max: '' },
+];
+
+const SKIP_REASON = {
+  not_found: 'not found',
+  not_eligible: 'not validated / no visit number',
+  triaged_by_this_physician: 'this physician did the triage',
+};
+
 const DISPOSITIONS = [
   { id: 'discharged_ed', ar: 'خرج من الطوارئ', en: 'Discharged from ED' },
   { id: 'admitted', ar: 'أُدخل', en: 'Admitted' },
@@ -395,11 +408,56 @@ export default function OutcomeReview() {
   const [active, setActive] = useState(null);
   const [pick, setPick] = useState({});
   const [assigning, setAssigning] = useState('');
+  // Admin filters to pick a set of cases: arrival dates, age range, unassigned only.
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [ageMin, setAgeMin] = useState('');
+  const [ageMax, setAgeMax] = useState('');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkPhysician, setBulkPhysician] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
 
+  const filters = { status, q, from, to, ageMin, ageMax, assigned: unassignedOnly ? 'unassigned' : '' };
   const { data: rows = [], isFetching, isError, refetch } = useQuery({
-    queryKey: ['outcomes', status, q],
-    queryFn: () => api.outcomes.list({ status, q }),
+    queryKey: ['outcomes', filters],
+    queryFn: () => api.outcomes.list(filters),
   });
+
+  // Keep only selections that are still in the filtered list.
+  useEffect(() => {
+    setSelected((prev) => {
+      const ids = new Set(rows.map((r) => r.id));
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rows]);
+
+  const toggle = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
+  const agePreset = AGE_PRESETS.find((p) => p.min === ageMin && p.max === ageMax)?.id;
+
+  const assignSelected = async () => {
+    if (!bulkPhysician) { toast.error('Select a physician'); return; }
+    if (!selected.size) { toast.error('Select cases first'); return; }
+    setBulkBusy(true);
+    try {
+      const res = await api.outcomes.assignBulk([...selected], bulkPhysician);
+      const reasons = [...new Set(res.skipped.map((x) => SKIP_REASON[x.reason] || x.reason))].join(', ');
+      toast.success(`عُيّن ${res.assigned} · Assigned ${res.assigned}${res.skipped.length ? ` · skipped ${res.skipped.length} (${reasons})` : ''}`);
+      setSelected(new Set());
+      refresh();
+    } catch (err) {
+      toast.error(err?.message || 'Could not assign');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const { data: physicians = [] } = useQuery({
     queryKey: ['outcomes-physicians'],
@@ -414,7 +472,7 @@ export default function OutcomeReview() {
 
   const exportFile = async () => {
     try {
-      const blob = await api.outcomes.exportCsv({ status, q });
+      const blob = await api.outcomes.exportCsv(filters);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -498,6 +556,73 @@ export default function OutcomeReview() {
         </button>
       </div>
 
+      <div className="bg-white border border-mist rounded-2xl p-3 flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">من تاريخ · From</span>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">إلى تاريخ · To</span>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
+        <div className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">العمر · Age</span>
+          <div className="flex flex-wrap items-center gap-1">
+            {AGE_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={agePreset === p.id}
+                onClick={() => { setAgeMin(p.min); setAgeMax(p.max); }}
+                className={`h-11 px-3 rounded-xl border text-sm ${agePreset === p.id ? 'bg-ink text-white border-ink' : 'bg-white border-mist'}`}
+              >
+                {p.ar} · {p.en}
+              </button>
+            ))}
+            <input aria-label="Age from" inputMode="numeric" value={ageMin} onChange={(e) => setAgeMin(e.target.value.replace(/\D/g, ''))} placeholder="من" className="h-11 w-16 border border-mist rounded-xl px-2 text-center" />
+            <span aria-hidden="true">–</span>
+            <input aria-label="Age to" inputMode="numeric" value={ageMax} onChange={(e) => setAgeMax(e.target.value.replace(/\D/g, ''))} placeholder="إلى" className="h-11 w-16 border border-mist rounded-xl px-2 text-center" />
+          </div>
+        </div>
+        {canAssign && (
+          <label className="flex items-center gap-2 h-11 px-3 rounded-xl border border-mist text-sm">
+            <input type="checkbox" checked={unassignedOnly} onChange={(e) => setUnassignedOnly(e.target.checked)} />
+            غير معيّن فقط · Unassigned only
+          </label>
+        )}
+        {(from || to || ageMin || ageMax || unassignedOnly) && (
+          <button
+            type="button"
+            onClick={() => { setFrom(''); setTo(''); setAgeMin(''); setAgeMax(''); setUnassignedOnly(false); }}
+            className="h-11 px-3 rounded-xl border border-mist text-sm"
+          >
+            مسح · Clear
+          </button>
+        )}
+      </div>
+
+      {canAssign && selected.size > 0 && (
+        <div className="sticky top-2 z-10 bg-ink text-white rounded-2xl p-3 flex flex-wrap items-center gap-2">
+          <span className="font-semibold">{selected.size} محددة · selected</span>
+          <select
+            aria-label="Physician for selected cases"
+            value={bulkPhysician}
+            onChange={(e) => setBulkPhysician(e.target.value)}
+            className="h-11 rounded-xl px-2 text-ink bg-white min-w-[200px]"
+          >
+            <option value="">اختر الطبيب · Choose physician</option>
+            {physicians.map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
+          </select>
+          <button type="button" disabled={bulkBusy} onClick={assignSelected} className="h-11 px-4 rounded-xl bg-white text-ink font-semibold disabled:opacity-50">
+            تعيين للمحدد · Assign to selected
+          </button>
+          <button type="button" onClick={() => setSelected(new Set())} className="h-11 px-3 rounded-xl border border-white/50">
+            إلغاء · Clear
+          </button>
+          <span className="text-xs opacity-80">Cases this physician triaged are skipped.</span>
+        </div>
+      )}
+
       {isError && (
         <p role="alert" className="bg-white border-2 border-ink rounded-xl px-4 py-3">تعذّر التحميل · Could not load.</p>
       )}
@@ -506,6 +631,11 @@ export default function OutcomeReview() {
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="text-start text-graphite border-b border-mist">
+              {canAssign && (
+                <th className="p-3">
+                  <input type="checkbox" aria-label="Select all in this list" checked={allSelected} onChange={toggleAll} />
+                </th>
+              )}
               <th className="p-3 font-medium">التذكرة</th>
               <th className="p-3 font-medium">الزيارة</th>
               <th className="p-3 font-medium">آخر ٣</th>
@@ -525,7 +655,12 @@ export default function OutcomeReview() {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id} className="border-b border-mist last:border-0">
+              <tr key={row.id} className={`border-b border-mist last:border-0 ${selected.has(row.id) ? 'bg-paper' : ''}`}>
+                {canAssign && (
+                  <td className="p-3">
+                    <input type="checkbox" aria-label={`Select ${ticketCode(row.ticketNo, row.mrnSuffix)}`} checked={selected.has(row.id)} onChange={() => toggle(row.id)} />
+                  </td>
+                )}
                 <td dir="ltr" className="p-3 font-semibold whitespace-nowrap">{ticketCode(row.ticketNo, row.mrnSuffix)}</td>
                 <td dir="ltr" className="p-3 tabular-nums whitespace-nowrap">{row.encounterNo || '—'}</td>
                 <td dir="ltr" className="p-3">{row.mrnSuffix || '—'}</td>
@@ -586,7 +721,7 @@ export default function OutcomeReview() {
             ))}
             {!isFetching && rows.length === 0 && (
               <tr>
-                <td colSpan={15} className="p-8 text-center text-graphite">لا توجد حالات في هذا المرشح · No cases in this filter.</td>
+                <td colSpan={canAssign ? 16 : 15} className="p-8 text-center text-graphite">لا توجد حالات في هذا المرشح · No cases in this filter.</td>
               </tr>
             )}
           </tbody>

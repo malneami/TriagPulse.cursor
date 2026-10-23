@@ -31,6 +31,13 @@ class AssignPhysicianDto {
   @IsString() physicianId: string;
 }
 
+class BulkAssignDto {
+  @IsString() physicianId: string;
+  @IsArray() @ArrayMaxSize(500) @IsString({ each: true }) journeyIds: string[];
+}
+
+type ListFilters = { status?: string; q?: string; from?: string; to?: string; ageMin?: string; ageMax?: string; assigned?: string };
+
 type ReqUser = { user: { id: string; role: string; full_name?: string; email?: string } };
 
 @Controller('outcomes')
@@ -43,10 +50,9 @@ export class OutcomesController {
   async exportCsv(
     @Res() res: Response,
     @Request() req: ReqUser,
-    @Query('status') status?: string,
-    @Query('q') q?: string,
+    @Query() query: ListFilters,
   ) {
-    const csv = await this.outcomes.exportCsv({ status, q }, req.user);
+    const csv = await this.outcomes.exportCsv(query, req.user);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="triagepulse-outcomes.csv"');
     res.send(csv);
@@ -66,12 +72,15 @@ export class OutcomesController {
 
   @Get()
   @RequirePermission('review_outcome')
-  list(
-    @Request() req: ReqUser,
-    @Query('status') status?: string,
-    @Query('q') q?: string,
-  ) {
-    return this.outcomes.list({ status, q }, req.user);
+  list(@Request() req: ReqUser, @Query() query: ListFilters) {
+    return this.outcomes.list(query, req.user);
+  }
+
+  /** Admin: one physician for a chosen set of cases (from the filtered list). */
+  @Post('assign-bulk')
+  @RequirePermission('assign_outcome_physician')
+  assignBulk(@Body() dto: BulkAssignDto, @Request() req: ReqUser) {
+    return this.outcomes.assignPhysicianBulk(dto.journeyIds, dto.physicianId, req.user);
   }
 
   @Put(':journeyId')

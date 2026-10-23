@@ -325,6 +325,12 @@ check(unassignedOutcome.status === 403, 'a physician not assigned by an admin ca
 const physMe = await call('/auth/me', { token: physician });
 const assignedOut = await call(`/outcomes/${journeyId}/assign`, { token: admin, method: 'POST', body: { physicianId: physMe.json.id } });
 check(assignedOut.status === 201, 'the admin assigns the outcome physician', `status ${assignedOut.status} ${assignedOut.text.slice(0, 200)}`);
+const nurseBulk = await call('/outcomes/assign-bulk', { token: nurse, method: 'POST', body: { journeyIds: [journeyId], physicianId: physMe.json.id } });
+check(nurseBulk.status === 403, 'a nurse cannot bulk-assign outcome physicians (403)', `got ${nurseBulk.status}`);
+const bulk = await call('/outcomes/assign-bulk', { token: admin, method: 'POST', body: { journeyIds: [journeyId, started.json.id, 'no-such-case'], physicianId: physMe.json.id } });
+check(bulk.status === 201 && bulk.json?.assigned === 1 && bulk.json?.skipped?.length === 2
+  && bulk.json.skipped.some((x) => x.reason === 'not_eligible') && bulk.json.skipped.some((x) => x.reason === 'not_found'),
+  'the admin bulk-assigns a set of cases; unvalidated and unknown cases are skipped with a reason', `status ${bulk.status} ${bulk.text.slice(0, 300)}`);
 const noIcd = await call(`/outcomes/${journeyId}`, { token: physician, method: 'PUT', body: { ...outcomeBody, finalDiagnosisCode: 'back pain' } });
 check(noIcd.status === 400 && /ICD-10/.test(noIcd.text), 'the outcome needs a coded (ICD-10) diagnosis (400)', `got ${noIcd.status}`);
 const noRef = await call(`/outcomes/${journeyId}`, { token: physician, method: 'PUT', body: { ...outcomeBody, icuWithin24h: undefined } });
@@ -333,6 +339,14 @@ const savedOut = await call(`/outcomes/${journeyId}`, { token: physician, method
 check(savedOut.status === 200 && savedOut.json?.outcome?.finalDiagnosisCode === 'M54.5' && savedOut.json?.outcome?.resourceCount === 3
   && savedOut.json?.outcome?.highAcuityOutcome === false,
   'the assigned physician records the outcome (ICD-10 normalised, resources counted, composite outcome)', `status ${savedOut.status} ${savedOut.text.slice(0, 300)}`);
+const todayRiyadh = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+const tomorrowRiyadh = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+const inList = async (query) => (await call(`/outcomes?status=all&${query}`, { token: admin })).json?.some?.((r) => r.id === journeyId);
+check(await inList(`from=${todayRiyadh}&to=${todayRiyadh}&ageMin=30&ageMax=50`), 'the outcome list filters by arrival date and age (case included)');
+check(!(await inList('ageMin=60')) && !(await inList(`from=${tomorrowRiyadh}`)), 'the outcome list filters by arrival date and age (case excluded outside the range)');
+check(!(await inList('assigned=unassigned')), 'the "unassigned only" filter leaves out assigned cases');
+const badFilter = await call('/outcomes?ageMin=50&ageMax=10', { token: admin });
+check(badFilter.status === 400, 'an impossible age range is refused (400)', `got ${badFilter.status}`);
 const earlyClose = await call(`/outcomes/${journeyId}/close`, { token: physician, method: 'POST', body: {} });
 check(earlyClose.status === 400 && /72/.test(earlyClose.text), 'the case cannot be closed before the 72-hour return is known (400)', `got ${earlyClose.status}`);
 const nurseList = await call('/outcomes', { token: nurse });
