@@ -10,7 +10,7 @@
 #             tp-admin-email / tp-admin-name   first admin (created once, on an empty database)
 #             tp-rev         change it to make the server re-read secrets and restart the app
 #   secrets   tp-jwt-secret, tp-db-password, tp-admin-password (required)
-#             tp-speechmatics-key, tp-openai-key (optional; empty = feature off)
+#             tp-speechmatics-key, tp-openai-key, tp-boosthis-key (optional; empty = feature off)
 #
 # A small service (triagepulse-watch) re-deploys whenever tp-image or tp-rev changes, so
 # releases do not need SSH: deploy.sh only updates metadata.
@@ -67,6 +67,11 @@ printf 'IMAGE=%s\nDOMAIN=%s\nDB_PASSWORD=%s\n' "$IMAGE" "$DOMAIN" "$DBPW" > .env
   echo "CORS_ORIGIN=https://${DOMAIN}"
   echo "SPEECHMATICS_API_KEY=$(secret tp-speechmatics-key)"
   echo "OPENAI_API_KEY=$(secret tp-openai-key)"
+  # Boosthis performance monitoring: off while tp-boosthis-key has no version.
+  # Fixed install id so restarts count as one install; owner badge off on clinical pages.
+  echo "BOOSTHIS_PROJECT_KEY=$(secret tp-boosthis-key)"
+  echo "BOOSTHIS_INSTALL_ID=1b996770-fec7-4fb6-bf6a-134efa4b8c92"
+  echo "BOOSTHIS_BUBBLE=0"
   echo "BOOTSTRAP_ADMIN_EMAIL=$(attr tp-admin-email)"
   echo "BOOTSTRAP_ADMIN_NAME=$(attr tp-admin-name)"
   echo "BOOTSTRAP_ADMIN_PASSWORD=$(secret tp-admin-password)"

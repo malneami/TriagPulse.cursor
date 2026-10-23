@@ -55,6 +55,7 @@ make_secret tp-db-password "$(openssl rand -hex 24)"
 make_secret tp-admin-password "$(openssl rand -base64 18 | tr '+/' '-_')"
 make_secret tp-speechmatics-key ""
 make_secret tp-openai-key ""
+make_secret tp-boosthis-key ""
 
 echo "== Static IP"
 exists g compute addresses describe triagepulse-ip --region="$REGION" \
