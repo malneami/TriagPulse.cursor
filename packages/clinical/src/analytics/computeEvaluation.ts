@@ -1,6 +1,10 @@
 /**
  * Pure CPMAI evaluation metrics for TriagePulse AI Go/No-Go.
- * Expert/reference CTAS is preferred over nurse-as-truth.
+ *
+ * Reference ("expert") CTAS = the physician-validated level only (physicianCtas with a
+ * validation time), or an explicit research reference in validatedPayload (expert_ctas).
+ * clinicianFinalCtas is NOT a reference: at save it holds the nurse's own level.
+ * Cases the physician marked "condition changed after triage" are excluded.
  */
 import {
   EVALUATION_THRESHOLDS,
@@ -22,6 +26,9 @@ export type EvaluationCaseInput = {
   aiRecommendedCtas?: number | null;
   rulesRecommendedCtas?: number | null;
   clinicianFinalCtas?: number | null;
+  physicianCtas?: number | null;
+  physicianValidatedAt?: string | Date | null;
+  physicianConditionChanged?: boolean | null;
   ctasLevel?: number | null;
   agreement?: boolean | null;
   overrideReason?: string | null;
@@ -96,11 +103,21 @@ function resolveAi(c: EvaluationCaseInput): { level: number | null; source: 'ai'
   return { level: null, source: null };
 }
 
+/** Which reference a case has: physician-validated, explicit research label, or none. */
+export function referenceSource(c: EvaluationCaseInput): 'physician' | 'condition_changed' | 'research' | 'none' {
+  const validated = c.physicianValidatedAt != null && c.physicianCtas != null
+    && Number.isFinite(Number(c.physicianCtas));
+  if (validated && c.physicianConditionChanged) return 'condition_changed';
+  if (validated) return 'physician';
+  if (expertFromPayload(c.validatedPayload) != null) return 'research';
+  return 'none';
+}
+
 function resolveExpert(c: EvaluationCaseInput): number | null {
-  if (c.clinicianFinalCtas != null && Number.isFinite(Number(c.clinicianFinalCtas))) {
-    return Number(c.clinicianFinalCtas);
-  }
-  return expertFromPayload(c.validatedPayload);
+  const source = referenceSource(c);
+  if (source === 'physician') return Number(c.physicianCtas);
+  if (source === 'research') return expertFromPayload(c.validatedPayload);
+  return null;
 }
 
 function resolveHuman(c: EvaluationCaseInput): number | null {
@@ -225,6 +242,8 @@ export type KpiRow = {
 export function computeEvaluationReport(casesIn: EvaluationCaseInput[], days = 30) {
   const T = EVALUATION_THRESHOLDS;
   const cases = casesIn.map(normalizeEvaluationCase);
+  const sources = casesIn.map(referenceSource);
+  const countSource = (k: ReturnType<typeof referenceSource>) => sources.filter((x) => x === k).length;
   const labeled = cases.filter((c) => c.expert != null);
   const withAi = labeled.filter((c) => c.ai != null);
   const withHuman = labeled.filter((c) => c.human != null);
@@ -851,6 +870,10 @@ export function computeEvaluationReport(casesIn: EvaluationCaseInput[], days = 3
     sample_sizes: {
       total_records: cases.length,
       expert_labeled: labeled.length,
+      reference_physician_validated: countSource('physician'),
+      reference_research_label: countSource('research'),
+      excluded_condition_changed: countSource('condition_changed'),
+      not_validated: countSource('none'),
       with_ai: withAi.length,
       with_human: withHuman.length,
       critical_expert: critical.length,

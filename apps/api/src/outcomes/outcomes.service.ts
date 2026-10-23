@@ -4,13 +4,18 @@ import {
   DischargeDestination,
   DirectionAppropriate,
   JourneyStatus,
+  OutcomeDeath,
   OutcomeDisposition,
+  ReturnVisit72h,
   UserRole,
+  YesNoUnknown,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.module';
 import { AuditService } from '../audit/audit.service';
 import {
+  highAcuityOutcome,
   normalizeOutcomeReview,
+  outcomeCloseProblem,
   outcomeFieldSnapshot,
   outcomeReviewEligible,
   outcomeReviewMayAct,
@@ -91,8 +96,9 @@ export class OutcomesService {
 
   private actorWhere(user: Actor) {
     if (user.role === 'physician') return { outcomePhysicianId: user.id };
-    if (user.role === 'nurse') return { triageRecords: { some: { createdById: user.id } } };
-    return {};
+    if (user.role === 'admin') return {};
+    // Nurses do not record outcomes (the triage nurse must not record her own reference).
+    return { id: '__none__' };
   }
 
   private assignmentOf(j: {
@@ -110,7 +116,7 @@ export class OutcomesService {
     triageRecords: Array<{ createdById?: string | null }>;
   }) {
     if (!outcomeReviewMayAct(user, this.assignmentOf(journey))) {
-      throw new ForbiddenException('Only the CTAS nurse or the assigned physician can complete outcome review.');
+      throw new ForbiddenException('Only the physician assigned by an admin can complete outcome review (never the triage nurse).');
     }
   }
 
@@ -133,6 +139,7 @@ export class OutcomesService {
     encounterNo: string | null;
     ctasCompletedAt: Date | null;
     ctasStartedAt: Date | null;
+    arrivalTime: Date;
     age: number | null;
     gender: string | null;
     chiefComplaint: string | null;
@@ -162,6 +169,13 @@ export class OutcomesService {
       reviewerComment: string | null;
       directionAppropriate: DirectionAppropriate | null;
       directionComment: string | null;
+      finalDiagnosisCode: string | null;
+      interventions: string[];
+      icuWithin24h: YesNoUnknown | null;
+      death: OutcomeDeath | null;
+      resources: string[];
+      resourceCount: number | null;
+      return72h: ReturnVisit72h | null;
       source: string;
       reviewedAt: Date;
       updatedAt: Date;
@@ -193,6 +207,8 @@ export class OutcomesService {
       outcomePhysicianId: j.outcomePhysicianId,
       outcomePhysicianName: j.outcomePhysician?.fullName ?? null,
       canAct: outcomeReviewMayAct(user, assignment),
+      arrivalTime: j.arrivalTime,
+      closeProblem: j.outcomeReview ? outcomeCloseProblem(j.outcomeReview, j.arrivalTime) : 'Save the outcome review first.',
       outcome: j.outcomeReview
         ? {
             disposition: j.outcomeReview.disposition,
@@ -204,6 +220,14 @@ export class OutcomesService {
             reviewerComment: j.outcomeReview.reviewerComment,
             directionAppropriate: j.outcomeReview.directionAppropriate,
             directionComment: j.outcomeReview.directionComment,
+            finalDiagnosisCode: j.outcomeReview.finalDiagnosisCode,
+            interventions: j.outcomeReview.interventions,
+            icuWithin24h: j.outcomeReview.icuWithin24h,
+            death: j.outcomeReview.death,
+            resources: j.outcomeReview.resources,
+            resourceCount: j.outcomeReview.resourceCount,
+            return72h: j.outcomeReview.return72h,
+            highAcuityOutcome: highAcuityOutcome(j.outcomeReview),
             source: j.outcomeReview.source,
             reviewedAt: j.outcomeReview.reviewedAt,
             updatedAt: j.outcomeReview.updatedAt,
@@ -263,6 +287,9 @@ export class OutcomesService {
     if (!physician || !physician.active || physician.role !== UserRole.physician) {
       throw new BadRequestException('Select an active physician.');
     }
+    if (journey.triageRecords[0]?.createdById === physician.id) {
+      throw new BadRequestException('The person who triaged this case cannot record its outcome.');
+    }
     await this.prisma.patientJourney.update({
       where: { id: journeyId },
       data: {
@@ -300,6 +327,13 @@ export class OutcomesService {
       reviewerComment: redactIdentifiers(parsed.value.reviewerComment || '') || null,
       directionAppropriate: parsed.value.directionAppropriate as DirectionAppropriate | null,
       directionComment: redactIdentifiers(parsed.value.directionComment || '') || null,
+      finalDiagnosisCode: parsed.value.finalDiagnosisCode,
+      interventions: parsed.value.interventions,
+      icuWithin24h: parsed.value.icuWithin24h as YesNoUnknown,
+      death: parsed.value.death as OutcomeDeath,
+      resources: parsed.value.resources,
+      resourceCount: parsed.value.resourceCount,
+      return72h: parsed.value.return72h as ReturnVisit72h,
       source: 'his_manual',
       reviewerId: user.id,
       reviewedAt: new Date(),
@@ -315,8 +349,19 @@ export class OutcomesService {
           reviewerComment: journey.outcomeReview.reviewerComment,
           directionAppropriate: journey.outcomeReview.directionAppropriate,
           directionComment: journey.outcomeReview.directionComment,
+          finalDiagnosisCode: journey.outcomeReview.finalDiagnosisCode ?? '',
+          interventions: journey.outcomeReview.interventions,
+          icuWithin24h: journey.outcomeReview.icuWithin24h ?? 'unknown',
+          death: journey.outcomeReview.death ?? 'unknown',
+          resources: journey.outcomeReview.resources,
+          resourceCount: journey.outcomeReview.resourceCount ?? 0,
+          return72h: journey.outcomeReview.return72h ?? 'unknown',
         })
       : null;
+    if (close) {
+      const problem = outcomeCloseProblem(parsed.value, journey.arrivalTime);
+      if (problem) throw new BadRequestException(problem);
+    }
     const stayClosed = close || journey.currentStatus === JourneyStatus.closed;
     const nextStatus = stayClosed ? JourneyStatus.closed : JourneyStatus.outcome_reviewed;
     await this.prisma.$transaction([
@@ -349,6 +394,8 @@ export class OutcomesService {
     if (!journey.outcomeReview) {
       throw new BadRequestException('Save the outcome review before closing the case.');
     }
+    const problem = outcomeCloseProblem(journey.outcomeReview, journey.arrivalTime);
+    if (problem) throw new BadRequestException(problem);
     await this.prisma.patientJourney.update({
       where: { id: journeyId },
       data: { currentStatus: JourneyStatus.closed },
@@ -366,7 +413,9 @@ export class OutcomesService {
       'triage_duration_sec', 'direction', 'status',
       'ctas_nurse', 'assigned_physician',
       'disposition', 'admission_specialty', 'admission_location', 'hospital_unit',
-      'discharge_destination', 'final_diagnosis', 'reviewer_comment',
+      'discharge_destination', 'final_diagnosis_icd10', 'final_diagnosis', 'reviewer_comment',
+      'interventions', 'icu_within_24h', 'death', 'resources', 'resource_count', 'return_72h',
+      'high_acuity_outcome',
       'direction_appropriate', 'direction_comment', 'source', 'reviewer_name', 'reviewed_at',
     ];
     const lines = [headers.join(',')];
@@ -393,8 +442,16 @@ export class OutcomesService {
         o?.admissionLocation,
         o?.hospitalUnitName,
         o?.dischargeDestination,
+        o?.finalDiagnosisCode,
         o?.finalDiagnosis,
         o?.reviewerComment,
+        o?.interventions?.join('|'),
+        o?.icuWithin24h,
+        o?.death,
+        o?.resources?.join('|'),
+        o?.resourceCount,
+        o?.return72h,
+        o == null || o.highAcuityOutcome == null ? '' : o.highAcuityOutcome ? 'yes' : 'no',
         o?.directionAppropriate,
         o?.directionComment,
         o?.source,

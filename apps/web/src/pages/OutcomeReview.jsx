@@ -44,6 +44,96 @@ const DIRECTION = [
   { id: 'uncertain', ar: 'غير متأكد', en: 'Uncertain' },
 ];
 
+// Reference measures for the accuracy study (same codes as the server).
+const INTERVENTIONS = [
+  { id: 'intubation', ar: 'تنبيب', en: 'Intubation' },
+  { id: 'noninvasive_ventilation', ar: 'تهوية غير جراحية / قناع وكيس', en: 'NIV / bag-mask' },
+  { id: 'cpr', ar: 'إنعاش قلبي رئوي', en: 'CPR' },
+  { id: 'defibrillation_cardioversion_pacing', ar: 'صدمة / تنظيم / منظم', en: 'Defibrillation / cardioversion / pacing' },
+  { id: 'vasopressors_inotropes', ar: 'رافعات ضغط', en: 'Vasopressors / inotropes' },
+  { id: 'blood_transfusion', ar: 'نقل دم', en: 'Blood transfusion' },
+  { id: 'emergency_surgery_procedure', ar: 'جراحة / إجراء طارئ', en: 'Emergency surgery / procedure' },
+  { id: 'thrombolysis_pci', ar: 'مذيب جلطة / قسطرة', en: 'Thrombolysis / PCI' },
+  { id: 'other_lifesaving', ar: 'إجراء منقذ آخر', en: 'Other life-saving' },
+];
+
+const RESOURCES = [
+  { id: 'labs', ar: 'تحاليل', en: 'Labs' },
+  { id: 'ecg_xray', ar: 'تخطيط قلب / أشعة عادية', en: 'ECG / X-ray' },
+  { id: 'advanced_imaging', ar: 'أشعة مقطعية / رنين / موجات', en: 'CT / MRI / ultrasound' },
+  { id: 'iv_fluids', ar: 'سوائل وريدية', en: 'IV fluids' },
+  { id: 'iv_im_neb_meds', ar: 'أدوية وريد / عضل / بخار', en: 'IV / IM / nebulised meds' },
+  { id: 'specialty_consult', ar: 'استشارة تخصص', en: 'Specialty consult' },
+  { id: 'simple_procedure', ar: 'إجراء بسيط', en: 'Simple procedure' },
+  { id: 'complex_procedure', ar: 'إجراء معقد (=٢)', en: 'Complex procedure (=2)' },
+];
+
+const YES_NO_UNKNOWN = [
+  { id: 'yes', ar: 'نعم', en: 'Yes' },
+  { id: 'no', ar: 'لا', en: 'No' },
+  { id: 'unknown', ar: 'غير معروف', en: 'Unknown' },
+];
+
+const DEATH = [
+  { id: 'none', ar: 'لا وفاة', en: 'No death' },
+  { id: 'died_in_ed', ar: 'وفاة في الطوارئ', en: 'Died in ED' },
+  { id: 'died_in_hospital', ar: 'وفاة في المستشفى', en: 'Died in hospital' },
+  { id: 'unknown', ar: 'غير معروف', en: 'Unknown' },
+];
+
+const RETURN_72H = [
+  { id: 'no', ar: 'لا', en: 'No' },
+  { id: 'yes_discharged', ar: 'عاد وخرج', en: 'Returned, discharged' },
+  { id: 'yes_admitted', ar: 'عاد وأُدخل', en: 'Returned, admitted' },
+  { id: 'unknown', ar: 'غير معروف بعد', en: 'Not known yet' },
+];
+
+/** Multi-pick with an exclusive "None". */
+function togglePick(list, id) {
+  if (id === 'none') return list.includes('none') ? [] : ['none'];
+  const rest = list.filter((x) => x !== 'none');
+  return rest.includes(id) ? rest.filter((x) => x !== id) : [...rest, id];
+}
+
+function Choices({ legend, name, options, value, onChange }) {
+  return (
+    <fieldset>
+      <legend className="text-sm font-medium mb-1">{legend}</legend>
+      <div className="flex flex-wrap gap-1">
+        {options.map((d) => (
+          <button
+            key={d.id}
+            type="button"
+            name={name}
+            aria-pressed={value === d.id}
+            onClick={() => onChange(d.id)}
+            className={`min-h-11 px-3 rounded-xl border text-sm ${value === d.id ? 'bg-ink text-white border-ink' : 'border-mist bg-white'}`}
+          >
+            {d.ar} · {d.en}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function Picks({ legend, options, value, onChange }) {
+  const all = [...options, { id: 'none', ar: 'لا شيء', en: 'None' }];
+  return (
+    <fieldset>
+      <legend className="text-sm font-medium mb-1">{legend}</legend>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+        {all.map((d) => (
+          <label key={d.id} className="flex items-center gap-2 min-h-11 px-3 rounded-xl border border-mist">
+            <input type="checkbox" checked={value.includes(d.id)} onChange={() => onChange(togglePick(value, d.id))} />
+            <span className="text-sm">{d.ar} · {d.en}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 function labelOf(list, id) {
   const hit = list.find((x) => x.id === id);
   return hit ? `${hit.ar} · ${hit.en}` : id || '—';
@@ -86,6 +176,12 @@ const emptyForm = {
   reviewerComment: '',
   directionAppropriate: '',
   directionComment: '',
+  finalDiagnosisCode: '',
+  interventions: [],
+  icuWithin24h: '',
+  death: '',
+  resources: [],
+  return72h: '',
 };
 
 function formFromOutcome(o) {
@@ -100,6 +196,12 @@ function formFromOutcome(o) {
     reviewerComment: o.reviewerComment || '',
     directionAppropriate: o.directionAppropriate || '',
     directionComment: o.directionComment || '',
+    finalDiagnosisCode: o.finalDiagnosisCode || '',
+    interventions: o.interventions || [],
+    icuWithin24h: o.icuWithin24h || '',
+    death: o.death || '',
+    resources: o.resources || [],
+    return72h: o.return72h || '',
   };
 }
 
@@ -127,6 +229,12 @@ function OutcomeForm({ row, open, onOpenChange, onSaved }) {
     reviewerComment: form.reviewerComment || undefined,
     directionAppropriate: form.directionAppropriate || undefined,
     directionComment: form.directionComment || undefined,
+    finalDiagnosisCode: form.finalDiagnosisCode || undefined,
+    interventions: form.interventions,
+    icuWithin24h: form.icuWithin24h || undefined,
+    death: form.death || undefined,
+    resources: form.resources,
+    return72h: form.return72h || undefined,
   });
 
   const save = async (close) => {
@@ -150,7 +258,7 @@ function OutcomeForm({ row, open, onOpenChange, onSaved }) {
       <DialogContent dir="rtl" className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogTitle className="text-lg">مراجعة النتيجة / Outcome review <span dir="ltr" className="text-graphite">{ticketCode(row.ticketNo, row.mrnSuffix)}</span></DialogTitle>
         <DialogDescription className="text-sm text-graphite">
-          Add the HIS discharge or admission. Nurse and physician CTAS are not changed.
+          From the HIS record. These answers are the outcome reference for triage accuracy; nurse and physician CTAS are not changed.
         </DialogDescription>
         <p className="m-0 text-sm text-graphite">
           CTAS ممرض {row.nurseCtas ?? '—'} · طبيب {row.physicianCtas ?? '—'} · {row.direction || '—'}
@@ -207,7 +315,25 @@ function OutcomeForm({ row, open, onOpenChange, onSaved }) {
         )}
 
         <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">التشخيص النهائي من النظام / Final diagnosis from HIS</span>
+          <span className="text-sm font-medium">رمز التشخيص ICD-10 / Final diagnosis ICD-10 code</span>
+          <input
+            dir="ltr"
+            value={form.finalDiagnosisCode}
+            onChange={(e) => set('finalDiagnosisCode', e.target.value.toUpperCase())}
+            placeholder="R07.4"
+            maxLength={10}
+            className="h-12 border border-mist rounded-xl px-3 font-mono tracking-wide"
+          />
+        </label>
+
+        <Picks legend="إجراءات منقذة للحياة / Life-saving interventions" options={INTERVENTIONS} value={form.interventions} onChange={(v) => set('interventions', v)} />
+        <Choices legend="عناية مركزة خلال ٢٤ ساعة (ICU/PICU/NICU/CCU) / ICU within 24 h of arrival" name="icu24" options={YES_NO_UNKNOWN} value={form.icuWithin24h} onChange={(v) => set('icuWithin24h', v)} />
+        <Choices legend="الوفاة / Death" name="death" options={DEATH} value={form.death} onChange={(v) => set('death', v)} />
+        <Picks legend="موارد الطوارئ المستخدمة / ED resources used" options={RESOURCES} value={form.resources} onChange={(v) => set('resources', v)} />
+        <Choices legend="عودة للطوارئ خلال ٧٢ ساعة / Return to ED within 72 h" name="ret72" options={RETURN_72H} value={form.return72h} onChange={(v) => set('return72h', v)} />
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium">وصف التشخيص (اختياري) / Diagnosis description (optional)</span>
           <textarea value={form.finalDiagnosis} onChange={(e) => set('finalDiagnosis', e.target.value)} rows={2} maxLength={500} className="border border-mist rounded-xl px-3 py-2" />
         </label>
         <label className="flex flex-col gap-1">
@@ -249,8 +375,11 @@ function OutcomeForm({ row, open, onOpenChange, onSaved }) {
             </button>
           </div>
         ) : (
-          <p className="text-sm text-graphite m-0">Only the CTAS nurse or the assigned physician can save this review.</p>
+          <p className="text-sm text-graphite m-0">Only the physician assigned by an admin can save this review (never the triage nurse).</p>
         )}
+        <p className="text-xs text-graphite m-0">
+          يُغلق بعد ٧٢ ساعة من الوصول بعد تسجيل العودة · Close 72 h after arrival, once the return visit is recorded.
+        </p>
       </DialogContent>
     </Dialog>
   );
@@ -442,7 +571,15 @@ export default function OutcomeReview() {
                     </button>
                   )}
                   {row.canAct && row.outcome && row.currentStatus !== 'closed' && (
-                    <button type="button" onClick={() => closeCase(row)} className="h-10 px-3 rounded-lg border border-mist ms-1">إغلاق</button>
+                    <button
+                      type="button"
+                      onClick={() => closeCase(row)}
+                      disabled={!!row.closeProblem}
+                      title={row.closeProblem || 'Close'}
+                      className="h-10 px-3 rounded-lg border border-mist ms-1 disabled:opacity-40"
+                    >
+                      إغلاق
+                    </button>
                   )}
                 </td>
               </tr>

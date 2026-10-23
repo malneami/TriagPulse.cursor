@@ -66,7 +66,7 @@ export const PERMISSIONS: Record<string, Role[]> = {
   /** A nurse's own private accuracy page ("My triage"). */
   view_own_feedback: ['nurse', 'physician', 'admin'],
   /** HIS/manual ED outcome after physician CTAS validation. */
-  review_outcome: ['nurse', 'physician', 'admin'],
+  review_outcome: ['physician', 'admin'],
   /** Admin assigns the physician who may complete Outcome Review. */
   assign_outcome_physician: ['admin'],
 };

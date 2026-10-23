@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
-import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import { RolesGuard, RequirePermission } from '../auth/roles.guard';
 import { OutcomesService } from './outcomes.service';
 
@@ -17,6 +17,13 @@ class OutcomeReviewDto {
   @IsOptional() @IsString() @MaxLength(500) reviewerComment?: string;
   @IsOptional() @IsString() directionAppropriate?: string;
   @IsOptional() @IsString() @MaxLength(500) directionComment?: string;
+  // Reference-standard outcome measures (accuracy study); checked in normalizeOutcomeReview.
+  @IsOptional() @IsString() @MaxLength(12) finalDiagnosisCode?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(12) @IsString({ each: true }) interventions?: string[];
+  @IsOptional() @IsString() icuWithin24h?: string;
+  @IsOptional() @IsString() death?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(12) @IsString({ each: true }) resources?: string[];
+  @IsOptional() @IsString() return72h?: string;
   @IsOptional() @IsBoolean() close?: boolean;
 }
 

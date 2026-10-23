@@ -304,6 +304,40 @@ if (process.env.EXPECT_WEB === '1') {
 const admin = await login('admin@triagepulse.local');
 const nurseUsers = await call('/users', { token: nurse });
 check(nurseUsers.status === 403, 'a nurse cannot open staff accounts (403)', `got ${nurseUsers.status}`);
+// ── Accuracy reference: outcome review by someone other than the triage nurse ─
+// A second CTAS that no physician validates: it must stay out of the accuracy dataset.
+const unvalidatedSave = await call('/triage/save', {
+  token: nurse,
+  method: 'POST',
+  body: { journeyId: started.json.id, triageRecord: { ctas_level: 3, clinician_final_ctas: 3, nurse_ctas: 3, ai_recommended_ctas: 3, chief_complaint: 'Cough', override_reason: 'E2E-UNVALIDATED' } },
+});
+check(unvalidatedSave.status === 201, 'a second CTAS is saved (not validated)', `status ${unvalidatedSave.status}`);
+
+const outcomeBody = {
+  disposition: 'admitted', admissionSpecialty: 'Medicine', admissionLocation: 'ward',
+  finalDiagnosisCode: 'm545', interventions: ['none'], icuWithin24h: 'no', death: 'none',
+  resources: ['labs', 'ecg_xray', 'iv_im_neb_meds'], return72h: 'unknown',
+};
+const nurseOutcome = await call(`/outcomes/${journeyId}`, { token: nurse, method: 'PUT', body: outcomeBody });
+check(nurseOutcome.status === 403, 'the triage nurse cannot record the outcome (403)', `got ${nurseOutcome.status}`);
+const unassignedOutcome = await call(`/outcomes/${journeyId}`, { token: physician, method: 'PUT', body: outcomeBody });
+check(unassignedOutcome.status === 403, 'a physician not assigned by an admin cannot record the outcome (403)', `got ${unassignedOutcome.status}`);
+const physMe = await call('/auth/me', { token: physician });
+const assignedOut = await call(`/outcomes/${journeyId}/assign`, { token: admin, method: 'POST', body: { physicianId: physMe.json.id } });
+check(assignedOut.status === 201, 'the admin assigns the outcome physician', `status ${assignedOut.status} ${assignedOut.text.slice(0, 200)}`);
+const noIcd = await call(`/outcomes/${journeyId}`, { token: physician, method: 'PUT', body: { ...outcomeBody, finalDiagnosisCode: 'back pain' } });
+check(noIcd.status === 400 && /ICD-10/.test(noIcd.text), 'the outcome needs a coded (ICD-10) diagnosis (400)', `got ${noIcd.status}`);
+const noRef = await call(`/outcomes/${journeyId}`, { token: physician, method: 'PUT', body: { ...outcomeBody, icuWithin24h: undefined } });
+check(noRef.status === 400, 'the outcome needs every reference answer (ICU within 24 h missing → 400)', `got ${noRef.status}`);
+const savedOut = await call(`/outcomes/${journeyId}`, { token: physician, method: 'PUT', body: outcomeBody });
+check(savedOut.status === 200 && savedOut.json?.outcome?.finalDiagnosisCode === 'M54.5' && savedOut.json?.outcome?.resourceCount === 3
+  && savedOut.json?.outcome?.highAcuityOutcome === false,
+  'the assigned physician records the outcome (ICD-10 normalised, resources counted, composite outcome)', `status ${savedOut.status} ${savedOut.text.slice(0, 300)}`);
+const earlyClose = await call(`/outcomes/${journeyId}/close`, { token: physician, method: 'POST', body: {} });
+check(earlyClose.status === 400 && /72/.test(earlyClose.text), 'the case cannot be closed before the 72-hour return is known (400)', `got ${earlyClose.status}`);
+const nurseList = await call('/outcomes', { token: nurse });
+check(nurseList.status === 403, 'nurses do not open outcome review (403)', `got ${nurseList.status}`);
+
 const exported = await call('/analytics/export/validated?limit=50', { token: admin });
 // The export is { exported_at, count, de_identified, encounters: [...] } with snake_case fields.
 const pdplRow = (exported.json?.encounters || []).find((r) => String(r.override_reason || '').startsWith('E2E-PDPL'));
@@ -311,6 +345,16 @@ check(exported.status === 200 && !!pdplRow, 'the saved triage record is in the v
 check(!/1023456789|0551234567|محمد|Ali Saleh|patient_name|"phone"|"mrn"/.test(JSON.stringify(pdplRow || {})),
   'no name, ID or phone survives in the stored record (PDPL)', JSON.stringify(pdplRow || {}).slice(0, 400));
 check(pdplRow?.validated_payload?.nested?.keep === 1 && pdplRow?.validated_payload?.ctas === 4, 'clinical values in the stored record are kept', JSON.stringify(pdplRow?.validated_payload || {}).slice(0, 200));
+check(pdplRow?.physician_ctas === 3 && pdplRow?.nurse_ctas === 4 && pdplRow?.nurse_vs_physician === 'under' && pdplRow?.physician_validated_at,
+  'the accuracy dataset carries the physician-validated level as the reference', JSON.stringify({ p: pdplRow?.physician_ctas, n: pdplRow?.nurse_ctas, v: pdplRow?.nurse_vs_physician }));
+check(pdplRow?.outcome?.final_diagnosis_icd10 === 'M54.5' && pdplRow?.outcome?.resource_count === 3 && pdplRow?.outcome?.high_acuity_outcome === false,
+  'the accuracy dataset carries the outcome reference', JSON.stringify(pdplRow?.outcome || {}).slice(0, 200));
+check(!(exported.json?.encounters || []).some((r) => String(r.override_reason || '').startsWith('E2E-UNVALIDATED')),
+  'an unvalidated CTAS is not in the accuracy dataset');
+check(!JSON.stringify(exported.json).includes('clinician_final_ctas'), "the dataset no longer offers the nurse's own level as a 'clinician final' reference");
+const evalReport = await call('/analytics/evaluation?days=30', { token: admin });
+check(evalReport.status === 200 && evalReport.json?.sample_sizes?.reference_physician_validated >= 1 && evalReport.json?.sample_sizes?.not_validated >= 1,
+  'the AI report scores against physician-validated cases only and counts the unvalidated ones as excluded', `status ${evalReport.status} ${JSON.stringify(evalReport.json?.sample_sizes || {}).slice(0, 300)}`);
 
 const staff = await call('/users', { token: admin });
 check(staff.status === 200 && staff.json.some((u) => u.email === 'nurse@triagepulse.local') && !staff.text.includes('passwordHash') && !staff.text.includes('$2'), 'the admin lists staff, with no password data', `status ${staff.status}`);

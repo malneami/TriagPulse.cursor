@@ -5,7 +5,11 @@ import {
 import { triageDurationSec } from '../utils/shared.js';
 import { physicianMayAct } from './journeyOwnership.js';
 import { hasHisEncounter, physicianValidationEligible, statusAfterCtasComplete } from './hisHandoff.js';
-import { normalizeOutcomeReview, outcomeReviewEligible, outcomeReviewMayAct, outcomeReviewVisible } from './outcomeHandoff.js';
+import {
+  highAcuityOutcome, normalizeIcd10, normalizeOutcomeReview, outcomeCloseProblem, outcomeReviewEligible,
+  outcomeReviewMayAct, outcomeReviewVisible, resourceCount,
+} from './outcomeHandoff.js';
+import { computeEvaluationReport, referenceSource } from '../analytics/computeEvaluation.js';
 import { mrnSuffixFromBarcode, mrnSuffixFromText, patientNoFromBarcode, patientNoFromText, transactionNoFromText, visitNumberFromText } from './ticketText.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
@@ -140,13 +144,18 @@ export function runFeedbackTests(assert: Assert) {
     'FB-23',
     'Physician validation is allowed only after CTAS complete and a non-empty HIS encounter',
   );
+  // Reference measures every saved outcome must answer (unknown allowed where it may be pending).
+  const ref = {
+    finalDiagnosisCode: 'R07.4', interventions: ['none'], icuWithin24h: 'no', death: 'none',
+    resources: ['labs', 'ecg_xray'], return72h: 'unknown',
+  };
   const admitted = normalizeOutcomeReview({
-    disposition: 'admitted', admissionSpecialty: 'Pediatrics', admissionLocation: 'ward',
+    ...ref, disposition: 'admitted', admissionSpecialty: 'Pediatrics', admissionLocation: 'ward',
   });
-  const discharged = normalizeOutcomeReview({ disposition: 'discharged_ed', dischargeDestination: 'home' });
-  const missingAdmit = normalizeOutcomeReview({ disposition: 'admitted' });
+  const discharged = normalizeOutcomeReview({ ...ref, disposition: 'discharged_ed', dischargeDestination: 'home' });
+  const missingAdmit = normalizeOutcomeReview({ ...ref, disposition: 'admitted' });
   const directionNo = normalizeOutcomeReview({
-    disposition: 'transferred', directionAppropriate: 'no',
+    ...ref, disposition: 'transferred', directionAppropriate: 'no',
   });
   assert(
     !outcomeReviewEligible({ ctasReviewedAt: null, encounterNo: '123456789' })
@@ -168,10 +177,13 @@ export function runFeedbackTests(assert: Assert) {
   const admin = { id: 'a1', role: 'admin' };
   const unassigned = { ctasNurseId: 'n1', outcomePhysicianId: null };
   const assigned = { ctasNurseId: 'n1', outcomePhysicianId: 'p1' };
+  // A physician who also did the CTAS (same account) is the triage person: refused.
+  const selfTriaged = { ctasNurseId: 'p1', outcomePhysicianId: 'p1' };
   assert(
-    outcomeReviewMayAct(nurse, unassigned)
-    && outcomeReviewMayAct(nurse, assigned)
+    !outcomeReviewMayAct(nurse, unassigned)
+    && !outcomeReviewMayAct(nurse, assigned)
     && !outcomeReviewMayAct(otherNurse, assigned)
+    && !outcomeReviewMayAct(phys, selfTriaged)
     && !outcomeReviewMayAct(phys, unassigned)
     && outcomeReviewMayAct(phys, assigned)
     && !outcomeReviewMayAct(otherPhys, assigned)
@@ -182,6 +194,57 @@ export function runFeedbackTests(assert: Assert) {
     && outcomeReviewVisible(phys, assigned)
     && !outcomeReviewVisible(otherNurse, assigned),
     'FB-25',
-    'Only the CTAS nurse and the admin-assigned physician may save; admin can see cases to assign but cannot act',
+    'Only the admin-assigned physician may save the outcome, never the triage nurse; admin can see cases to assign but cannot act',
+  );
+
+  // FB-26 Reference measures: required, coded, consistent.
+  const noCode = normalizeOutcomeReview({ ...ref, disposition: 'other', finalDiagnosisCode: 'chest pain' });
+  const noneMixed = normalizeOutcomeReview({ ...ref, disposition: 'other', interventions: ['none', 'cpr'] });
+  const unknownLsi = normalizeOutcomeReview({ ...ref, disposition: 'other', interventions: ['bogus'] });
+  const missingIcu = normalizeOutcomeReview({ ...ref, disposition: 'other', icuWithin24h: undefined });
+  const dischargedIcu = normalizeOutcomeReview({ ...ref, disposition: 'discharged_ed', dischargeDestination: 'home', icuWithin24h: 'yes' });
+  const diedEdAdmitted = normalizeOutcomeReview({ ...ref, disposition: 'admitted', admissionSpecialty: 'ICU', admissionLocation: 'icu', death: 'died_in_ed' });
+  const severe = normalizeOutcomeReview({
+    ...ref, disposition: 'admitted', admissionSpecialty: 'Medicine', admissionLocation: 'icu',
+    interventions: ['intubation', 'vasopressors_inotropes'], icuWithin24h: 'yes', resources: ['labs', 'complex_procedure'],
+  });
+  assert(
+    normalizeIcd10('r074') === 'R07.4' && normalizeIcd10(' J45.909 ') === 'J45.909' && normalizeIcd10('chest') === null
+    && !noCode.ok && !noneMixed.ok && !unknownLsi.ok && !missingIcu.ok && !dischargedIcu.ok && !diedEdAdmitted.ok
+    && severe.ok && severe.value.resourceCount === 3 && severe.value.finalDiagnosisCode === 'R07.4'
+    && resourceCount(['none']) === 0
+    && highAcuityOutcome({ interventions: ['cpr'], icuWithin24h: 'unknown', death: 'unknown' }) === true
+    && highAcuityOutcome({ interventions: ['none'], icuWithin24h: 'no', death: 'none' }) === false
+    && highAcuityOutcome({ interventions: ['none'], icuWithin24h: 'unknown', death: 'none' }) === null,
+    'FB-26',
+    'Outcome reference: ICD-10 code required; interventions/resources from fixed lists ("none" alone); ICU, death and 72 h return answered; contradictions refused; composite high-acuity outcome',
+  );
+
+  // FB-27 Closing waits for the 72-hour return.
+  const arrived80h = new Date(now.getTime() - 80 * 3600 * 1000);
+  const arrived10h = new Date(now.getTime() - 10 * 3600 * 1000);
+  assert(
+    outcomeCloseProblem({ return72h: 'no' }, arrived10h, now) !== null
+    && outcomeCloseProblem({ return72h: 'unknown' }, arrived80h, now) !== null
+    && outcomeCloseProblem({ return72h: 'yes_admitted' }, arrived80h, now) === null,
+    'FB-27',
+    'A case closes only 72 h after arrival with the return visit recorded',
+  );
+
+  // FB-28 Accuracy reference = physician-validated level only, never the nurse's own level.
+  const base = { createdAt: now, nurseCtas: 3, aiRecommendedCtas: 3 };
+  const unvalidated = { ...base, id: 'u', clinicianFinalCtas: 3 };
+  const validated = { ...base, id: 'v', clinicianFinalCtas: 2, physicianCtas: 2, physicianValidatedAt: now };
+  const changedCase = { ...base, id: 'c', physicianCtas: 1, physicianValidatedAt: now, physicianConditionChanged: true };
+  const report = computeEvaluationReport([unvalidated, validated, changedCase]);
+  assert(
+    referenceSource(unvalidated) === 'none' && referenceSource(validated) === 'physician'
+    && referenceSource(changedCase) === 'condition_changed'
+    && report.sample_sizes.expert_labeled === 1
+    && report.sample_sizes.not_validated === 1
+    && report.sample_sizes.excluded_condition_changed === 1
+    && report.sample_sizes.reference_physician_validated === 1,
+    'FB-28',
+    'AI/nurse accuracy scores only physician-validated cases; unvalidated and condition-changed cases are excluded',
   );
 }

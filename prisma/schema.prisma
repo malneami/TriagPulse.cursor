@@ -65,6 +65,27 @@ enum DischargeDestination {
   clinic_followup
 }
 
+/// Reference-standard outcome answers (accuracy study). 'unknown' = not yet known / not found in HIS.
+enum YesNoUnknown {
+  yes
+  no
+  unknown
+}
+
+enum OutcomeDeath {
+  none
+  died_in_ed
+  died_in_hospital
+  unknown
+}
+
+enum ReturnVisit72h {
+  no
+  yes_discharged
+  yes_admitted
+  unknown
+}
+
 enum DirectionAppropriate {
   yes
   no
@@ -151,6 +172,8 @@ model PatientJourney {
   currentLocation     String?   @map("current_location")
   ctasReviewedAt      DateTime? @map("ctas_reviewed_at")
   clinicianFinalCtas  Int?      @map("clinician_final_ctas")
+  /// Physician-validated level (reference for accuracy). Set only by physician validation.
+  physicianCtas       Int?      @map("physician_ctas")
   rulesRecommendedCtas Int?     @map("rules_recommended_ctas")
   aiRecommendedCtas   Int?      @map("ai_recommended_ctas")
   alertTriggeredAt    DateTime? @map("alert_triggered_at")
@@ -224,6 +247,11 @@ model TriageRecord {
   aiRecommendedCtas Int?      @map("ai_recommended_ctas")
   clinicianFinalCtas Int?     @map("clinician_final_ctas")
   clinicianReviewedAt DateTime? @map("clinician_reviewed_at")
+  /// Reference for accuracy scoring: set only when a physician validates this record (never at save).
+  physicianCtas            Int?      @map("physician_ctas")
+  physicianValidatedAt     DateTime? @map("physician_validated_at")
+  /// The patient changed after triage: excluded from accuracy (neither for nor against).
+  physicianConditionChanged Boolean? @map("physician_condition_changed")
   reviewedBy        String?   @map("reviewed_by")
   ctasStartedAt     DateTime? @map("ctas_started_at")
   ctasCompletedAt   DateTime? @map("ctas_completed_at")
@@ -355,6 +383,17 @@ model OutcomeReview {
   reviewerComment    String? @map("reviewer_comment") @db.VarChar(500)
   directionAppropriate DirectionAppropriate? @map("direction_appropriate")
   directionComment   String? @map("direction_comment") @db.VarChar(500)
+  /// ICD-10 code of the final ED/HIS diagnosis (finalDiagnosis keeps the description).
+  finalDiagnosisCode String? @map("final_diagnosis_code") @db.VarChar(10)
+  /// Life-saving interventions in the ED / first hours (codes; ['none'] when none).
+  interventions      String[] @default([])
+  /// ICU, PICU, NICU or CCU admission within 24 h of arrival.
+  icuWithin24h       YesNoUnknown? @map("icu_within_24h")
+  death              OutcomeDeath?
+  /// ED resources used (ESI categories; ['none'] when none) and their count (complex procedure = 2).
+  resources          String[] @default([])
+  resourceCount      Int?     @map("resource_count")
+  return72h          ReturnVisit72h? @map("return_72h")
   source      String   @default("his_manual")
   reviewerId  String   @map("reviewer_id")
   reviewedAt  DateTime @default(now()) @map("reviewed_at")
