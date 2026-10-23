@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "build": "nest build && node scripts/build-boosthis.mjs",
     "start": "node dist/src/main.js",
     "db:migrate": "prisma migrate dev --schema=../../prisma/schema.prisma",
     "db:migrate:deploy": "prisma migrate deploy --schema=../../prisma/schema.prisma",
@@ -46,6 +46,7 @@
     "deepmerge-ts": "^8.0.2",
     "prisma": "^6.5.0",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "esbuild": "^0.28.1"
   }
 }

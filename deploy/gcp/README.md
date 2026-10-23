@@ -43,6 +43,22 @@ gcloud compute instances add-metadata triagepulse --zone=me-central1-a --metadat
 ```
 Empty keys = voice capture is off; the rest of the app works.
 
+## Boosthis performance monitoring (optional)
+
+The API carries the Boosthis Node kit (vendored in `vendor/boosthis`, bundled at build
+time). It starts only when `tp-boosthis-key` has a version. It sends request timings and
+labels such as `GET /api/journeys/:id`, never bodies, headers, cookies or query values.
+Add the project key without it showing on screen or in shell history:
+```bash
+read -rs K && printf %s "$K" | gcloud secrets versions add tp-boosthis-key --data-file=- && unset K
+gcloud compute instances add-metadata triagepulse --zone=me-central1-a --metadata=tp-rev=$(date +%s)
+```
+(On a server made before this section existed, create the secret first with
+`gcloud secrets create tp-boosthis-key --replication-policy=user-managed --locations=me-central1`
+and grant `roles/secretmanager.secretAccessor` to the server's service account.)
+Switch it off: disable the secret version and bump `tp-rev`. The owner badge is off
+(`BOOSTHIS_BUBBLE=0`); readings are on the Boosthis dashboard.
+
 ## Releases
 
 Merge to `main`, then `PROJECT=<project-id> bash deploy/gcp/deploy.sh`. The server pulls the

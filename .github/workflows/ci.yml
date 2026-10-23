@@ -69,6 +69,8 @@ jobs:
       NODE_ENV: test
       # Short grace so the copied-cookie check does not wait 30 s (API and checks read it).
       REFRESH_REUSE_GRACE_SEC: '1'
+      # Run the whole app with the Boosthis kit attached; with no key it sends nothing.
+      BOOSTHIS_LOCAL_ONLY: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -102,6 +104,8 @@ jobs:
             sleep 2
           done
           echo "API did not start"; cat api.log; exit 1
+      - name: Boosthis kit attached (local only, sends nothing)
+        run: grep -q "Boosthis starting: no project key" api.log
       - name: End-to-end checks
         run: EXPECT_WEB=1 node scripts/e2e-api.mjs
       - name: Install browser for the browser checks
@@ -133,6 +137,7 @@ jobs:
             -e DATABASE_URL=postgresql://tp:tp@db:5432/tp -e DIRECT_URL=postgresql://tp:tp@db:5432/tp \
             -e JWT_SECRET="$(openssl rand -base64 48)" -e CORS_ORIGIN=https://triage-pulse.com \
             -e BOOTSTRAP_ADMIN_EMAIL=first.admin@example.org -e BOOTSTRAP_ADMIN_PASSWORD="$ADMIN_PW" \
+            -e BOOSTHIS_LOCAL_ONLY=1 \
             triagepulse:ci
           for i in $(seq 1 60); do curl -sf http://localhost:3001/api/health > /dev/null && { echo "App up"; exit 0; }; sleep 2; done
           docker logs app; exit 1
@@ -146,6 +151,8 @@ jobs:
           # Security headers.
           curl -sI http://localhost:3001/ | grep -qi '^strict-transport-security'
           curl -sI http://localhost:3001/ | grep -qi "^content-security-policy"
+          # Boosthis kit attached in the production image (local only: no key, sends nothing).
+          docker logs app 2>&1 | grep -q 'Boosthis starting: no project key'
           # First admin exists and must change the password; demo accounts do not exist.
           body=$(jq -n --arg e first.admin@example.org --arg p "$ADMIN_PW" '{email:$e,password:$p}')
           r=$(curl -s -X POST http://localhost:3001/api/auth/login -H 'content-type: application/json' -d "$body")
