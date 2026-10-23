@@ -53,9 +53,11 @@ Add the project key without it showing on screen or in shell history:
 read -rs K && printf %s "$K" | gcloud secrets versions add tp-boosthis-key --data-file=- && unset K
 gcloud compute instances add-metadata triagepulse --zone=me-central1-a --metadata=tp-rev=$(date +%s)
 ```
-(On a server made before this section existed, create the secret first with
+(On a server made before this section existed: create the secret first with
 `gcloud secrets create tp-boosthis-key --replication-policy=user-managed --locations=me-central1`
-and grant `roles/secretmanager.secretAccessor` to the server's service account.)
+and grant `roles/secretmanager.secretAccessor` to the server's service account; and after the
+release that brings this section, re-run the startup script once so the server picks up the
+new settings: `gcloud compute ssh triagepulse --zone=me-central1-a --command='sudo google_metadata_script_runner startup'`.)
 Switch it off: disable the secret version and bump `tp-rev`. The owner badge is off
 (`BOOSTHIS_BUBBLE=0`); readings are on the Boosthis dashboard.
 
