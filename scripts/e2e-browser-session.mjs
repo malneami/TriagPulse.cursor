@@ -26,9 +26,21 @@ function check(condition, label, detail = '') {
   console.log(`ok    ${label}`);
 }
 
+// A Playwright error (timeout, missing element) is reported like a failed check, with the
+// page address, so CI shows why it stopped.
+let currentPage = null;
+process.on('unhandledRejection', (err) => {
+  const where = currentPage ? currentPage.url() : '';
+  const msg = String(err?.message || err).split('\n').slice(0, 3).join(' ');
+  console.error(`FAIL  ${msg} @ ${where}`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::error title=Browser check crashed::${msg} @ ${where}`);
+  process.exit(1);
+});
+
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 const page = await context.newPage();
+currentPage = page;
 const signedIn = () => page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15000 }).then(() => true, () => false);
 
 await page.goto(`${APP}/login`);
