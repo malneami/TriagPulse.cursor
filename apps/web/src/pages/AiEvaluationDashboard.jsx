@@ -200,7 +200,9 @@ export default function AiEvaluationDashboard() {
           <p className="text-2xl font-semibold tracking-wide">{decision.label}</p>
           <p className="text-xs font-normal opacity-80 mt-0.5" dir="rtl">{decision.label_ar}</p>
           <p className="text-xs opacity-90 mt-1">
-            Expert-labeled {sample.expert_labeled ?? 0}/{sample.total_records ?? 0}
+            Physician-validated {sample.expert_labeled ?? 0}/{sample.total_records ?? 0}
+            {sample.not_validated ? ` · ${sample.not_validated} not validated (excluded)` : ''}
+            {sample.excluded_condition_changed ? ` · ${sample.excluded_condition_changed} condition changed (excluded)` : ''}
             {' · '}Critical cohort {sample.critical_with_ai ?? 0}
             {sample.insufficient_clinical_sample ? ' · Sample below governance minimum' : ''}
             {trendDelta != null && (
