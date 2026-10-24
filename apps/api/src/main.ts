@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { AppModule, ENV_FILE_PATHS } from './app.module';
+import { startBoosthis } from './boosthis';
 
 /**
  * Report where config came from and whether the STT key resolved. Paths and booleans
@@ -59,6 +60,7 @@ function serveWebApp(server: express.Express) {
 }
 
 async function bootstrap() {
+  startBoosthis(); // before NestFactory.create(): it watches the HTTP server as it is created
   const app = await NestFactory.create(AppModule);
   logConfigSources();
   app.enableCors({

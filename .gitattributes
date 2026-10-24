@@ -1,0 +1,2 @@
+# Vendored Boosthis kit: checked byte for byte against its signed release list.
+vendor/boosthis/** -text

@@ -1,0 +1,7 @@
+# Boosthis kit: keep every file in this folder exactly as it was shipped.
+#
+# The kit's files are checked byte for byte against its signed release list.
+# Git can rewrite line endings when it checks files out or in (on Windows it
+# usually does, through core.autocrlf), which changes those bytes and fails
+# the check. This tells Git never to convert line endings here, either way.
+* -text

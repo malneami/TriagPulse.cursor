@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Boosthis — Node perf dashboard</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #7d8590;
+    --good: #2ea043; --warn: #d29922; --poor: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text); padding: 24px; }
+  h1 { margin: 0 0 4px; font-size: 20px; }
+  .sub { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px; margin-bottom: 24px; }
+  .card { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; }
+  .label { color: var(--muted); font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 4px; }
+  .value { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.5px; }
+  td.num { text-align: right; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 12px; font-weight: 500; }
+  .tag.good { background: rgba(46,160,67,0.15); color: var(--good); }
+  .tag.needs-work { background: rgba(210,153,34,0.15); color: var(--warn); }
+  .tag.poor { background: rgba(248,81,73,0.15); color: var(--poor); }
+  .tag.regressed { background: rgba(248,81,73,0.15); color: var(--poor); }
+  .tag.improved { background: rgba(46,160,67,0.15); color: var(--good); }
+  .tag.declared { background: rgba(125,133,144,0.15); color: var(--muted); }
+  .tag.stable { background: rgba(125,133,144,0.15); color: var(--muted); }
+  .tag.learning { background: rgba(125,133,144,0.15); color: var(--muted); }
+  .err { background: rgba(248,81,73,0.1); border: 1px solid var(--poor);
+    padding: 12px; border-radius: 8px; color: var(--poor); }
+  .empty { color: var(--muted); font-style: italic; padding: 16px 0; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 32px; }
+  a { color: #58a6ff; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; margin: 4px 0 12px; overflow-x: auto; color: var(--text);
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-all; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+</style>
+</head>
+<body>
+<h1>Boosthis — Node perf dashboard</h1>
+<div class="sub" id="sub">Loading…</div>
+
+<div id="error" class="err" style="display:none"></div>
+
+<div class="grid" id="kpis"></div>
+
+<div class="panel" id="connect" style="display:none">
+  <h2>Connect your AI</h2>
+  <p class="hint">
+    Let your own AI read this app's live performance picture over Boosthis's
+    hosted MCP. Paste the config into your AI tool, then give it the install id
+    and read token as tool arguments. The read token is read-only and scoped to
+    this app — it can read only this app's own data and cannot delete or ingest.
+  </p>
+  <div class="label">MCP config (replace &lt;YOUR_INVITE_KEY&gt;)</div>
+  <pre id="connectConfig"></pre>
+  <div class="label">Install id</div>
+  <pre id="connectInstall"></pre>
+  <div class="label">Read token (read-only)</div>
+  <pre id="connectToken"></pre>
+</div>
+
+<div class="panel">
+  <h2>Per-route summary</h2>
+  <table id="routes"><thead><tr>
+    <th>Route</th><th class="num">Samples</th><th class="num">Max ms</th><th>Worst</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="sub" id="declaredNote" style="display:none;margin:12px 0 0">
+    Declared: a route you said waits on purpose. Its calls are kept out of every
+    speed reading, so the count is the calls kept out and the time is the
+    longest wait. Errors still count.
+  </p>
+</div>
+
+<div class="panel">
+  <h2>Auto budgets</h2>
+  <table id="budgets"><thead><tr>
+    <th>Route</th><th>State</th>
+    <th class="num">Baseline p95</th><th class="num">Recent p95</th>
+  </tr></thead><tbody></tbody></table>
+</div>
+
+<div class="panel">
+  <h2>Recent samples</h2>
+  <table id="recent"><thead><tr>
+    <th>When</th><th>Route</th><th class="num">ms</th><th>Rating</th>
+  </tr></thead><tbody></tbody></table>
+</div>
+
+<!-- WHAT THIS VIEW DOES NOT SHOW. Same answer as the shared page's jobs
+     card and the status page's jobs row: this is a local view of one process,
+     and a job's runs, rhythm and lateness are assembled server-side. Always
+     drawn, because a view that simply omits jobs reads as a view reporting
+     there are none. See docs/decisions/kit-page-says-where-jobs-live.md. -->
+<div class="panel">
+  <h2>Scheduled jobs</h2>
+  <p class="hint">
+    Not listed here. This kit reports named job runs to Boosthis, so they
+    appear on your dashboard &mdash; this page showing none is not evidence
+    there are none.
+  </p>
+</div>
+
+<footer>
+  Read-only. Auto-refreshes every 5 s. Data:
+  <a id="lnkSummary" href="">/summary</a> · <a id="lnkRecent" href="">/recent</a> ·
+  <a id="lnkBudgets" href="">/budgets</a><br>
+  This detailed view is specific to the Node kit and stays on this machine.
+  The shared Boosthis page is at <a id="lnkPage" href="">/_boosthis</a>.
+</footer>
+
+<script>
+(function () {
+  // This view is served at <prefix>/dev; every read it makes lives one level
+  // up, next to the shared in-app page at <prefix>. Strip the trailing /dev
+  // (and any trailing slash) so the reads resolve wherever the kit is mounted.
+  const base = window.location.pathname
+    .replace(/\/+$/, "")
+    .replace(/\/dev$/, "");
+  const $ = (id) => document.getElementById(id);
+
+  function tag(cls, text) {
+    return '<span class="tag ' + cls + '">' + text + '</span>';
+  }
+  function fmt(n) { return n == null ? "—" : Math.round(n); }
+  function timeAgo(ms) {
+    const s = Math.round((Date.now() - ms) / 1000);
+    if (s < 60) return s + "s ago";
+    if (s < 3600) return Math.round(s / 60) + "m ago";
+    return Math.round(s / 3600) + "h ago";
+  }
+
+  async function load() {
+    try {
+      const [summary, recent, budgets] = await Promise.all([
+        fetch(base + "/summary").then((r) => r.json()),
+        fetch(base + "/recent?limit=30").then((r) => r.json()),
+        fetch(base + "/budgets").then((r) => r.json()),
+      ]);
+      $("error").style.display = "none";
+
+      $("sub").textContent = summary.total + " samples · refreshed " + new Date().toLocaleTimeString();
+
+      // All sample/route fields are attacker-controlled (req.path fallback),
+      // so build DOM with text nodes rather than HTML string concatenation.
+      function cell(text, cls) {
+        var td = document.createElement("td");
+        if (cls) td.className = cls;
+        td.textContent = String(text);
+        return td;
+      }
+      function tagCell(rating) {
+        var td = document.createElement("td");
+        var span = document.createElement("span");
+        span.className = "tag " + (rating || "");
+        span.textContent = String(rating || "");
+        td.appendChild(span);
+        return td;
+      }
+      function setRows(tbody, rows, emptyMsg) {
+        tbody.textContent = "";
+        if (!rows.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 4; td.className = "empty"; td.textContent = emptyMsg;
+          tr.appendChild(td); tbody.appendChild(tr);
+          return;
+        }
+        for (var i = 0; i < rows.length; i++) {
+          var tr = document.createElement("tr");
+          rows[i].forEach(function (c) { tr.appendChild(c); });
+          tbody.appendChild(tr);
+        }
+      }
+
+      // Additive dashboard gauges (Code Health + Resilience). Captions carry
+      // only counts/ratios (no route names), but build with text nodes anyway.
+      function axisCard(ax) {
+        var card = document.createElement("div"); card.className = "card";
+        var label = document.createElement("div"); label.className = "label"; label.textContent = ax.label;
+        var value = document.createElement("div"); value.className = "value";
+        value.textContent = ax.score == null ? "—" : String(ax.score);
+        value.style.color =
+          ax.rating === "good" ? "var(--good)" :
+          ax.rating === "needs-work" ? "var(--warn)" :
+          ax.rating === "poor" ? "var(--poor)" : "var(--muted)";
+        var sub = document.createElement("div");
+        sub.className = "label";
+        sub.style.textTransform = "none"; sub.style.letterSpacing = "0"; sub.style.marginTop = "6px";
+        sub.textContent = ax.caption;
+        card.appendChild(label); card.appendChild(value); card.appendChild(sub);
+        return card;
+      }
+
+      var kpis = $("kpis");
+      kpis.textContent = "";
+      var axes = summary.axes || {};
+      [axes.codeHealth, axes.resilience].forEach(function (ax) {
+        if (ax) kpis.appendChild(axisCard(ax));
+      });
+      [["Total", summary.total], ["Good", summary.good], ["Needs work", summary.needsWork],
+       ["Poor", summary.poor], ["p50 ms", fmt(summary.p50_ms)],
+       ["p95 ms", fmt(summary.p95_ms)], ["p99 ms", fmt(summary.p99_ms)]].forEach(function (kv) {
+        var card = document.createElement("div"); card.className = "card";
+        var label = document.createElement("div"); label.className = "label"; label.textContent = kv[0];
+        var value = document.createElement("div"); value.className = "value"; value.textContent = String(kv[1]);
+        card.appendChild(label); card.appendChild(value); kpis.appendChild(card);
+      });
+
+      var routes = Object.entries(summary.byRoute || {}).sort(function (a, b) { return b[1].max_ms - a[1].max_ms; });
+      // Routes declared as waiting on purpose have no samples by design: they
+      // are listed as declared, never left to read as missing.
+      var declared = ((summary.declaredWaits || {}).routes || []);
+      $("declaredNote").style.display = declared.length ? "block" : "none";
+      setRows($("routes").querySelector("tbody"),
+        routes.map(function (pair) {
+          return [cell(pair[0]), cell(pair[1].count, "num"), cell(pair[1].max_ms, "num"), tagCell(pair[1].worst_rating)];
+        }).concat(declared.map(function (d) {
+          return [cell(d.name), cell(d.excluded, "num"), cell(d.excluded > 0 ? d.worstMs : "—", "num"), tagCell("declared")];
+        })),
+        "No samples yet. Add app.use(boosthis()) to start recording.");
+
+      setRows($("budgets").querySelector("tbody"),
+        (budgets.all || []).map(function (b) {
+          return [cell(b.route), tagCell(b.state), cell(fmt(b.baseline_p95_ms), "num"), cell(fmt(b.recent_p95_ms), "num")];
+        }),
+        "No budgets yet. Need ≥20 samples per route.");
+
+      setRows($("recent").querySelector("tbody"),
+        (recent || []).map(function (s) {
+          return [cell(timeAgo(s.timestamp_ms)), cell(s.name), cell(s.duration_ms, "num"), tagCell(s.rating)];
+        }),
+        "No samples yet.");
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      $("error").style.display = "block";
+      $("error").textContent =
+        "Could not load Boosthis data: " + msg +
+        ". If this dashboard is loaded over the public internet, you need to mount() with { allowRemote: true } and put auth in front.";
+    }
+  }
+
+  // "Connect your AI" card. Loopback-only endpoint; if it 403s (remote) or has
+  // no read token yet, the panel stays hidden. Uses textContent (never innerHTML)
+  // since it renders a credential.
+  async function loadConnect() {
+    try {
+      const c = await fetch(base + "/connect").then((r) => r.ok ? r.json() : null);
+      if (!c || !c.connected) { $("connect").style.display = "none"; return; }
+      $("connectConfig").textContent = c.mcpConfig || "";
+      $("connectInstall").textContent = c.installId || "";
+      $("connectToken").textContent = c.readToken || "";
+      $("connect").style.display = "block";
+    } catch (e) {
+      $("connect").style.display = "none";
+    }
+  }
+
+  // Footer links, resolved against the mounted prefix rather than this page's
+  // own address (which sits one level deeper, at <prefix>/dev).
+  $("lnkSummary").href = base + "/summary";
+  $("lnkRecent").href = base + "/recent";
+  $("lnkBudgets").href = base + "/budgets";
+  $("lnkPage").href = base + "/";
+  $("lnkPage").textContent = base || "/";
+
+  load();
+  loadConnect();
+  setInterval(load, 5000);
+  setInterval(loadConnect, 15000);
+})();
+</script>
+</body>
+</html>
