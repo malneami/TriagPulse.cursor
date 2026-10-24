@@ -74,13 +74,13 @@ export const FEVER_VALIDATION_CASES = [
   },
   {
     id: 'FEVER-07',
-    name: 'Febrile neonate (configured band)',
+    name: 'Febrile neonate → CTAS 2 (CTAS: fever under 3 months; approved 2026-10-25)',
     patient: {
       age: 0.05, chief_complaint: 'Fever / حمى', hr: 160, bp_systolic: 75,
       spo2: 98, rr: 45, temperature: 38.2, gcs: 15, pain_score: 0,
     },
     answers: {},
-    expectedLevel: 1,
+    expectedLevel: 2,
   },
   {
     id: 'FEVER-08',

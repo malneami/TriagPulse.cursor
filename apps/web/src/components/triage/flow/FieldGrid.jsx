@@ -25,7 +25,8 @@ const TILES = [
   { key: 'weight', ar: 'الوزن kg', en: 'Weight', mode: 'decimal', interp: (p) => weightCheck(p.weight, p.age) },
   { key: 'chief_complaint', ar: 'الشكوى', en: 'Complaint', wide: true, text: true },
   { key: 'pain_score', ar: 'الألم /10', en: 'Pain', mode: 'numeric' },
-  { key: 'hr', ar: 'النبض', en: 'HR', mode: 'numeric', interp: (p) => interpretHR(p.hr, p.age) },
+  // Same assessment as the CTAS level and alert: fever or a recorded cause explains a fast rate.
+  { key: 'hr', ar: 'النبض', en: 'HR', mode: 'numeric', interp: (p) => interpretHR(p.hr, p.age, { temperature: p.temperature, answers: p._hrAnswers, pathway: p._hrPathway }) },
   { key: 'bp_systolic', ar: 'الضغط', en: 'BP', type: 'bp', interp: (p) => interpretSBP(p.bp_systolic) },
   { key: 'spo2', ar: 'الأكسجين %', en: 'SpO₂', mode: 'numeric', interp: (p) => interpretSpO2(p.spo2) },
   { key: 'rr', ar: 'التنفس', en: 'RR', mode: 'numeric', interp: (p) => interpretRR(p.rr, p.age) },
@@ -42,7 +43,7 @@ const val = (v) => (v == null ? '' : String(v));
  */
 export default function FieldGrid({
   patient, onChange, missingKeys = [], total = 10, more = null, complaintSlot = null, historySlot = null,
-  bedside = null, confirmKeys = [], onSettled,
+  bedside = null, confirmKeys = [], onSettled, hrContext = null,
 }) {
   const done = total - missingKeys.length;
   const [showMore, setShowMore] = useState(false);
@@ -81,7 +82,7 @@ export default function FieldGrid({
         {TILES.map((t) => {
           const v = val(patient[t.key]);
           const missing = missingKeys.includes(t.key === 'gender' ? '__none' : t.key);
-          const interp = v && t.interp ? t.interp(patient) : null;
+          const interp = v && t.interp ? t.interp({ ...patient, _hrAnswers: hrContext?.answers, _hrPathway: hrContext?.pathway }) : null;
           const critical = interp?.status === 'critical';
           const abnormal = interp?.status === 'abnormal';
           const toConfirm = confirmKeys.includes(t.key);

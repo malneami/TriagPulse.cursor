@@ -4,10 +4,12 @@ import { detectKnownModifier } from '../ctas/modifierEngine.js';
 // @ts-ignore — plain JS module
 import { getActiveModifiers } from '../ctas/modifierLibrary.js';
 // @ts-ignore — plain JS module
-import { severeHeartRate } from '../ctas/rules/hemodynamicRules.js';
+import { assessHeartRate } from '../ctas/rules/hemodynamicRules.js';
 
 const YES_RE = /^(نعم|yes|true|1)$/i;
 const NO_RE = /^(لا|no|false|0)$/i;
+/** Complaints where unexplained tachycardia is a cardiac finding (same set as the CTAS rule). */
+const CARDIAC_TEXT = /chest\s+pain|palpitat\w*|syncop\w*|faint\w*|short(?:ness)?\s+of\s+breath|breathless\w*|dyspn\w*|ألم\s*(?:في\s*)?(?:ال)?صدر|خفقان|إغماء|اغماء|ضيق\s*(?:في\s*)?(?:ال)?تنفس/i;
 const SHOCK_SIGNS = /\bshock\b|clammy|mottl\w*|cold\s+(?:peripher\w*|extremit\w*|hands|feet|skin)|pale\s+and\s+(?:sweaty|cold|clammy)|poor\s+perfusion|delayed\s+cap\w*|صدمة|برودة\s*(?:في\s*)?الأطراف|بارد(?:ة)?\s*الأطراف|أطرافه?\s*بارد|شاحب\w*\s+و\s*(?:متعرق|بارد)|مزرق\s*الأطراف|تعرق\s*بارد|عرق\s*بارد/i;
 
 /** Hypotension for age: < 70 + 2×age (1–10 y), < 90 from 10 y, < 60 under 1 y. */
@@ -103,25 +105,30 @@ export function detectRedFlags(
       `GCS ${gcs} — altered consciousness`,
     );
   }
-  if (sbp !== null && sbp < th.sbp_urgent) {
+  const ageYears = toNumber(patient.age);
+  const pediatric = ageYears !== null && ageYears < 18;
+  // Children: hypotension for age, as the CTAS rule reads it; adults: the library thresholds.
+  if (pediatric ? hypotensiveForAge(sbp, ageYears) : (sbp !== null && sbp < th.sbp_urgent)) {
     add(
-      sbp < th.sbp_critical ? 1 : 2,
-      `ضغط انقباضي ${sbp} — عدم استقرار`,
-      `SBP ${sbp} — hemodynamic instability`,
+      !pediatric && sbp !== null && sbp < th.sbp_critical ? 1 : 2,
+      `ضغط انقباضي ${sbp} — ${pediatric ? 'انخفاض للعمر' : 'عدم استقرار'}`,
+      `SBP ${sbp} — ${pediatric ? 'hypotension for age' : 'hemodynamic instability'}`,
     );
   }
-  // Same age table as the CTAS rule (T1–T5), so the alert and the level agree.
-  const ageYears = toNumber(patient.age);
-  const severeRate = severeHeartRate(hr, ageYears) as { kind: string; limit: number } | null;
-  if (hr !== null && severeRate) {
+  // The same heart-rate assessment as the CTAS rule (PaedCTAS bands, explained vs unexplained),
+  // so the alert shows exactly when the heart rate sets CTAS 2.
+  const hrA = (assessHeartRate as (o: Record<string, unknown>) => unknown)({
+    hr,
+    age: ageYears,
+    temp: toVital(patient.temperature ?? patient.temp, 32, 43),
+    answers: answers || {},
+    pathway: CARDIAC_TEXT.test(complaintText) ? 'palpitations' : '',
+  }) as { alert: boolean; direction: string | null; label_en: string; label_ar: string } | null;
+  if (hr !== null && hrA?.alert) {
     const unstable = hypotensiveForAge(sbp, ageYears)
       || (gcs !== null && gcs < 15)
-      || SHOCK_SIGNS.test([patient.chief_complaint, patient.transcription, answers?.notes].filter(Boolean).join(' '));
-    if (severeRate.kind === 'tachycardia') {
-      add(unstable ? 1 : 2, `نبض ${hr} — تسرع شديد للعمر`, `HR ${hr} — severe tachycardia for age`);
-    } else {
-      add(unstable ? 1 : 2, `نبض ${hr} — بطء شديد للعمر`, `HR ${hr} — severe bradycardia for age`);
-    }
+      || SHOCK_SIGNS.test(complaintText);
+    add(unstable ? 1 : 2, hrA.label_ar, hrA.label_en);
   }
   if (rr !== null && rr > th.rr_severe) {
     add(2, `تنفس ${rr}/دقيقة — ضائقة تنفسية`, `RR ${rr}/min — respiratory distress`);

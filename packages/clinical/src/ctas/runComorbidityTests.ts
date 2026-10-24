@@ -380,7 +380,8 @@ export function runComorbidityTests(assert: Assert) {
     assert(lvl({ age: '55', hr: '130' }) === 2 && lvl({ age: '55', hr: '40' }) === 2, 'CR-61', 'Adult HR 130 and HR 40 → CTAS 2 (T1)');
     assert(lvl({ age: '55', hr: '180', bp_systolic: '85' }) === 1 && lvl({ age: '55', hr: '180', gcs: '14' }) === 1, 'CR-62', 'Severe rate + SBP < 90 or GCS < 15 → CTAS 1 (T2)');
     assert(lvl({ age: '55', hr: '118', temperature: '38.6' }, { expected_tachycardia: 'نعم' }) === 3 && lvl({ age: '55', hr: '125' }) === 3, 'CR-63', 'Adult HR 110–129 stays CTAS 3 (T3)', `${lvl({ age: '55', hr: '118', temperature: '38.6' })}`);
-    assert(lvl({ age: '2', hr: '165' }) === 2 && lvl({ age: '2', hr: '155' }) === 3 && lvl({ age: '8', hr: '145' }) === 2, 'CR-64', 'Children use age limits: 2 y HR 165 → 2, 155 → 3; 8 y HR 145 → 2 (T4)');
+    assert(lvl({ age: '2', hr: '165' }) === 2 && lvl({ age: '2', hr: '155' }) === 2 && lvl({ age: '2', hr: '140' }) === 3 && lvl({ age: '8', hr: '145' }) === 2,
+      'CR-64', 'Children use PaedCTAS bands (2026-10-25): 2 y HR 140 → 3, 155 and 165 → 2; 8 y HR 145 → 2 (capped)');
     let agree = true; const bad: string[] = [];
     for (const age of ['0.1', '0.5', '2', '4', '8', '15', '30', '70']) {
       for (const hr of ['35', '50', '60', '90', '128', '130', '145', '160', '175', '195']) {

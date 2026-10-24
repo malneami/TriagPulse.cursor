@@ -1236,7 +1236,8 @@ export default function Triage() {
   // ── Clarifying questions: highest impact first, one at a time ───────
   const optionLabels = (q) => {
     if (q.answer_type !== 'options') return null;
-    const src = getBankQuestionById?.(q.id)?.options
+    const src = q.options
+      || getBankQuestionById?.(q.id)?.options
       || getActiveModifiers?.().find((m) => m.id === q.id)?.options
       || null;
     if (!src) return null;
@@ -1248,7 +1249,11 @@ export default function Triage() {
     });
   };
   // A chronic illness known only from a medicine is confirmed first (one yes/no question).
-  const openQuestions = [...comorb.confirmQuestions, ...clarifyingQuestions]
+  // Heart-rate questions from the CTAS engine (why is it fast; settled re-count) come first.
+  const hrQuestions = (liveResult?.hr_questions || []).map((q) => ({
+    ...q, answer_options: (q.options || []).map((o) => o.value),
+  }));
+  const openQuestions = [...hrQuestions, ...comorb.confirmQuestions, ...clarifyingQuestions]
     .filter((q) => {
       if (!q.field) return true;
       if (unknownAnswers[q.field]) return false;
@@ -1726,6 +1731,7 @@ export default function Triage() {
 
           <FieldGrid
             patient={patient}
+            hrContext={{ answers: clarifyingAnswers, pathway: liveResult?.assessment_trail?.step2_complaint?.pathway || '' }}
             onChange={(fields) => update(fields)}
             onSettled={settleVitalsAlerts}
             missingKeys={a.missingKeys}

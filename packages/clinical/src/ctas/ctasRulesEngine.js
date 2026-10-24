@@ -13,7 +13,9 @@ import { resolveCtasHintsFromAnswers } from './clarifyingQuestionBank.js';
 import { getAgeGroup, isPediatricAgeGroup, getNorms } from './ageNorms.js';
 import { normalizeClinicalFacts, isYes, answerText } from './factNormalizer.js';
 import { evaluateSirsCriteria, evaluateAdultFeverModifier } from './rules/adultFeverRules.js';
-import { evaluateHemodynamicModifier } from './rules/hemodynamicRules.js';
+import {
+  evaluateHemodynamicModifier, hypotensiveForAge, HR_REASON_QUESTION, HR_RECOUNT_QUESTION,
+} from './rules/hemodynamicRules.js';
 import {
   detectSymptomChronicity,
   isChronicUnchanged,
@@ -153,7 +155,7 @@ function isFeverPathway(pathway, complaint) {
 }
 
 /** Step 0 — critical visual / ABCDE (alerts + candidate floors; does not skip Step 1). */
-function evaluateStep0({ vitals, flags, appearance }) {
+function evaluateStep0({ vitals, flags, appearance, isPediatric = false, age = null }) {
   const alerts = [];
   const candidates = [];
   const applied = [];
@@ -178,7 +180,13 @@ function evaluateStep0({ vitals, flags, appearance }) {
   } else if (vitals.gcs != null && vitals.gcs <= 13) {
     pushCandidate(candidates, { level: 2, rule_id: 'step0_loc', label_en: `Reduced consciousness GCS ${vitals.gcs}`, label_ar: 'انخفاض الوعي' });
   }
-  if (vitals.sbp != null && vitals.sbp < 70) {
+  // Children: hypotension is judged for age (< 60 under 1 y, < 70 + 2×age to 10 y, < 90 after);
+  // the adult cut-offs (< 70 shock, < 90 hypotension) apply from 18 y.
+  if (isPediatric) {
+    if (vitals.sbp != null && hypotensiveForAge(vitals.sbp, age)) {
+      pushCandidate(candidates, { level: 2, rule_id: 'step0_hypotension_for_age', label_en: `Hypotension for age SBP ${vitals.sbp}`, label_ar: 'انخفاض الضغط للعمر' });
+    }
+  } else if (vitals.sbp != null && vitals.sbp < 70) {
     alerts.push({ ar: `صدمة ضغط ${vitals.sbp}`, en: `Shock SBP ${vitals.sbp}` });
     pushCandidate(candidates, { level: 1, rule_id: 'step0_circulation_shock', label_en: `SBP ${vitals.sbp} shock`, label_ar: 'صدمة دورانية' });
   } else if (vitals.sbp != null && vitals.sbp < 90) {
@@ -381,30 +389,72 @@ function evaluatePainPrimary({ vitals, answers, isPediatric, chronicity, pathway
   return { candidates, applied };
 }
 
-function evaluatePediatricFeverBands({ vitals, ageGroup, appearance, flags }) {
+/**
+ * Paediatric temperature modifier (CTAS / PaedCTAS, approved 2026-10-25):
+ *   0–3 months, ≥ 38.0 °C → CTAS 2 (neonates included)
+ *   3 months – under 3 years, ≥ 38.5 °C: immunocompromised or looks unwell → 2; looks well → 3
+ *   3 years and over, ≥ 38.5 °C: immunocompromised → 2; looks unwell → 3; looks well → 4
+ *   over 3 months, 38.0–38.4 °C → no temperature modifier (complaint and other vitals decide)
+ * Appearance not yet answered → CTAS 3 over 3 months (looks well can lower it at 3 y and over).
+ * Poor perfusion / shocked → CTAS 1; respiratory distress → CTAS 2.
+ */
+function evaluatePediatricFeverBands({ vitals, ageGroup, age, appearance, flags }) {
   const candidates = [];
   const applied = [];
   const temp = vitals.temp;
   if (temp == null || temp < 38.0) return { candidates, applied };
+  const a = age == null || age === '' ? NaN : parseFloat(age);
+  const under3m = Number.isFinite(a) ? a < 0.25 : (ageGroup === 'neonate' || ageGroup === 'infant_1_3m');
 
-  if (ageGroup === 'neonate') {
-    pushCandidate(candidates, { level: 1, rule_id: 'ped_neonate_fever', label_en: 'Neonatal fever → CTAS 1 (configured band)', label_ar: 'حمى مولود → CTAS 1' });
-    applied.push({ label_en: 'Neonatal fever sepsis protocol', label_ar: 'حمى مولودية', result: 'CTAS 1 override' });
-  } else if (ageGroup === 'infant_1_3m') {
-    pushCandidate(candidates, { level: 2, rule_id: 'ped_infant_fever', label_en: 'Infant 1–3m fever → CTAS 2', label_ar: 'حمى رضيع 1–3 أشهر → CTAS 2' });
-  } else if (flags.poor_perfusion || appearance.shocked) {
-    pushCandidate(candidates, { level: 1, rule_id: 'ped_fever_poor_perfusion', label_en: 'Febrile child with poor perfusion → CTAS 1', label_ar: 'طفل محموم مع سوء تروية' });
-  } else if (appearance.looks_unwell || flags.moderate_respiratory_distress) {
-    pushCandidate(candidates, { level: 2, rule_id: 'ped_fever_unwell', label_en: 'Febrile child looks unwell → CTAS 2', label_ar: 'طفل محموم يبدو معتلاً → CTAS 2' });
+  if (flags.poor_perfusion || appearance.shocked) {
+    pushCandidate(candidates, { level: 1, rule_id: 'ped_fever_poor_perfusion', label_en: 'Febrile child with poor perfusion → CTAS 1', label_ar: 'طفل محموم مع سوء تروية → CTAS 1' });
+    return { candidates, applied };
+  }
+  if (under3m) {
+    pushCandidate(candidates, { level: 2, rule_id: 'ped_infant_fever', label_en: `Fever ${temp} °C under 3 months → CTAS 2`, label_ar: 'حمى تحت 3 أشهر → CTAS 2' });
+    applied.push({ label_en: 'Fever under 3 months', label_ar: 'حمى تحت 3 أشهر', result: 'CTAS 2 min' });
+    return { candidates, applied };
+  }
+  if (temp < 38.5) {
+    applied.push({
+      label_en: `Temperature ${temp} °C (< 38.5) — paediatric fever modifier not applied over 3 months`,
+      label_ar: `حرارة ${temp} (< 38.5) — لا يُطبّق معدّل الحمى بعد 3 أشهر`,
+      result: 'noted',
+    });
+    return { candidates, applied };
+  }
+  const under3y = Number.isFinite(a) && a < 3;
+  const unwell = appearance.looks_unwell === true;
+  const well = appearance.looks_unwell === false || appearance.looks_well === true;
+  if (flags.immunocompromised) {
+    pushCandidate(candidates, { level: 2, rule_id: 'ped_fever_immuno', label_en: 'Fever ≥ 38.5 °C, immunocompromised → CTAS 2', label_ar: 'حمى مع نقص مناعة → CTAS 2' });
+  } else if (flags.moderate_respiratory_distress) {
+    pushCandidate(candidates, { level: 2, rule_id: 'ped_fever_unwell', label_en: 'Febrile child with respiratory distress → CTAS 2', label_ar: 'طفل محموم مع ضيق تنفس → CTAS 2' });
+  } else if (under3y) {
+    if (unwell) {
+      pushCandidate(candidates, { level: 2, rule_id: 'ped_fever_unwell', label_en: 'Fever ≥ 38.5 °C, 3 months – 3 years, looks unwell → CTAS 2', label_ar: 'حمى، 3 أشهر – 3 سنوات، يبدو معتلاً → CTAS 2' });
+    } else {
+      pushCandidate(candidates, { level: 3, rule_id: 'ped_fever_stable', label_en: `Fever ≥ 38.5 °C, 3 months – 3 years, ${well ? 'looks well' : 'appearance not yet answered'} → CTAS 3`, label_ar: 'حمى، 3 أشهر – 3 سنوات → CTAS 3' });
+    }
+  } else if (unwell) {
+    pushCandidate(candidates, { level: 3, rule_id: 'ped_fever_unwell_3y', label_en: 'Fever ≥ 38.5 °C, 3 years and over, looks unwell → CTAS 3', label_ar: 'حمى، 3 سنوات فأكثر، يبدو معتلاً → CTAS 3' });
+  } else if (well) {
+    pushCandidate(candidates, { level: 4, rule_id: 'ped_fever_well_3y', label_en: 'Fever ≥ 38.5 °C, 3 years and over, looks well → CTAS 4', label_ar: 'حمى، 3 سنوات فأكثر، يبدو جيداً → CTAS 4' });
   } else {
-    // Age-appropriate tachycardia alone must not force adult CTAS 1/2
-    pushCandidate(candidates, { level: 3, rule_id: 'ped_fever_stable', label_en: 'Pediatric fever without compromise → CTAS 3 pending appearance', label_ar: 'حمى أطفال دون اضطراب → CTAS 3' });
+    pushCandidate(candidates, { level: 3, rule_id: 'ped_fever_pending_appearance', label_en: 'Fever ≥ 38.5 °C, 3 years and over — CTAS 3 until appearance is answered (looks well → 4)', label_ar: 'حمى — CTAS 3 حتى يُجاب عن المظهر' });
   }
   return { candidates, applied };
 }
 
 function collectCtasChangingGaps({ normalized, sirs, hemo, feverResult, isPediatric, hasFever }) {
   const gaps = [];
+  const hrA = hemo?.heart_rate;
+  if (hrA?.needs_reason) {
+    gaps.push({ field: 'tachycardia_reason', reason_en: HR_REASON_QUESTION.reason_en, reason_ar: HR_REASON_QUESTION.reason_ar });
+  }
+  if (hrA?.needs_recount) {
+    gaps.push({ field: 'hr_recount', reason_en: HR_RECOUNT_QUESTION.reason_en, reason_ar: HR_RECOUNT_QUESTION.reason_ar });
+  }
   if (!hasFever && !isFeverPathway('', '')) return gaps;
   if (hasFever || feverResult?.level != null) {
     if (normalized.appearance.looks_unwell == null) {
@@ -416,9 +466,6 @@ function collectCtasChangingGaps({ normalized, sirs, hemo, feverResult, isPediat
     if (normalized.flags.immunocompromised !== true && normalized.flags.immunocompromised !== false
       && !isYes(normalized.flags.immunocompromised)) {
       // only if answer missing
-    }
-    if (hemo?.tachycardia_class?.needs_clarification) {
-      gaps.push({ field: 'unexplained_tachycardia', reason_en: 'Is tachycardia expected (fever/pain) or unexplained?', reason_ar: 'هل تسرع القلب متوقع أم غير مفسَّر؟' });
     }
     if (normalized.vitals.sbp == null && hasFever) {
       gaps.push({ field: 'bp_systolic', reason_en: 'BP needed to exclude hypotension / shock', reason_ar: 'الضغط لاستبعاد الصدمة' });
@@ -494,6 +541,8 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     vitals: normalized.vitals,
     flags: normalized.flags,
     appearance: normalized.appearance,
+    isPediatric,
+    age: patient.age,
   });
 
   // ── Step 1 ──
@@ -566,6 +615,8 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     isPediatric,
     chronicityStable: !!normalized.flags.chronic_stable_vitals,
     age: patient.age,
+    answers,
+    pathway,
   });
 
   const feverAdult = (!isPediatric && hasFever)
@@ -583,6 +634,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     ? evaluatePediatricFeverBands({
       vitals: normalized.vitals,
       ageGroup,
+      age: patient.age,
       appearance: normalized.appearance,
       flags: normalized.flags,
     })
@@ -855,6 +907,12 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     sirs,
     hemodynamic: hemo,
     fever: feverAdult,
+    // One heart-rate reading for the level, the alert and the HR tile; plus the questions it needs.
+    heart_rate: hemo.heart_rate || null,
+    hr_questions: [
+      ...(hemo.heart_rate?.needs_reason ? [HR_REASON_QUESTION] : []),
+      ...(hemo.heart_rate?.needs_recount ? [HR_RECOUNT_QUESTION] : []),
+    ],
   };
 }
 

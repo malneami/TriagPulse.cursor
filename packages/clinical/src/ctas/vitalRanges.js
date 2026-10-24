@@ -1,3 +1,4 @@
+import { assessHeartRate } from './rules/hemodynamicRules.js';
 /**
  * Official CTAS Protocol Engine — 2025 hierarchical assessment
  * Step 0 Critical visual → Step 1 Chief complaint → Step 2 Complaint-specific
@@ -25,13 +26,26 @@ export function computeLiveCTAS(patient, answers = {}) {
 export { computeLiveCTAS as default };
 
 // ─── Vital sign interpreters (used by VitalsForm) ────────────────────────────
-export function interpretHR(hr, age) {
-  const g = getAgeGroup(age);
-  const n = AGE_NORMS[g] || AGE_NORMS.adult;
-  const v = parseFloat(hr);
-  if (isNaN(v) || v < 20 || v > 250) return null;
-  if (v > n.HR.high * 1.3 || v < n.HR.low * 0.7) return { status: 'critical', color: 'text-red-600', bg: 'bg-red-50', label: v > n.HR.high ? 'تسرع شديد' : 'بطء شديد' };
-  if (v > n.HR.high || v < n.HR.low) return { status: 'abnormal', color: 'text-amber-600', bg: 'bg-amber-50', label: v > n.HR.high ? 'تسرع' : 'بطء' };
+/**
+ * The HR tile reads the same assessment as the CTAS level and the alert (PaedCTAS bands,
+ * explained vs unexplained). `ctx` = { temperature, answers, pathway } when known.
+ */
+export function interpretHR(hr, age, ctx = {}) {
+  const a = assessHeartRate({
+    hr,
+    age,
+    temp: ctx.temperature ?? ctx.temp ?? null,
+    answers: ctx.answers || {},
+    pathway: ctx.pathway || '',
+  });
+  if (!a) return null;
+  const low = a.direction === 'low';
+  if (a.display === 'critical') return { status: 'critical', color: 'text-red-600', bg: 'bg-red-50', label: low ? 'بطء شديد' : (a.ceiling ? 'تسرع شديد' : 'تسرع غير مفسَّر') };
+  if (a.display === 'explained') {
+    const why = { fever: 'حمى', crying: 'بكاء', pain: 'ألم', anxiety: 'قلق' }[a.explanation] || 'سبب موثق';
+    return { status: 'abnormal', color: 'text-amber-600', bg: 'bg-amber-50', label: `تسرع مفسَّر: ${why}` };
+  }
+  if (a.display === 'abnormal') return { status: 'abnormal', color: 'text-amber-600', bg: 'bg-amber-50', label: low ? 'بطء' : 'تسرع' };
   return { status: 'normal', color: 'text-green-600', bg: 'bg-green-50', label: 'طبيعي' };
 }
 
