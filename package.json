@@ -28,6 +28,7 @@
     "concurrently": "^9.1.2"
   },
   "overrides": {
-    "deepmerge-ts": "^8.0.2"
+    "deepmerge-ts": "^8.0.2",
+    "multer": "2.5.0"
   }
 }
