@@ -36,7 +36,7 @@ class BulkAssignDto {
   @IsArray() @ArrayMaxSize(500) @IsString({ each: true }) journeyIds: string[];
 }
 
-type ListFilters = { status?: string; q?: string; from?: string; to?: string; ageMin?: string; ageMax?: string; assigned?: string };
+type ListFilters = { status?: string; q?: string; from?: string; to?: string; timeFrom?: string; timeTo?: string; ageMin?: string; ageMax?: string; assigned?: string };
 
 type ReqUser = { user: { id: string; role: string; full_name?: string; email?: string } };
 

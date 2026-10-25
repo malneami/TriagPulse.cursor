@@ -206,9 +206,9 @@ function mapJourney(j) {
   };
 }
 
-function outcomeParams({ status = 'awaiting', q = '', from = '', to = '', ageMin = '', ageMax = '', assigned = '' } = {}) {
+function outcomeParams({ status = 'awaiting', q = '', from = '', to = '', timeFrom = '', timeTo = '', ageMin = '', ageMax = '', assigned = '' } = {}) {
   const p = new URLSearchParams({ status });
-  for (const [k, v] of Object.entries({ q, from, to, ageMin, ageMax, assigned })) {
+  for (const [k, v] of Object.entries({ q, from, to, timeFrom, timeTo, ageMin, ageMax, assigned })) {
     if (v !== '' && v != null) p.set(k, String(v));
   }
   return p;
