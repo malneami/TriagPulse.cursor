@@ -400,13 +400,45 @@ function evaluatePainPrimary({ vitals, answers, isPediatric, chronicity, pathway
 /**
  * Paediatric temperature modifier (CTAS / PaedCTAS, approved 2026-10-25):
  *   0–3 months, ≥ 38.0 °C → CTAS 2 (neonates included)
- *   3 months – under 3 years, ≥ 38.5 °C: immunocompromised or looks unwell → 2; looks well → 3
+ *   3 months – under 1 year, ≥ 38.5 °C: immunocompromised or looks unwell → 2; looks well → 3
+ *   1 – under 3 years, ≥ 38.5 °C (local HMG rule): unwell / immunocompromised → 2; looks well, immunised
+ *     and clear source → 4; otherwise → 3
  *   3 years and over, ≥ 38.5 °C: immunocompromised → 2; looks unwell → 3; looks well → 4
  *   over 3 months, 38.0–38.4 °C → no temperature modifier (complaint and other vitals decide)
  * Appearance not yet answered → CTAS 3 over 3 months (looks well can lower it at 3 y and over).
  * Poor perfusion / shocked → CTAS 1; respiratory distress → CTAS 2.
  */
-function evaluatePediatricFeverBands({ vitals, ageGroup, age, appearance, flags }) {
+
+/** Local HMG rule (approved 2026-10-25, option C): 12–36 months, ≥ 38.5 °C, looks well. */
+export const FEVER_IMMUNISED_QUESTION = {
+  id: 'immunisations_up_to_date', field: 'immunisations_up_to_date',
+  text_ar: 'هل التطعيمات مكتملة حسب العمر؟', text_en: 'Immunisations up to date for age?',
+  answer_type: 'options',
+  options: [
+    { value: 'yes', label_ar: 'نعم، مكتملة', label_en: 'Yes, up to date' },
+    { value: 'no', label_ar: 'لا / ناقصة', label_en: 'No / incomplete' },
+    { value: 'unknown', label_ar: 'غير معروف', label_en: 'Unknown' },
+  ],
+  question_category: 'ctas_modifier',
+  reason_en: '12–36 months, fever, looks well: immunised with a clear source → CTAS 4, otherwise 3.',
+  reason_ar: '12–36 شهراً مع حمى ومظهر جيد: مطعّم ومصدر واضح → CTAS 4، وإلا 3.',
+};
+export const FEVER_SOURCE_QUESTION = {
+  id: 'fever_clear_source', field: 'fever_clear_source',
+  text_ar: 'هل للحمى مصدر واضح (مثل زكام وسعال، التهاب أذن، إسهال)؟', text_en: 'Clear source for the fever (e.g. runny nose and cough, ear infection, diarrhoea)?',
+  answer_type: 'options',
+  options: [
+    { value: 'yes', label_ar: 'نعم، مصدر واضح', label_en: 'Yes, clear source' },
+    { value: 'no', label_ar: 'لا يوجد مصدر واضح', label_en: 'No clear source' },
+  ],
+  question_category: 'ctas_modifier',
+  reason_en: 'No source → CTAS 3 (UTI or occult pneumonia still possible).',
+  reason_ar: 'بدون مصدر → CTAS 3 (احتمال التهاب بولي أو رئوي خفي).',
+};
+const ansYes = (v) => /^(yes|نعم|true|1)$/i.test(String(v ?? '').trim());
+const ansNo = (v) => /^(no|لا|false|0|unknown|غير معروف)$/i.test(String(v ?? '').trim());
+
+function evaluatePediatricFeverBands({ vitals, ageGroup, age, appearance, flags, answers = {} }) {
   const candidates = [];
   const applied = [];
   const temp = vitals.temp;
@@ -438,6 +470,19 @@ function evaluatePediatricFeverBands({ vitals, ageGroup, age, appearance, flags 
     pushCandidate(candidates, { level: 2, rule_id: 'ped_fever_immuno', label_en: 'Fever ≥ 38.5 °C, immunocompromised → CTAS 2', label_ar: 'حمى مع نقص مناعة → CTAS 2' });
   } else if (flags.moderate_respiratory_distress) {
     pushCandidate(candidates, { level: 2, rule_id: 'ped_fever_unwell', label_en: 'Febrile child with respiratory distress → CTAS 2', label_ar: 'طفل محموم مع ضيق تنفس → CTAS 2' });
+  } else if (under3y && a >= 1 && !unwell) {
+    // Local HMG rule (option C, 2026-10-25): 12–36 months, looks well — immunised AND clear source → 4; otherwise 3.
+    const imm = answers.immunisations_up_to_date; const src = answers.fever_clear_source;
+    const needs = [];
+    if (!ansYes(imm) && !ansNo(imm)) needs.push('immunisations_up_to_date');
+    if (!ansYes(src) && !ansNo(src)) needs.push('fever_clear_source');
+    if (well && ansYes(imm) && ansYes(src)) {
+      pushCandidate(candidates, { level: 4, rule_id: 'ped_fever_12_36m_well_source', label_en: 'Fever ≥ 38.5 °C, 12–36 months, looks well, immunised, clear source → CTAS 4 (local HMG rule)', label_ar: 'حمى، 12–36 شهراً، مظهر جيد، مطعّم ومصدر واضح → CTAS 4 (قاعدة محلية)' });
+    } else {
+      const why = !well ? 'appearance not yet answered' : (ansNo(imm) ? 'immunisations not up to date' : ansNo(src) ? 'no clear source' : 'immunisation / source not yet answered');
+      pushCandidate(candidates, { level: 3, rule_id: 'ped_fever_12_36m', label_en: `Fever ≥ 38.5 °C, 12–36 months, ${why} → CTAS 3`, label_ar: 'حمى، 12–36 شهراً → CTAS 3' });
+    }
+    return { candidates, applied, fever_questions: well || appearance.looks_unwell == null ? needs : [] };
   } else if (under3y) {
     if (unwell) {
       pushCandidate(candidates, { level: 2, rule_id: 'ped_fever_unwell', label_en: 'Fever ≥ 38.5 °C, 3 months – 3 years, looks unwell → CTAS 2', label_ar: 'حمى، 3 أشهر – 3 سنوات، يبدو معتلاً → CTAS 2' });
@@ -648,6 +693,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
       age: patient.age,
       appearance: normalized.appearance,
       flags: normalized.flags,
+      answers,
     })
     : { candidates: [], applied: [] };
 
@@ -928,6 +974,8 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
       ...(hemo.heart_rate?.needs_reason ? [HR_REASON_QUESTION] : []),
       ...(hemo.heart_rate?.needs_recount ? [HR_RECOUNT_QUESTION] : []),
       ...(resp.respiratory_rate?.needs_recount ? [RR_RECOUNT_QUESTION] : []),
+      ...((feverPed.fever_questions || []).includes('immunisations_up_to_date') ? [FEVER_IMMUNISED_QUESTION] : []),
+      ...((feverPed.fever_questions || []).includes('fever_clear_source') ? [FEVER_SOURCE_QUESTION] : []),
     ],
     respiratory_rate: resp.respiratory_rate || null,
   };
