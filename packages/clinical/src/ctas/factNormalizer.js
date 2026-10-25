@@ -135,7 +135,7 @@ export function normalizeClinicalFacts({ patient = {}, answers = {}, transcript 
   }
 
   // Respiratory rate
-  let rr = toVital(patient.rr ?? patient.respiratory_rate ?? answers.rr, 4, 70);
+  let rr = toVital(patient.rr ?? patient.respiratory_rate ?? answers.rr, 4, 120);
   const tachypneaCue = /\btachypn\w*\b|breathing\s+fast|تنفس\s*سريع|لهثان/i.test(tx) || isYes(answers.tachypnea);
   if (rr == null && tachypneaCue) {
     facts.respiratory_rate = fact('respiratory_rate', 'tachypnea_qualitative', {

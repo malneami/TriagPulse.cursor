@@ -5,7 +5,7 @@ const NUMERIC_LIMITS: Record<string, { min: number; max: number; label: string }
   bp_systolic: { min: 40, max: 300, label: 'Systolic BP' },
   bp_diastolic: { min: 20, max: 200, label: 'Diastolic BP' },
   spo2: { min: 40, max: 100, label: 'SpO₂' },
-  rr: { min: 4, max: 70, label: 'RR' },
+  rr: { min: 4, max: 120, label: 'RR' },
   temperature: { min: 32, max: 43, label: 'Temperature' },
   gcs: { min: 3, max: 15, label: 'GCS' },
   pain_score: { min: 0, max: 10, label: 'Pain score' },

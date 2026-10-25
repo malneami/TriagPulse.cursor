@@ -3,7 +3,7 @@ import { interpretHR, interpretSpO2, interpretRR, interpretTemp, interpretGCS } 
 
 export default function VitalsForm({ vitals, onChange, highlightedFields = new Set() }) {
   const INTERP_FN = {
-    hr: () => interpretHR(vitals.hr, vitals.age),
+    hr: () => interpretHR(vitals.hr, vitals.age, { temperature: vitals.temperature }),
     spo2: () => interpretSpO2(vitals.spo2),
     rr: () => interpretRR(vitals.rr, vitals.age),
     temperature: () => interpretTemp(vitals.temperature),
