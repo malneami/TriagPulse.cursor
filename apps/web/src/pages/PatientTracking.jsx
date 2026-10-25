@@ -347,8 +347,11 @@ export default function PatientTracking() {
             <input type="number" min="0" max="120" inputMode="numeric" value={ageMax} onChange={(e) => setAgeMax(e.target.value)} placeholder="إلى / to" aria-label="Age to" className="h-11 w-24 border border-mist rounded-xl px-2" />
           </div>
           <div className="flex gap-1">
-            <button type="button" onClick={() => { setAgeMin(''); setAgeMax('17'); }} className="h-8 px-2 rounded-lg border border-mist text-xs">أطفال · &lt;18</button>
-            <button type="button" onClick={() => { setAgeMin('18'); setAgeMax(''); }} className="h-8 px-2 rounded-lg border border-mist text-xs">بالغون · 18+</button>
+            {[['', '', 'كل الأعمار · All'], ['0', '17', 'أطفال · <18'], ['18', '64', 'بالغون · 18–64'], ['65', '', '65+']].map(([mn, mx, label]) => (
+              <button key={label} type="button" aria-pressed={ageMin === mn && ageMax === mx}
+                onClick={() => { setAgeMin(mn); setAgeMax(mx); }}
+                className={`h-8 px-2 rounded-lg border text-xs ${ageMin === mn && ageMax === mx ? 'bg-ink text-white border-ink' : 'border-mist'}`}>{label}</button>
+            ))}
           </div>
         </div>
         <label className="flex flex-col gap-1">

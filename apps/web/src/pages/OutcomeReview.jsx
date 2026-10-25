@@ -18,8 +18,8 @@ const FILTERS = [
 
 const AGE_PRESETS = [
   { id: 'all', ar: 'كل الأعمار', en: 'All ages', min: '', max: '' },
-  { id: 'child', ar: 'أطفال <١٤', en: 'Children <14', min: '0', max: '13' },
-  { id: 'adult', ar: 'بالغون ١٤–٦٤', en: 'Adults 14–64', min: '14', max: '64' },
+  { id: 'child', ar: 'أطفال <١٨', en: 'Children <18', min: '0', max: '17' },
+  { id: 'adult', ar: 'بالغون ١٨–٦٤', en: 'Adults 18–64', min: '18', max: '64' },
   { id: 'older', ar: '٦٥+', en: '65+', min: '65', max: '' },
 ];
 
