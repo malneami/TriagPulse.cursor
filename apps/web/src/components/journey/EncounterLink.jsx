@@ -8,7 +8,8 @@ import { patientNoFromBarcode } from '@triagepulse/clinical';
 /**
  * HIS visit number for a journey = Transaction No. on an outpatient ticket, or Voucher No.
  * on a follow-up slip (9–10 digits). Last 3 of Patient No. / a 6–7 digit MRN barcode fill
- * the tracking suffix. The camera only fills the boxes; the nurse checks before save.
+ * the tracking suffix. The camera stays on until both the visit/voucher number and the full
+ * Patient No. are read (or the nurse stops it); it only fills the boxes; the nurse checks before save.
  *
  * Barcodes: native BarcodeDetector first, @zxing/browser when missing (iPad Safari).
  * Text: tesseract.js, served by the app, loaded on first use (lib/ticketOcr).
@@ -79,8 +80,9 @@ async function nativeDetector() {
  * - a 9–10 digit barcode is the visit number; a 6–7 digit barcode is MRN (last 3 only).
  * Frames never leave the device. Numbers found only fill the boxes; the nurse confirms.
  */
-function Scanner({ onResult }) {
+function Scanner({ onResult, onComplete }) {
   const videoRef = useRef(null);
+  const [got, setGot] = useState({ visit: '', patientNo: '' });
   const [state, setState] = useState('starting'); // starting | scanning | blocked | unsupported
   const [ocr, setOcr] = useState({ phase: 'loading', pct: 0 }); // loading | reading | failed
   const [note, setNote] = useState('');
@@ -93,12 +95,23 @@ function Scanner({ onResult }) {
     let slowTimer = null;
     let zxingControls = null;
 
+    // Keep reading until BOTH the visit/voucher number and the full Patient No. (6–7 digits) are caught.
+    const found = { visit: '', patientNo: '' };
     const report = (fields) => {
       if (stopped || (!fields?.visit && !fields?.patientNo && !fields?.mrnSuffix)) return;
       onResult(fields);
-      if (fields.visit) {
+      const pn = fields.patientNo ? cleanPatientNo(fields.patientNo) : '';
+      let changed = false;
+      if (fields.visit && !found.visit) { found.visit = cleanEncounter(fields.visit); changed = true; }
+      if (pn.length >= 6 && !found.patientNo) { found.patientNo = pn; changed = true; }
+      if (changed) {
+        setGot({ ...found });
+        if (navigator.vibrate) navigator.vibrate(60);
+      }
+      if (found.visit && found.patientNo) {
         stopped = true;
-        if (navigator.vibrate) navigator.vibrate(80);
+        if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+        onComplete?.({ ...found });
       }
     };
     const fromBarcode = (raw) => {
@@ -172,7 +185,6 @@ function Scanner({ onResult }) {
           else if (fields?.mrnSuffix) report({ mrnSuffix: fields.mrnSuffix });
           if (fields?.visit) {
             report({ visit: fields.visit.value, patientNo: fields.patientNo || undefined, mrnSuffix: fields.mrnSuffix || undefined });
-            return;
           }
           await new Promise((r) => setTimeout(r, 300));
         }
@@ -188,7 +200,7 @@ function Scanner({ onResult }) {
       try { zxingControls?.stop(); } catch { /* ignore */ }
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [onResult]);
+  }, [onResult, onComplete]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -214,6 +226,21 @@ function Scanner({ onResult }) {
           {ocr.phase === 'reading' && 'ضع رقم العملية أو القسيمة داخل الإطار · Fit Transaction / Voucher No. in the frame'}
           {ocr.phase === 'failed' && 'تعذّر تشغيل قارئ النص — اكتب الرقم · Text reader unavailable — type the number'}
         </p>
+      )}
+      {state === 'scanning' && (
+        <ul aria-live="polite" className="m-0 p-0 list-none flex flex-col gap-1 text-sm">
+          <li className={got.visit ? 'font-semibold text-ink' : 'text-graphite'}>
+            {got.visit ? '✓' : '…'} رقم الزيارة / القسيمة · Visit / voucher {got.visit && <span dir="ltr">{got.visit}</span>}
+          </li>
+          <li className={got.patientNo ? 'font-semibold text-ink' : 'text-graphite'}>
+            {got.patientNo ? '✓' : '…'} رقم المريض · Patient No. (MRN) {got.patientNo && <span dir="ltr">{got.patientNo}</span>}
+          </li>
+          {(got.visit || got.patientNo) && !(got.visit && got.patientNo) && (
+            <li className="font-semibold text-ink">
+              الكاميرا تبقى مفتوحة حتى يُقرأ الرقمان · Camera stays on until both are read
+            </li>
+          )}
+        </ul>
       )}
       {note && <p className="m-0 text-sm text-ink">{note}</p>}
       {slow && ocr.phase === 'reading' && (
@@ -250,11 +277,12 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
 
   // Stable, so the camera is not restarted on every keystroke.
   const onResult = useCallback((fields) => {
-    if (fields.visit) { setValue(cleanEncounter(fields.visit)); setScanning(false); }
+    if (fields.visit) setValue(cleanEncounter(fields.visit));
     if (fields.patientNo) setPatientNo(cleanPatientNo(fields.patientNo));
     else if (fields.mrnSuffix) setPatientNo(cleanPatientNo(fields.mrnSuffix));
     setError('');
   }, []);
+  const onComplete = useCallback(() => setScanning(false), []);
   const clean = cleanEncounter(value);
   const visitOk = LOOKS_RIGHT.test(clean);
   const suffix = suffixFromPatientNo(patientNo);
@@ -297,7 +325,16 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
           Point the camera at the slip to read the visit/voucher number and Patient No. (MRN), then check them.
         </DialogDescription>
         {scanning ? (
-          <Scanner onResult={onResult} />
+          <>
+            <Scanner onResult={onResult} onComplete={onComplete} />
+            <button
+              type="button"
+              onClick={() => setScanning(false)}
+              className="h-10 rounded-xl border border-mist flex items-center justify-center gap-2 text-sm"
+            >
+              <CameraOff className="w-4 h-4" aria-hidden="true" /> إيقاف الكاميرا والكتابة يدوياً / Stop camera and type
+            </button>
+          </>
         ) : (
           <button
             type="button"
@@ -396,8 +433,8 @@ export function EncounterField({ value, onChange, onMrnSuffix, disabled = false,
     if (fields.visit) onChange(cleanEncounter(fields.visit));
     if (fields.patientNo) onMrnSuffix?.(cleanPatientNo(fields.patientNo));
     else if (fields.mrnSuffix) onMrnSuffix?.(cleanPatientNo(fields.mrnSuffix));
-    if (fields.visit) setOpen(false);
   }, [onChange, onMrnSuffix]);
+  const onComplete = useCallback(() => setOpen(false), []);
   const bad = value && !encounterLooksRight(value);
   return (
     <div className="flex flex-col gap-1">
@@ -433,7 +470,14 @@ export function EncounterField({ value, onChange, onMrnSuffix, disabled = false,
           <DialogDescription className="text-sm text-graphite">
             وجّه الكاميرا إلى تذكرة الزيارة أو قسيمة المتابعة · Point the camera at the visit ticket or follow-up voucher.
           </DialogDescription>
-          {open && <Scanner onResult={onResult} />}
+          {open && <Scanner onResult={onResult} onComplete={onComplete} />}
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="h-10 rounded-xl border border-mist flex items-center justify-center gap-2 text-sm"
+          >
+            <CameraOff className="w-4 h-4" aria-hidden="true" /> إيقاف الكاميرا / Stop camera
+          </button>
         </DialogContent>
       </Dialog>
     </div>
