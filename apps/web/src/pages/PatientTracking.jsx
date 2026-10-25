@@ -184,6 +184,15 @@ export default function PatientTracking() {
   const physician = canAccess(user, 'review_ctas');
   const [review, setReview] = useState(null);
   const [search, setSearch] = useState('');
+  // Filters: age (years), date range and time of day of CTAS completion (else arrival).
+  const [ageMin, setAgeMin] = useState('');
+  const [ageMax, setAgeMax] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [timeFrom, setTimeFrom] = useState('');
+  const [timeTo, setTimeTo] = useState('');
+  const filtersOn = !!(ageMin || ageMax || dateFrom || dateTo || timeFrom || timeTo);
+  const clearFilters = () => { setAgeMin(''); setAgeMax(''); setDateFrom(''); setDateTo(''); setTimeFrom(''); setTimeTo(''); };
 
   const { data: patients = [], refetch, isFetching, isError } = useQuery({
     queryKey: ['tracking-board'],
@@ -191,7 +200,29 @@ export default function PatientTracking() {
     refetchInterval: 15000,
   });
 
+  const matchFilters = (p) => {
+    const age = p.age == null || p.age === '' ? null : Number(p.age);
+    if (ageMin !== '' && (age == null || age < Number(ageMin))) return false;
+    if (ageMax !== '' && (age == null || age > Number(ageMax))) return false;
+    if (!dateFrom && !dateTo && !timeFrom && !timeTo) return true;
+    const t = new Date(p.ctas_completed_at || p.arrival_time || p.created_at || '');
+    if (Number.isNaN(t.getTime())) return false;
+    const pad = (n) => String(n).padStart(2, '0');
+    const day = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+    if (dateFrom && day < dateFrom) return false;
+    if (dateTo && day > dateTo) return false;
+    const hm = `${pad(t.getHours())}:${pad(t.getMinutes())}`;
+    if (timeFrom && timeTo) {
+      // A window that crosses midnight (e.g. 22:00–06:00) wraps.
+      const inside = timeFrom <= timeTo ? hm >= timeFrom && hm <= timeTo : hm >= timeFrom || hm <= timeTo;
+      if (!inside) return false;
+    } else if (timeFrom && hm < timeFrom) return false;
+    else if (timeTo && hm > timeTo) return false;
+    return true;
+  };
+
   const matchSearch = (p) => {
+    if (!matchFilters(p)) return false;
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
     const compact = q.replace(/\s+/g, '');
@@ -203,7 +234,7 @@ export default function PatientTracking() {
 
   const hisRequired = useMemo(
     () => patients.filter((p) => p.current_status === 'awaiting_his_link' && matchSearch(p)),
-    [patients, search],
+    [patients, search, ageMin, ageMax, dateFrom, dateTo, timeFrom, timeTo],
   );
 
   const filtered = useMemo(() => {
@@ -211,7 +242,7 @@ export default function PatientTracking() {
       ? patients.filter((p) => p.current_status === 'pending_physician_validation')
       : patients.filter((p) => !p.ctas_level);
     return pool.filter(matchSearch);
-  }, [patients, search, physician]);
+  }, [patients, search, physician, ageMin, ageMax, dateFrom, dateTo, timeFrom, timeTo]);
 
   const byLevel = useMemo(() => {
     const lanes = { 1: [], 2: [], 3: [], 4: [], 5: [] };
@@ -305,6 +336,49 @@ export default function PatientTracking() {
           </button>
         )}
       </div>
+
+      <fieldset className="border border-mist rounded-xl bg-white p-3 flex flex-wrap gap-3 items-end">
+        <legend className="px-1 text-sm font-medium">تصفية · Filter</legend>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-graphite">العمر (سنوات) · Age (years)</span>
+          <div className="flex items-center gap-1">
+            <input type="number" min="0" max="120" inputMode="numeric" value={ageMin} onChange={(e) => setAgeMin(e.target.value)} placeholder="من / from" aria-label="Age from" className="h-11 w-24 border border-mist rounded-xl px-2" />
+            <span aria-hidden="true">–</span>
+            <input type="number" min="0" max="120" inputMode="numeric" value={ageMax} onChange={(e) => setAgeMax(e.target.value)} placeholder="إلى / to" aria-label="Age to" className="h-11 w-24 border border-mist rounded-xl px-2" />
+          </div>
+          <div className="flex gap-1">
+            {[['', '', 'كل الأعمار · All'], ['0', '17', 'أطفال · <18'], ['18', '64', 'بالغون · 18–64'], ['65', '', '65+']].map(([mn, mx, label]) => (
+              <button key={label} type="button" aria-pressed={ageMin === mn && ageMax === mx}
+                onClick={() => { setAgeMin(mn); setAgeMax(mx); }}
+                className={`h-8 px-2 rounded-lg border text-xs ${ageMin === mn && ageMax === mx ? 'bg-ink text-white border-ink' : 'border-mist'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-graphite">من تاريخ · From date</span>
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-graphite">إلى تاريخ · To date</span>
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-graphite">من الساعة · From time</span>
+          <input type="time" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-graphite">إلى الساعة · To time</span>
+          <input type="time" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
+        {filtersOn && (
+          <button type="button" onClick={clearFilters} className="h-11 px-4 rounded-xl border border-mist text-sm">
+            مسح التصفية · Clear
+          </button>
+        )}
+        <span className="text-xs text-graphite basis-full">
+          الوقت = وقت إكمال CTAS (أو الوصول) · Time = CTAS completed (or arrival). A time window like 22:00–06:00 crosses midnight.
+        </span>
+      </fieldset>
 
       {isError && (
         <p role="alert" className="bg-white border-2 border-ink rounded-xl px-4 py-3 text-[15px]">

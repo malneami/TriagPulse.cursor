@@ -44,6 +44,22 @@ export function runHeartRateTests(assert: Assert) {
     assert(lvl({ ...p, age: '0.05', temperature: '38.2', hr: '160' }) === 2, 'HR-10', 'Neonate, 38.2 °C → CTAS 2 (not 1)');
   }
 
+  // Local HMG rule, option C (2026-10-25): 12–36 months, ≥ 38.5 °C, looks well
+  {
+    const f = { age: '1', temperature: '39', hr: '110', rr: '25', bp_systolic: '110', chief_complaint: 'fever' };
+    const IMM = { immunisations_up_to_date: 'yes' }; const SRC = { fever_clear_source: 'yes' };
+    assert(lvl(f, WELL) === 3 && qs(f, WELL).includes('immunisations_up_to_date') && qs(f, WELL).includes('fever_clear_source'), 'FC-01',
+      '1 y, 39 °C, looks well, not answered → CTAS 3 and asks immunisation + source');
+    assert(lvl(f, { ...WELL, ...IMM, ...SRC }) === 4 && qs(f, { ...WELL, ...IMM, ...SRC }).length === 0, 'FC-02', '1 y, 39 °C, looks well, immunised, clear source → CTAS 4');
+    assert(lvl(f, { ...WELL, ...IMM, fever_clear_source: 'no' }) === 3, 'FC-03', 'No clear source → CTAS 3');
+    assert(lvl(f, { ...WELL, immunisations_up_to_date: 'no', ...SRC }) === 3 && lvl(f, { ...WELL, immunisations_up_to_date: 'unknown', ...SRC }) === 3, 'FC-04', 'Not immunised or unknown → CTAS 3');
+    assert(lvl(f, { looks_unwell: 'نعم', ...IMM, ...SRC }) === 2, 'FC-05', 'Looks unwell → CTAS 2 whatever the answers');
+    assert(lvl({ ...f, age: '0.75' }, { ...WELL, ...IMM, ...SRC }) === 3 && !qs({ ...f, age: '0.75' }, WELL).includes('fever_clear_source'), 'FC-06', '9 months stays CTAS 3, no extra questions');
+    assert(lvl({ ...f, age: '2.9' }, { ...WELL, ...IMM, ...SRC }) === 4, 'FC-07', '2.9 y, well, immunised, source → CTAS 4');
+    assert(lvl({ ...f, temperature: '38.2' }, WELL) === 4 && !qs({ ...f, temperature: '38.2' }, WELL).includes('fever_clear_source'), 'FC-08', '38.2 °C → no fever modifier, no questions');
+    assert(lvl({ ...f, hr: '180' }, { ...WELL, ...IMM, ...SRC }) === 2, 'FC-09', 'HR above the 99th still CTAS 2');
+  }
+
   // Paediatric heart rate (local HMG rule: ED centiles, O'Leary 2015 — above the 95th → 3 unless explained, above the 99th → 2)
   {
     const calm = { temperature: '36.9', rr: '24', bp_systolic: '100', chief_complaint: 'abdominal pain' };

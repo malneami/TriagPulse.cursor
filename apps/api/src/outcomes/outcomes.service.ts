@@ -69,6 +69,9 @@ export type OutcomeListQuery = {
   /** Arrival date range, YYYY-MM-DD (Riyadh days, inclusive). */
   from?: string;
   to?: string;
+  /** Time-of-day window of arrival, HH:MM Riyadh time, inclusive; may cross midnight (22:00–06:00). */
+  timeFrom?: string;
+  timeTo?: string;
   /** Age range in years, inclusive. */
   ageMin?: string | number;
   ageMax?: string | number;
@@ -81,6 +84,24 @@ function riyadhDayStart(day: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
   const d = new Date(`${day}T00:00:00+03:00`);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** HH:MM of a moment in Riyadh time (UTC+3, no daylight saving). */
+export function riyadhHHMM(t: Date): string {
+  const r = new Date(t.getTime() + 3 * 3600 * 1000);
+  return `${String(r.getUTCHours()).padStart(2, '0')}:${String(r.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+/** True when the arrival time falls in the time-of-day window (either end optional; may wrap midnight). */
+export function inTimeWindow(t: Date | null | undefined, from?: string, to?: string): boolean {
+  if (!from && !to) return true;
+  if (!t) return false;
+  const hm = riyadhHHMM(t);
+  if (from && to) return from <= to ? hm >= from && hm <= to : hm >= from || hm <= to;
+  if (from) return hm >= from;
+  return hm <= (to as string);
 }
 
 function ageBound(raw: unknown): number | null {
@@ -290,6 +311,11 @@ export class OutcomesService {
   }
 
   async list(query: OutcomeListQuery, user: Actor) {
+    const timeFrom = query.timeFrom ? String(query.timeFrom) : '';
+    const timeTo = query.timeTo ? String(query.timeTo) : '';
+    if ((timeFrom && !HHMM.test(timeFrom)) || (timeTo && !HHMM.test(timeTo))) {
+      throw new BadRequestException('Time must be HH:MM.');
+    }
     const journeys = await this.prisma.patientJourney.findMany({
       where: {
         currentStatus: { in: this.statusFilter(query.status) },
@@ -304,6 +330,7 @@ export class OutcomesService {
     });
     return journeys
       .filter((j) => outcomeReviewVisible(user, this.assignmentOf(j)))
+      .filter((j) => inTimeWindow(j.arrivalTime, timeFrom, timeTo))
       .map((j) => this.mapRow(j, user));
   }
 

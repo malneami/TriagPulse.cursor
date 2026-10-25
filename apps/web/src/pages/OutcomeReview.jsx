@@ -18,8 +18,8 @@ const FILTERS = [
 
 const AGE_PRESETS = [
   { id: 'all', ar: 'كل الأعمار', en: 'All ages', min: '', max: '' },
-  { id: 'child', ar: 'أطفال <١٤', en: 'Children <14', min: '0', max: '13' },
-  { id: 'adult', ar: 'بالغون ١٤–٦٤', en: 'Adults 14–64', min: '14', max: '64' },
+  { id: 'child', ar: 'أطفال <١٨', en: 'Children <18', min: '0', max: '17' },
+  { id: 'adult', ar: 'بالغون ١٨–٦٤', en: 'Adults 18–64', min: '18', max: '64' },
   { id: 'older', ar: '٦٥+', en: '65+', min: '65', max: '' },
 ];
 
@@ -411,6 +411,8 @@ export default function OutcomeReview() {
   // Admin filters to pick a set of cases: arrival dates, age range, unassigned only.
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [timeFrom, setTimeFrom] = useState('');
+  const [timeTo, setTimeTo] = useState('');
   const [ageMin, setAgeMin] = useState('');
   const [ageMax, setAgeMax] = useState('');
   const [unassignedOnly, setUnassignedOnly] = useState(false);
@@ -418,7 +420,7 @@ export default function OutcomeReview() {
   const [bulkPhysician, setBulkPhysician] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const filters = { status, q, from, to, ageMin, ageMax, assigned: unassignedOnly ? 'unassigned' : '' };
+  const filters = { status, q, from, to, timeFrom, timeTo, ageMin, ageMax, assigned: unassignedOnly ? 'unassigned' : '' };
   const { data: rows = [], isFetching, isError, refetch } = useQuery({
     queryKey: ['outcomes', filters],
     queryFn: () => api.outcomes.list(filters),
@@ -565,6 +567,14 @@ export default function OutcomeReview() {
           <span className="font-medium">إلى تاريخ · To</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
         </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">من الساعة · From time</span>
+          <input type="time" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">إلى الساعة · To time</span>
+          <input type="time" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} className="h-11 border border-mist rounded-xl px-2" />
+        </label>
         <div className="flex flex-col gap-1 text-sm">
           <span className="font-medium">العمر · Age</span>
           <div className="flex flex-wrap items-center gap-1">
@@ -590,10 +600,10 @@ export default function OutcomeReview() {
             غير معيّن فقط · Unassigned only
           </label>
         )}
-        {(from || to || ageMin || ageMax || unassignedOnly) && (
+        {(from || to || timeFrom || timeTo || ageMin || ageMax || unassignedOnly) && (
           <button
             type="button"
-            onClick={() => { setFrom(''); setTo(''); setAgeMin(''); setAgeMax(''); setUnassignedOnly(false); }}
+            onClick={() => { setFrom(''); setTo(''); setTimeFrom(''); setTimeTo(''); setAgeMin(''); setAgeMax(''); setUnassignedOnly(false); }}
             className="h-11 px-3 rounded-xl border border-mist text-sm"
           >
             مسح · Clear
