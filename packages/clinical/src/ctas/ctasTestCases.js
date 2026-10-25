@@ -71,7 +71,7 @@ function validate(patient) {
   const missing = REQUIRED_FIELDS.filter((key) => patient[key] === undefined || patient[key] === null || patient[key] === '');
   const errors = [];
   const limits = {
-    age: [0, 120], weight: [1, 300], hr: [20, 250], bp_systolic: [40, 300], bp_diastolic: [20, 200], spo2: [40, 100], rr: [4, 70], temperature: [32, 43], gcs: [3, 15], pain_score: [0, 10],
+    age: [0, 120], weight: [1, 300], hr: [20, 250], bp_systolic: [40, 300], bp_diastolic: [20, 200], spo2: [40, 100], rr: [4, 120], temperature: [32, 43], gcs: [3, 15], pain_score: [0, 10],
   };
   Object.entries(limits).forEach(([key, [min, max]]) => {
     if (patient[key] === undefined || patient[key] === null || patient[key] === '') return;

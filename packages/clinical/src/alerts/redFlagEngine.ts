@@ -5,6 +5,7 @@ import { detectKnownModifier } from '../ctas/modifierEngine.js';
 import { getActiveModifiers } from '../ctas/modifierLibrary.js';
 // @ts-ignore — plain JS module
 import { assessHeartRate } from '../ctas/rules/hemodynamicRules.js';
+import { assessRespiratoryRate } from '../ctas/rules/respiratoryRateRules.js';
 
 const YES_RE = /^(نعم|yes|true|1)$/i;
 const NO_RE = /^(لا|no|false|0)$/i;
@@ -82,7 +83,7 @@ export function detectRedFlags(
   const gcs = toVital(patient.gcs, 3, 15);
   const sbp = toVital(patient.bp_systolic, 40, 300);
   const hr = toVital(patient.hr, 20, 250);
-  const rr = toVital(patient.rr, 4, 70);
+  const rr = toVital(patient.rr, 4, 120);
   const pain = toNumber(patient.pain_score);
   let ctasLevel: number | null = null;
 
@@ -110,7 +111,7 @@ export function detectRedFlags(
   // Children: hypotension for age, as the CTAS rule reads it; adults: the library thresholds.
   if (pediatric ? hypotensiveForAge(sbp, ageYears) : (sbp !== null && sbp < th.sbp_urgent)) {
     add(
-      !pediatric && sbp !== null && sbp < th.sbp_critical ? 1 : 2,
+      pediatric || (sbp !== null && sbp < th.sbp_critical) ? 1 : 2,
       `ضغط انقباضي ${sbp} — ${pediatric ? 'انخفاض للعمر' : 'عدم استقرار'}`,
       `SBP ${sbp} — ${pediatric ? 'hypotension for age' : 'hemodynamic instability'}`,
     );
@@ -130,7 +131,13 @@ export function detectRedFlags(
       || SHOCK_SIGNS.test(complaintText);
     add(unstable ? 1 : 2, hrA.label_ar, hrA.label_en);
   }
-  if (rr !== null && rr > th.rr_severe) {
+  // Children: the same breathing-rate assessment as the CTAS rule (alert when it sets CTAS 2);
+  // adults: the library threshold.
+  if (pediatric) {
+    const rrA = (assessRespiratoryRate as (o: Record<string, unknown>) => unknown)({ rr, age: ageYears, answers: answers || {} }) as
+      { alert: boolean; label_en: string; label_ar: string } | null;
+    if (rr !== null && rrA?.alert) add(2, rrA.label_ar, rrA.label_en);
+  } else if (rr !== null && rr > th.rr_severe) {
     add(2, `تنفس ${rr}/دقيقة — ضائقة تنفسية`, `RR ${rr}/min — respiratory distress`);
   }
 

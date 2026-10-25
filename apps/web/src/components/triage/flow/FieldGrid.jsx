@@ -29,7 +29,7 @@ const TILES = [
   { key: 'hr', ar: 'النبض', en: 'HR', mode: 'numeric', interp: (p) => interpretHR(p.hr, p.age, { temperature: p.temperature, answers: p._hrAnswers, pathway: p._hrPathway }) },
   { key: 'bp_systolic', ar: 'الضغط', en: 'BP', type: 'bp', interp: (p) => interpretSBP(p.bp_systolic) },
   { key: 'spo2', ar: 'الأكسجين %', en: 'SpO₂', mode: 'numeric', interp: (p) => interpretSpO2(p.spo2) },
-  { key: 'rr', ar: 'التنفس', en: 'RR', mode: 'numeric', interp: (p) => interpretRR(p.rr, p.age) },
+  { key: 'rr', ar: 'التنفس', en: 'RR', mode: 'numeric', interp: (p) => interpretRR(p.rr, p.age, { answers: p._hrAnswers }) },
   { key: 'temperature', ar: 'الحرارة °C', en: 'Temp', mode: 'decimal', interp: (p) => interpretTemp(p.temperature) },
   { key: 'gcs', ar: 'الوعي', en: 'GCS', mode: 'numeric', interp: (p) => interpretGCS(p.gcs) },
 ];

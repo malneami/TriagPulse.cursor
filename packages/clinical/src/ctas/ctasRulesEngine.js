@@ -16,6 +16,7 @@ import { evaluateSirsCriteria, evaluateAdultFeverModifier } from './rules/adultF
 import {
   evaluateHemodynamicModifier, hypotensiveForAge, HR_REASON_QUESTION, HR_RECOUNT_QUESTION,
 } from './rules/hemodynamicRules.js';
+import { assessRespiratoryRate, RR_RECOUNT_QUESTION } from './rules/respiratoryRateRules.js';
 import {
   detectSymptomChronicity,
   isChronicUnchanged,
@@ -180,11 +181,12 @@ function evaluateStep0({ vitals, flags, appearance, isPediatric = false, age = n
   } else if (vitals.gcs != null && vitals.gcs <= 13) {
     pushCandidate(candidates, { level: 2, rule_id: 'step0_loc', label_en: `Reduced consciousness GCS ${vitals.gcs}`, label_ar: 'انخفاض الوعي' });
   }
-  // Children: hypotension is judged for age (< 60 under 1 y, < 70 + 2×age to 10 y, < 90 after);
+  // Children: hypotension for age (< 60 under 1 y, < 70 + 2×age to 10 y, < 90 after) → CTAS 1;
   // the adult cut-offs (< 70 shock, < 90 hypotension) apply from 18 y.
   if (isPediatric) {
     if (vitals.sbp != null && hypotensiveForAge(vitals.sbp, age)) {
-      pushCandidate(candidates, { level: 2, rule_id: 'step0_hypotension_for_age', label_en: `Hypotension for age SBP ${vitals.sbp}`, label_ar: 'انخفاض الضغط للعمر' });
+      alerts.push({ ar: `انخفاض الضغط للعمر ${vitals.sbp}`, en: `Hypotension for age SBP ${vitals.sbp}` });
+      pushCandidate(candidates, { level: 1, rule_id: 'step0_hypotension_for_age', label_en: `Hypotension for age SBP ${vitals.sbp} → CTAS 1`, label_ar: 'انخفاض الضغط للعمر → CTAS 1' });
     }
   } else if (vitals.sbp != null && vitals.sbp < 70) {
     alerts.push({ ar: `صدمة ضغط ${vitals.sbp}`, en: `Shock SBP ${vitals.sbp}` });
@@ -267,7 +269,7 @@ function evaluateComplaintSpecific({ complaint, selectedModifier, answers, pathw
   return { candidates, applied, level, from_modifier: false };
 }
 
-function evaluateRespiratoryPrimary({ vitals, flags, norms, chronicity, baselineSpo2, homeOxygen }) {
+function evaluateRespiratoryPrimary({ vitals, flags, norms, chronicity, baselineSpo2, homeOxygen, isPediatric, age, answers }) {
   const candidates = [];
   const applied = [];
   if (vitals.spo2 != null) {
@@ -298,10 +300,16 @@ function evaluateRespiratoryPrimary({ vitals, flags, norms, chronicity, baseline
   if (flags.moderate_respiratory_distress) {
     pushCandidate(candidates, { level: 2, rule_id: 'resp_mod_distress', label_en: 'Moderate respiratory distress → CTAS 2', label_ar: 'ضيق تنفس متوسط → CTAS 2' });
   }
-  if (vitals.rr != null && vitals.rr > norms.RR.high) {
+  // Children: one breathing-rate assessment (under 1 y 50/60; from 1 y ED 95th/99th centile;
+  // PaedCTAS low bands; fever never explains it; alone it is capped at CTAS 2).
+  const rrA = isPediatric ? assessRespiratoryRate({ rr: vitals.rr, age, answers }) : null;
+  if (rrA?.level != null) {
+    pushCandidate(candidates, { level: rrA.level, rule_id: `resp_${rrA.rule_id}`, label_en: rrA.label_en, label_ar: rrA.label_ar });
+    applied.push({ label_en: rrA.label_en, label_ar: rrA.label_ar, result: `CTAS ${rrA.level} min`, evidence: { row: rrA.row } });
+  } else if (!isPediatric && vitals.rr != null && vitals.rr > norms.RR.high) {
     pushCandidate(candidates, { level: 3, rule_id: 'resp_tachypnea', label_en: `RR ${vitals.rr} tachypnea → CTAS 3`, label_ar: 'تسرع تنفس → CTAS 3' });
   }
-  return { candidates, applied };
+  return { candidates, applied, respiratory_rate: rrA };
 }
 
 function evaluateLocPrimary({ vitals, flags }) {
@@ -446,8 +454,11 @@ function evaluatePediatricFeverBands({ vitals, ageGroup, age, appearance, flags 
   return { candidates, applied };
 }
 
-function collectCtasChangingGaps({ normalized, sirs, hemo, feverResult, isPediatric, hasFever }) {
+function collectCtasChangingGaps({ normalized, sirs, hemo, feverResult, isPediatric, hasFever, rrA }) {
   const gaps = [];
+  if (rrA?.needs_recount) {
+    gaps.push({ field: 'rr_recount', reason_en: RR_RECOUNT_QUESTION.reason_en, reason_ar: RR_RECOUNT_QUESTION.reason_ar });
+  }
   const hrA = hemo?.heart_rate;
   if (hrA?.needs_reason) {
     gaps.push({ field: 'tachycardia_reason', reason_en: HR_REASON_QUESTION.reason_en, reason_ar: HR_REASON_QUESTION.reason_ar });
@@ -647,6 +658,9 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     chronicity,
     baselineSpo2,
     homeOxygen,
+    isPediatric,
+    age: patient.age,
+    answers,
   });
   const loc = evaluateLocPrimary({ vitals: normalized.vitals, flags: normalized.flags });
   const pain = evaluatePainPrimary({ vitals: normalized.vitals, answers, isPediatric, chronicity, pathway });
@@ -747,6 +761,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     feverResult: feverAdult,
     isPediatric,
     hasFever,
+    rrA: resp.respiratory_rate,
   });
   if (step1Incomplete) {
     missing.unshift({
@@ -912,7 +927,9 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     hr_questions: [
       ...(hemo.heart_rate?.needs_reason ? [HR_REASON_QUESTION] : []),
       ...(hemo.heart_rate?.needs_recount ? [HR_RECOUNT_QUESTION] : []),
+      ...(resp.respiratory_rate?.needs_recount ? [RR_RECOUNT_QUESTION] : []),
     ],
+    respiratory_rate: resp.respiratory_rate || null,
   };
 }
 

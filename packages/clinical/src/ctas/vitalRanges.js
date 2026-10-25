@@ -1,4 +1,5 @@
 import { assessHeartRate } from './rules/hemodynamicRules.js';
+import { assessRespiratoryRate } from './rules/respiratoryRateRules.js';
 /**
  * Official CTAS Protocol Engine — 2025 hierarchical assessment
  * Step 0 Critical visual → Step 1 Chief complaint → Step 2 Complaint-specific
@@ -69,11 +70,19 @@ export function interpretSpO2(spo2) {
   return { status: 'normal', color: 'text-green-600', bg: 'bg-green-50', label: 'طبيعي' };
 }
 
-export function interpretRR(rr, age) {
-  const g = getAgeGroup(age);
-  const n = AGE_NORMS[g] || AGE_NORMS.adult;
+export function interpretRR(rr, age, ctx = {}) {
   const v = parseFloat(rr);
-  if (isNaN(v) || v < 4 || v > 70) return null;
+  if (isNaN(v) || v < 4 || v > 120) return null;
+  const a = parseFloat(age);
+  // Children: the same assessment as the CTAS rule, so the tile matches the level.
+  if (Number.isFinite(a) && a < 18) {
+    const r = assessRespiratoryRate({ rr: v, age: a, answers: ctx.answers || {} });
+    if (!r || r.display === 'normal') return { status: 'normal', color: 'text-green-600', bg: 'bg-green-50', label: 'طبيعي' };
+    const fast = r.direction === 'high';
+    if (r.display === 'critical') return { status: 'critical', color: 'text-red-600', bg: 'bg-red-50', label: fast ? 'تسرع شديد' : 'بطء شديد' };
+    return { status: 'abnormal', color: 'text-amber-600', bg: 'bg-amber-50', label: fast ? 'تسرع' : 'بطء' };
+  }
+  const n = AGE_NORMS[getAgeGroup(age)] || AGE_NORMS.adult;
   if (v > n.RR.high * 1.5 || v < 6) return { status: 'critical', color: 'text-red-600',   bg: 'bg-red-50',   label: v > n.RR.high ? 'تسرع شديد' : 'بطء شديد' };
   if (v > n.RR.high || v < n.RR.low) return { status: 'abnormal', color: 'text-amber-600', bg: 'bg-amber-50', label: v > n.RR.high ? 'تسرع' : 'بطء' };
   return { status: 'normal', color: 'text-green-600', bg: 'bg-green-50', label: 'طبيعي' };

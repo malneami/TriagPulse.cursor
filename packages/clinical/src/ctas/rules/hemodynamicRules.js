@@ -8,10 +8,10 @@ import { getNorms, PEDIATRIC_SD_HEMODYNAMIC_RULES } from '../ageNorms.js';
 export const HEMODYNAMIC_RULES_META = {
   rule_set_id: 'hemodynamic_v1',
   ctas_version: 'CTAS 2025',
-  version: '1.2.0',
+  version: '1.3.0',
   approval_status: 'configured',
   effective_date: '2026-10-25',
-  clinical_source: 'CTAS Interactive Quick Look Booklet — Hemodynamic; PaedCTAS heart-rate bands (Warren 2008)',
+  clinical_source: 'CTAS Interactive Quick Look Booklet — Hemodynamic; PaedCTAS bradycardia bands (Warren 2008); ED heart-rate centiles (O\'Leary 2015, local rule)',
 };
 
 /** Configured adult shock / compromise thresholds (not LLM-invented). */
@@ -70,6 +70,29 @@ export const PAEDS_CTAS_HR_BANDS = [
   { max_age_years: 3, label: '1–3 years', normal: [75, 130], sd1: [58, 145], sd2: [40, 165] },
   { max_age_years: 7, label: '3–6 years (6-year row)', normal: [70, 110], sd1: [55, 125], sd2: [40, 140] },
   { max_age_years: 18, label: '7–17 years (10-year row)', normal: [60, 90], sd1: [45, 105], sd2: [30, 120] },
+];
+
+/**
+ * Fast heart rate in children: ED centiles (local HMG rule, approved 2026-10-25, option C).
+ * O'Leary F et al., Arch Dis Child 2015 — 111,696 heart and breathing rates from a paediatric ED.
+ * Above the 95th centile → CTAS 3 unless fever or a recorded cause explains it; above the
+ * 99th → CTAS 2, never explained. 16–17 y use the 15-year limits (data stop at 16).
+ * Slow heart rate keeps the PaedCTAS bands above.
+ */
+export const ED_HR_CENTILES = [
+  { max_age_years: 0.25, label: '0–3 months', p95: 171, p99: 181 },
+  { max_age_years: 0.5, label: '3–6 months', p95: 161, p99: 174 },
+  { max_age_years: 0.75, label: '6–9 months', p95: 159, p99: 172 },
+  { max_age_years: 1, label: '9–12 months', p95: 160, p99: 174 },
+  { max_age_years: 1.5, label: '12–18 months', p95: 159, p99: 176 },
+  { max_age_years: 2, label: '18–24 months', p95: 154, p99: 172 },
+  { max_age_years: 3, label: '2–3 years', p95: 146, p99: 162 },
+  { max_age_years: 4, label: '3–4 years', p95: 138, p99: 152 },
+  { max_age_years: 6, label: '4–6 years', p95: 133, p99: 146 },
+  { max_age_years: 8, label: '6–8 years', p95: 128, p99: 141 },
+  { max_age_years: 12, label: '8–12 years', p95: 122, p99: 135 },
+  { max_age_years: 15, label: '12–15 years', p95: 113, p99: 127 },
+  { max_age_years: 18, label: '15–17 years', p95: 111, p99: 122 },
 ];
 
 /** Adult heart-rate limits (CTAS hemodynamic modifier, approved T1–T3 and 2026-10-25). */
@@ -222,27 +245,27 @@ export function assessHeartRate({ hr, age, temp = null, answers = {}, pathway = 
       label_en: `HR ${h} — bradycardia for age (${row}, normal ${b.normal[0]}–${b.normal[1]}) → CTAS ${level}`,
       label_ar: `نبض ${h} — بطء للعمر → CTAS ${level}` };
   }
-  if (h <= b.normal[1]) return { ...base, row, rule_id: 'hr_normal', label_en: `HR ${h} normal for age (${row})`, label_ar: `نبض ${h} طبيعي للعمر` };
-  const band = h <= b.sd1[1] ? 'sd1' : h <= b.sd2[1] ? 'sd2' : 'beyond';
-  if (band === 'beyond') {
-    return { ...base, row, direction: 'high', band, level: 2, ceiling: true, alert: true, display: 'critical', rule_id: 'hr_paeds_beyond',
-      label_en: `HR ${h} > ${b.sd2[1]} — above the top PaedCTAS band for ${row}; never treated as explained → CTAS 2`,
-      label_ar: `نبض ${h} — فوق أعلى نطاق للعمر؛ لا يُعدّ مفسَّراً → CTAS 2` };
+  const c = ED_HR_CENTILES.find((x) => a < x.max_age_years) || ED_HR_CENTILES.at(-1);
+  const crow = `${c.label}: ED 95th ${c.p95}, 99th ${c.p99}`;
+  if (h <= c.p95) return { ...base, row: crow, rule_id: 'hr_normal', label_en: `HR ${h} within ED range for age (${crow})`, label_ar: `نبض ${h} ضمن المدى للعمر` };
+  if (h > c.p99) {
+    return { ...base, row: crow, direction: 'high', band: 'beyond', level: 2, ceiling: true, alert: true, display: 'critical', rule_id: 'hr_paeds_beyond',
+      label_en: `HR ${h} > ${c.p99} (99th centile, ${c.label}) — never treated as explained → CTAS 2`,
+      label_ar: `نبض ${h} — فوق الشريحة 99 للعمر؛ لا يُعدّ مفسَّراً → CTAS 2` };
   }
   const why = explainWith();
   if (why) {
     const w = REASON_WORDS[why] || REASON_WORDS.documented;
     const needsRecount = why === 'crying' && recount !== 'settled_normal';
-    return { ...base, row, direction: 'high', band, explained: true, explanation: why, display: 'explained', needs_recount: needsRecount,
+    return { ...base, row: crow, direction: 'high', band: 'p95', explained: true, explanation: why, display: 'explained', needs_recount: needsRecount,
       rule_id: 'hr_paeds_explained',
-      label_en: `HR ${h} (${band === 'sd1' ? '+1 SD' : '+2 SD'} for ${row}) explained by ${w.en}; does not raise CTAS`,
+      label_en: `HR ${h} (above the 95th centile, ${c.label}) explained by ${w.en}; does not raise CTAS`,
       label_ar: `نبض ${h} يفسره ${w.ar}؛ لا يرفع CTAS` };
   }
-  const level = band === 'sd1' ? 3 : 2;
-  return { ...base, row, direction: 'high', band, level, alert: level === 2, display: level === 2 ? 'critical' : 'abnormal',
-    needs_reason: reason == null, rule_id: level === 2 ? 'hr_paeds_unexplained_sd2' : 'hr_paeds_unexplained_sd1',
-    label_en: `HR ${h} — unexplained tachycardia, ${band === 'sd1' ? '+1 SD' : '+2 SD'} for ${row} → CTAS ${level}`,
-    label_ar: `نبض ${h} — تسرع غير مفسَّر للعمر → CTAS ${level}` };
+  return { ...base, row: crow, direction: 'high', band: 'p95', level: 3, display: 'abnormal',
+    needs_reason: reason == null, rule_id: 'hr_paeds_unexplained_p95',
+    label_en: `HR ${h} — unexplained tachycardia, above the 95th centile for ${c.label} (${c.p95}) → CTAS 3`,
+    label_ar: `نبض ${h} — تسرع غير مفسَّر فوق الشريحة 95 للعمر → CTAS 3` };
 }
 
 /** Hypotension for age: < 70 + 2×age (1–10 y), < 90 from 10 y, < 60 under 1 y. */
@@ -336,11 +359,13 @@ export function evaluateHemodynamicModifier({
   if (gcs != null && gcs <= 8) shockFeatures.push(`GCS ${gcs}`);
   if (spo2 != null && spo2 < 85) shockFeatures.push(`SpO2 ${spo2}`);
   // Pediatric shock: poor perfusion with hypotension for age, altered consciousness or shocked look
+  // Children: low blood pressure for age is decompensated shock → CTAS 1 (approved 2026-10-25).
+  if (isPediatric && hypotensive) shockFeatures.push(`SBP ${sbp} hypotension for age`);
   if (isPediatric && flags.poor_perfusion && (appearance.shocked || (gcs != null && gcs < 15) || hypotensive)) {
     shockFeatures.push('pediatric_poor_perfusion_with_compromise');
   }
   const pedShock = isPediatric && flags.poor_perfusion && (appearance.shocked || (gcs != null && gcs < 15) || hypotensive);
-  if (shockFeatures.length && ((!isPediatric && sbp != null && sbp < th.adult_shock_sbp) || appearance.shocked || flags.septic_shock || (gcs != null && gcs <= 8) || pedShock)) {
+  if (shockFeatures.length && ((!isPediatric && sbp != null && sbp < th.adult_shock_sbp) || appearance.shocked || flags.septic_shock || (gcs != null && gcs <= 8) || pedShock || (isPediatric && hypotensive))) {
     return out({
       level: 1,
       rule_id: 'hemo_shock',

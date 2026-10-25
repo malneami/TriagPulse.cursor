@@ -18,6 +18,7 @@ import {
 import { CTAS_MODIFIER_LIBRARY } from './modifierLibrary.js';
 import { runComorbidityTests } from './runComorbidityTests.js';
 import { runHeartRateTests } from './runHeartRateTests.js';
+import { runRespiratoryRateTests } from './runRespiratoryRateTests.js';
 import { runRoutingTests } from './runRoutingTests.js';
 import { runFeedbackTests } from '../feedback/runFeedbackTests.js';
 import { runPrivacyTests } from '../privacy/runPrivacyTests.js';
@@ -1004,6 +1005,7 @@ runSttTests(assert);
 // ── Chronic illness rules, bedside tests, hydration, direction answers ─────
 runComorbidityTests(assert);
 runHeartRateTests(assert);
+runRespiratoryRateTests(assert);
 runRoutingTests(assert);
 runFeedbackTests(assert);
 runPrivacyTests(assert);
