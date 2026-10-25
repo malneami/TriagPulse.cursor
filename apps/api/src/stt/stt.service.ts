@@ -58,6 +58,8 @@ export class SttService {
   private readonly logger = new Logger(SttService.name);
   private sessions = new Map<string, SessionState>();
   private lastOpenAiError: string | null = null;
+  /** Last successful OpenAI reachability check; reused for 5 minutes. */
+  private openAiOkAt = 0;
 
   /** Whether server-side transcription is usable at all. */
   isConfigured(): boolean {
@@ -310,6 +312,10 @@ export class SttService {
       };
     }
 
+    if (Date.now() - this.openAiOkAt < 5 * 60 * 1000) {
+      return { configured: true, model, reachable: true, realtime: true, realtime_model };
+    }
+
     const probe = async () => {
       const res = await fetch('https://api.openai.com/v1/models', {
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -333,6 +339,7 @@ export class SttService {
     try {
       await probe();
       this.lastOpenAiError = null;
+      this.openAiOkAt = Date.now();
       return {
         configured: true,
         model,

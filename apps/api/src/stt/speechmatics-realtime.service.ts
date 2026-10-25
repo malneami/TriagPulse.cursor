@@ -55,6 +55,7 @@ export class SpeechmaticsRealtimeService {
   private readonly logger = new Logger(SpeechmaticsRealtimeService.name);
   private sessions = new Map<string, SmSession>();
   private status: { at: number; ok: boolean; error?: string } | null = null;
+  private refreshing: Promise<{ ok: boolean; error?: string }> | null = null;
 
   constructor(private sttService: SttService) {}
 
@@ -83,12 +84,30 @@ export class SpeechmaticsRealtimeService {
 
   /**
    * Is the key accepted? Minting a short-lived real-time key is the cheapest call that checks
-   * the key and the account without opening a transcription session. Cached for 5 minutes.
+   * the key and the account without opening a transcription session. Answered from the last check; refreshed in the background every 5 minutes.
    */
   async checkStatus(): Promise<{ ok: boolean; error?: string }> {
     const apiKey = process.env.SPEECHMATICS_API_KEY?.trim();
     if (!apiKey) return { ok: false, error: 'SPEECHMATICS_API_KEY not set' };
-    if (this.status && Date.now() - this.status.at < STATUS_TTL_MS) return this.status;
+    if (this.status) {
+      // Answer from the last check at once; refresh in the background when it is old,
+      // so the nurse never waits on Speechmatics just to see whether voice is available.
+      if (Date.now() - this.status.at >= STATUS_TTL_MS && !this.refreshing) {
+        this.refreshing = this.probeStatus(apiKey).finally(() => { this.refreshing = null; });
+      }
+      return this.status;
+    }
+    if (!this.refreshing) this.refreshing = this.probeStatus(apiKey).finally(() => { this.refreshing = null; });
+    return this.refreshing;
+  }
+
+  /** Warm the status at start-up so the first nurse does not wait. */
+  onModuleInit() {
+    const apiKey = process.env.SPEECHMATICS_API_KEY?.trim();
+    if (apiKey) void this.checkStatus().catch(() => undefined);
+  }
+
+  private async probeStatus(apiKey: string): Promise<{ ok: boolean; error?: string }> {
     let result: { ok: boolean; error?: string };
     try {
       const res = await fetch('https://mp.speechmatics.com/v1/api_keys?type=rt', {
