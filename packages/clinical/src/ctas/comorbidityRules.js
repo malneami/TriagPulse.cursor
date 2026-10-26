@@ -187,6 +187,11 @@ export const COMORBIDITY_RULES = [
       if (c.any(DROWSY_KEYS) || c.cue('lethargy')) return { ar: 'خمول / نعاس', en: 'lethargy' };
       if (c.fever) return { ar: 'حمى', en: 'fever' };
       if (c.cue('emergencyLetter')) return { ar: 'رسالة طوارئ', en: 'emergency letter' };
+      // BIMDG: any infection can trigger a metabolic crisis → at least CTAS 3 (approved 2026-10-26).
+      if (c.keys.has('urti_complaints') || c.keys.has('sore_throat') || c.keys.has('ear_pain') || c.keys.has('uti')
+        || /cough|runny nose|coryza|\bcold\b|sore throat|ear (?:pain|ache|infection)|\burti\b|infection|كحة|سعال|زكام|رشح|التهاب/i.test(c.text)) {
+        return { ar: 'عدوى', en: 'infection', floor: 3 };
+      }
       return null;
     },
     requires: ['glucose'],

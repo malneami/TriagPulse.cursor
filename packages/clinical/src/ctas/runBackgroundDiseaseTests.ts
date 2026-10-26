@@ -53,6 +53,7 @@ export function runBackgroundDiseaseTests(assert: Assert) {
   // C. Metabolic / adrenal
   assert(floorOf('3 year old vomiting 3 times, known MSUD', { age: '3' }) === 2, 'BD-19', 'MSUD + vomiting → CTAS 2');
   assert(floorOf('5 year old small finger cut, known metabolic disorder, eating well', { age: '5' }) == null, 'BD-20', 'Metabolic + finger cut, eating well → no upgrade');
+  assert(floorOf('infant with known metabolic disorder, cough and runny nose, feeding well', { age: '1' }) === 3, 'BD-33', 'Metabolic + infection (cough/coryza), eating, no fever → at least CTAS 3 (BIMDG)');
   assert(floorOf('2 year old MCAD deficiency, not eating today', { age: '2' }) === 2, 'BD-21', 'MCAD + poor intake → CTAS 2');
   assert(floorOf('4 year old with emergency letter for propionic acidaemia, cough', { age: '4' }) === 2, 'BD-22', 'Emergency letter → CTAS 2');
   const ai = rules('10 year old vomiting, known adrenal insufficiency on hydrocortisone', { age: '10' });
