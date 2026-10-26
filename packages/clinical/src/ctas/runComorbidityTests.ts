@@ -29,8 +29,8 @@ export function runComorbidityTests(assert: Assert) {
   const t = 'Patient four years old came with abdominal pain and vomiting, known case of diabetic, pain score three, heart rate 120';
   {
     const { r } = rules(t, { age: '4', pain_score: 3, hr: '120' });
-    assert(r.floor === 3 && r.pendingChecks.map((c) => c.key).join(',') === 'glucose,ketones',
-      'CR-01', 'diabetic child + vomiting → at least CTAS 3, glucose and ketones required', JSON.stringify(r));
+    assert(r.floor === 2 && r.pendingChecks.map((c) => c.key).join(',') === 'glucose,ketones',
+      'CR-01', 'diabetic child + vomiting → CTAS 2 (CTAS 2016), glucose and ketones still required', JSON.stringify(r));
   }
   {
     const { r } = rules(t, { age: '4', glucose: '19.5' });
@@ -42,7 +42,9 @@ export function runComorbidityTests(assert: Assert) {
   }
   {
     const { r } = rules(t, { age: '4', glucose: '7', ketones: 'negative' });
-    assert(r.floor === 3 && r.pendingChecks.length === 0, 'CR-04', 'normal checks → stays at least CTAS 3, nothing pending', JSON.stringify(r));
+    assert(r.floor === 2 && r.pendingChecks.length === 0, 'CR-04', 'vomiting: normal checks do not lower it below CTAS 2, nothing pending', JSON.stringify(r));
+    const ab = rules('Patient four years old with abdominal pain, known case of diabetic', { age: '4', glucose: '7', ketones: 'negative' }).r;
+    assert(ab.floor === 3, 'CR-04b', 'diabetic child, abdominal pain without vomiting, normal checks → CTAS 3', JSON.stringify(ab.applied));
   }
   {
     const { r } = rules('45 year old with vomiting, known diabetic', { age: '45' });
@@ -57,7 +59,7 @@ export function runComorbidityTests(assert: Assert) {
     assert(r.floor == null && r.confirmQuestions.some((q) => q.field === 'confirm_condition_diabetes'),
       'CR-07', 'illness known only from a medicine → confirm question, no floor yet', JSON.stringify({ r, c: caseDetails.conditions }));
     const after = evaluateComorbidityRules({ patient: { age: '8' }, caseDetails, answers: { confirm_condition_diabetes: 'نعم' }, transcript: 'child 8 years with vomiting, on insulin' });
-    assert(after.floor === 3, 'CR-08', 'confirmed by the nurse → rule applies', JSON.stringify(after.applied));
+    assert(after.floor === 2, 'CR-08', 'confirmed by the nurse → rule applies (vomiting → CTAS 2)', JSON.stringify(after.applied));
   }
   {
     const { r } = rules('طفل عمره 6 سنوات عنده حرارة، معروف عنده فقر الدم المنجلي', { age: '6', temperature: '38.6' });
@@ -76,8 +78,8 @@ export function runComorbidityTests(assert: Assert) {
     assert(r.floor === 2, 'CR-12', 'VP shunt + headache/vomiting → CTAS 2', JSON.stringify(r.applied));
   }
   {
-    const { r } = rules('infant with known metabolic disorder, cough and runny nose', { age: '1' });
-    assert(r.floor === 2 && r.pendingChecks.some((c) => c.key === 'glucose'), 'CR-13', 'metabolic disorder + any illness → CTAS 2, glucose required', JSON.stringify(r));
+    const { r } = rules('infant with known metabolic disorder, cough and runny nose, fever', { age: '1' });
+    assert(r.floor === 2 && r.pendingChecks.some((c) => c.key === 'glucose'), 'CR-13', 'metabolic disorder + fever → CTAS 2, glucose required', JSON.stringify(r));
   }
   {
     const { r } = rules('baby with congenital heart disease, fast breathing', { age: '0.5', rr: '60' });
