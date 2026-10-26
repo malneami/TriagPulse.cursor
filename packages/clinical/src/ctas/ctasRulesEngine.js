@@ -119,15 +119,15 @@ function mapComplaint(complaint, { transcript = '', confirmedKey = null, pending
   };
 }
 
-function parseBaselineSpo2(patient = {}, answers = {}, transcript = '') {
+export function parseBaselineSpo2(patient = {}, answers = {}, transcript = '') {
   const direct = parseFloat(patient.baseline_spo2 ?? answers.baseline_spo2);
   if (Number.isFinite(direct)) return direct;
   const tx = `${transcript || ''} ${patient.transcription || ''} ${patient.onset_duration || ''}`;
-  const m = tx.match(/(?:baseline|usual|normally|معتاد|خط\s*الأساس)[^\d]{0,24}(\d{2})\s*%/i)
+  const m = tx.match(/(?:baseline|usual(?:ly)?|normally|runs? at|المعتاد|معتاد|عادة|خط\s*الأساس)[^\d]{0,30}(\d{2})\s*%?/i)
     || tx.match(/(\d{2})\s*%\s*(?:baseline|usual|at\s+home|منزلي|معتاد)/i);
   if (m) {
     const n = parseFloat(m[1]);
-    if (n >= 70 && n <= 100) return n;
+    if (n >= 60 && n <= 100) return n;
   }
   return null;
 }
@@ -149,6 +149,27 @@ function hypoxiaShouldApply({ spo2, chronicity, baselineSpo2, homeOxygen }) {
   return { apply: true, suppressed: false };
 }
 
+/**
+ * Local HMG rule (approved 2026-10-26): SpO₂ judged against the patient's own usual level when
+ * it is known (stated by the family, a care plan or the nurse) and below 95 %.
+ *   within 3 of usual → SpO₂ does not set the level (distress, perfusion, GCS still do)
+ *   more than 3 below usual → CTAS 2
+ *   below 70 → CTAS 1 (oximeters are not validated lower; they over-read at 76–90 %)
+ * Usual level unknown → the standard CTAS cut-offs.
+ */
+export const SPO2_BASELINE_RULE = { tolerance: 3, absolute_floor: 70, applies_below: 95 };
+export function assessSpo2AgainstBaseline({ spo2, baselineSpo2 }) {
+  if (spo2 == null || baselineSpo2 == null || baselineSpo2 >= SPO2_BASELINE_RULE.applies_below) return null;
+  const drop = Math.round((baselineSpo2 - spo2) * 10) / 10;
+  if (spo2 < SPO2_BASELINE_RULE.absolute_floor) {
+    return { level: 1, drop, rule_id: 'resp_spo2_below_70', label_en: `SpO₂ ${spo2}% (usual ${baselineSpo2}%) — below 70 → CTAS 1`, label_ar: `SpO₂ ${spo2}% (المعتاد ${baselineSpo2}%) — أقل من 70 → CTAS 1` };
+  }
+  if (drop > SPO2_BASELINE_RULE.tolerance) {
+    return { level: 2, drop, rule_id: 'resp_spo2_below_usual', label_en: `SpO₂ ${spo2}% is ${drop} below usual ${baselineSpo2}% → CTAS 2`, label_ar: `SpO₂ ${spo2}% أقل من المعتاد ${baselineSpo2}% بـ ${drop} → CTAS 2` };
+  }
+  return { level: null, drop, rule_id: 'resp_spo2_at_usual', label_en: `SpO₂ ${spo2}% within 3 of usual ${baselineSpo2}% — not a new hypoxia`, label_ar: `SpO₂ ${spo2}% ضمن المعتاد ${baselineSpo2}%` };
+}
+
 function isFeverPathway(pathway, complaint) {
   const p = String(pathway || '');
   const c = String(complaint || '').toLowerCase();
@@ -168,10 +189,10 @@ function evaluateStep0({ vitals, flags, appearance, isPediatric = false, age = n
   }
   // SpO₂ floors applied in evaluateRespiratoryPrimary with chronicity gate;
   // Step 0 only forces critical <88 (never suppressed).
-  if (vitals.spo2 != null && vitals.spo2 < 88) {
+  if (vitals.spo2 != null && vitals.spo2 < 88 && !vitals._spo2_vs_baseline) {
     alerts.push({ ar: `SpO₂ ${vitals.spo2}% حرج`, en: `SpO₂ ${vitals.spo2}% critical` });
     pushCandidate(candidates, { level: 1, rule_id: 'step0_hypoxia', label_en: `SpO₂ ${vitals.spo2}% → CTAS 1`, label_ar: `SpO₂ ${vitals.spo2}% → CTAS 1` });
-  } else if (vitals.spo2 != null && vitals.spo2 < 90 && !vitals._suppress_spo2_floor) {
+  } else if (vitals.spo2 != null && vitals.spo2 < 90 && !vitals._suppress_spo2_floor && !vitals._spo2_vs_baseline) {
     pushCandidate(candidates, { level: 1, rule_id: 'step0_breathing', label_en: `Breathing compromised SpO₂ ${vitals.spo2}%`, label_ar: 'تنفس مضطرب' });
   }
   // CTAS level-of-consciousness modifier (approved 2026-10-17): GCS 3–9 → 1, 10–13 → 2.
@@ -272,7 +293,13 @@ function evaluateComplaintSpecific({ complaint, selectedModifier, answers, pathw
 function evaluateRespiratoryPrimary({ vitals, flags, norms, chronicity, baselineSpo2, homeOxygen, isPediatric, age, answers }) {
   const candidates = [];
   const applied = [];
-  if (vitals.spo2 != null) {
+  const vsBase = vitals._spo2_vs_baseline || null;
+  if (vsBase) {
+    if (vsBase.level != null) {
+      pushCandidate(candidates, { level: vsBase.level, rule_id: vsBase.rule_id, label_en: vsBase.label_en, label_ar: vsBase.label_ar });
+    }
+    applied.push({ label_en: vsBase.label_en, label_ar: vsBase.label_ar, result: vsBase.level != null ? `CTAS ${vsBase.level} min` : 'usual_baseline', evidence: { baselineSpo2, drop: vsBase.drop } });
+  } else if (vitals.spo2 != null) {
     const gate = hypoxiaShouldApply({
       spo2: vitals.spo2,
       chronicity,
@@ -551,7 +578,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
 
   const tx = `${transcript || ''} ${patient.transcription || ''}`;
   const chronicity = detectSymptomChronicity({ patient, answers, transcript: tx });
-  const baselineSpo2 = parseBaselineSpo2(patient, answers, tx);
+  const baselineSpo2 = parseBaselineSpo2(patient, answers, `${tx} ${patient.chief_complaint || ''}`);
   const homeOxygen = isYes(answers.home_oxygen)
     || /home\s+oxygen|on\s+o2\s+at\s+home|أكسجين\s*منزلي/i.test(tx);
 
@@ -582,6 +609,10 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     || (normalized.vitals.temp != null && normalized.vitals.temp >= 38.0)
     || !!normalized.vitals.temp_qualitative_fever;
 
+  const vsBaseline = assessSpo2AgainstBaseline({ spo2: normalized.vitals.spo2, baselineSpo2 });
+  if (vsBaseline) {
+    normalized.vitals._spo2_vs_baseline = vsBaseline;
+  }
   const spo2Gate = hypoxiaShouldApply({
     spo2: normalized.vitals.spo2,
     chronicity,

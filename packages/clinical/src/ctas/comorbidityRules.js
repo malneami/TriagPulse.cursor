@@ -11,8 +11,9 @@
  */
 import { getAgeGroup, isPediatricAgeGroup, getNorms } from './ageNorms.js';
 
-export const COMORBIDITY_RULES_VERSION = '1.0.0';
+export const COMORBIDITY_RULES_VERSION = '1.1.0';
 const YES = 'نعم';
+const YES_RE = /^(نعم|yes|true|1)$/i;
 
 /** Glucose above this (mmol/L) in a diabetic child with symptoms → CTAS 2 (CTAS hyperglycaemia modifier). */
 export const GLUCOSE_HIGH_MMOL = 14;
@@ -36,6 +37,12 @@ const CUES = {
   breathless: /short(?:ness)? of breath|breathless|difficulty breathing|tachypn\w*|fast breathing|ضيق\s*(?:في\s*)?(?:ال)?تنفس|صعوبة\s*(?:في\s*)?(?:ال)?تنفس|نهجان|تنفس\s*سريع/i,
   headache: /headache|head pain|صداع/i,
   vomiting: /vomit\w*|قيء|استفراغ|ترجيع/i,
+  diarrhoea: /diarrh\w*|loose stools?|إسهال|اسهال/i,
+  // Cyanosis that is NEW or WORSE than usual (the word "cyanotic" in the history is not a trigger).
+  newCyanosis: /(?:more|increas\w*|worse|new|bluer)\s+(?:cyano\w*|blue)|blue spell|tet spell|turn(?:ed|s|ing)? (?:more )?blue|زاد\s*(?:ال)?ازرقاق|ازرقاق\s*(?:أكثر|زايد|جديد)|نوبة\s*ازرقاق/i,
+  notUsual: /not (?:his|her|their) usual(?: self)?|different from (?:his|her|their )?usual|not (?:him|her)self|مو\s*(?:زي|مثل)\s*عادت(?:ه|ها)|غير\s*(?:طبيعته|طبيعتها|المعتاد)|مو\s*طبيعي/i,
+  emergencyLetter: /emergency (?:letter|protocol|plan|card)|protocol letter|care plan|رسالة\s*طوارئ|خطة\s*طوارئ|بطاقة\s*طوارئ/i,
+  secretions: /secretion\w*|blocked tube|tube (?:out|dislodged|displaced)|إفرازات|انسداد\s*(?:ال)?أنبوب/i,
 };
 
 const num = (v) => {
@@ -77,6 +84,10 @@ function context({ patient = {}, caseDetails = null, answers = {}, transcript = 
     painScore: num(patient.pain_score),
     anyComplaint: keys.size > 0 || !!patient.chief_complaint,
     glucose: num(patient.glucose),
+    spo2: num(patient.spo2),
+    cyanotic: /cyanotic|fontan|glenn|norwood|single ventricle|hlhs|hypoplastic left|\bbt shunt|blalock|sano|قلب\s*أزرق/i.test(text)
+      || (num(patient.baseline_spo2 ?? answers.baseline_spo2) ?? 100) < 95,
+    complex: ['genetic_syndrome', 'cerebral_palsy', 'tracheostomy', 'home_ventilation', 'gastrostomy'].some((id) => conditionStatus.has(id)),
     ketones: patient.ketones === 'positive' ? 'positive' : patient.ketones === 'negative' ? 'negative' : null,
   };
 }
@@ -106,8 +117,12 @@ export const COMORBIDITY_RULES = [
       return null;
     },
     requires: ['glucose', 'ketones'],
-    floor: (c) => ((c.glucose != null && c.glucose > GLUCOSE_HIGH_MMOL) || c.ketones === 'positive' ? 2 : 3),
-    note: (c) => ((c.glucose != null && c.glucose > GLUCOSE_HIGH_MMOL) || c.ketones === 'positive'
+    // CTAS 2016 «Congenital problem in children»: vomiting/diarrhoea with type 1 diabetes → CTAS 2.
+    floor: (c) => ((c.keys.has('vomiting_nausea') || c.cue('vomiting') || c.cue('diarrhoea')
+      || (c.glucose != null && c.glucose > GLUCOSE_HIGH_MMOL) || c.ketones === 'positive') ? 2 : 3),
+    note: (c) => ((c.keys.has('vomiting_nausea') || c.cue('vomiting') || c.cue('diarrhoea'))
+      ? { ar: 'قيء/إسهال مع سكري (CTAS 2016) — افحص السكر والكيتونات', en: 'Vomiting/diarrhoea with diabetes (CTAS 2016) — check glucose and ketones' }
+      : (c.glucose != null && c.glucose > GLUCOSE_HIGH_MMOL) || c.ketones === 'positive'
       ? { ar: 'خطر الحماض الكيتوني: سكر > 14 أو كيتونات إيجابية', en: 'DKA risk: glucose > 14 or ketones positive' }
       : { ar: 'افحص السكر والكيتونات — يصبح CTAS 2 إذا كان السكر > 14 أو الكيتونات إيجابية', en: 'Check glucose and ketones — CTAS 2 if glucose > 14 or ketones positive' }),
   },
@@ -164,13 +179,21 @@ export const COMORBIDITY_RULES = [
     label_ar: 'اضطراب استقلابي / قصور الكظرية', label_en: 'Metabolic disorder / adrenal insufficiency',
     when: (c) => {
       if (!c.has('metabolic_disorder') && !c.has('adrenal_insufficiency')) return null;
+      // CTAS 2016 + BIMDG: vomiting/diarrhoea, poor intake, lethargy, fever or an emergency letter → 2.
+      // A minor unrelated problem in a child who is eating and alert is NOT upgraded.
       if (c.keys.has('vomiting_nausea') || c.cue('vomiting')) return { ar: 'قيء', en: 'vomiting' };
+      if (c.keys.has('diarrhea') || c.cue('diarrhoea')) return { ar: 'إسهال', en: 'diarrhoea' };
       if (c.cue('poorFeeding')) return { ar: 'قلة الرضاعة / الأكل', en: 'poor feeding' };
-      if (c.anyComplaint || c.fever) return { ar: 'مرض عارض', en: 'intercurrent illness' };
+      if (c.any(DROWSY_KEYS) || c.cue('lethargy')) return { ar: 'خمول / نعاس', en: 'lethargy' };
+      if (c.fever) return { ar: 'حمى', en: 'fever' };
+      if (c.cue('emergencyLetter')) return { ar: 'رسالة طوارئ', en: 'emergency letter' };
       return null;
     },
     requires: ['glucose'],
     floor: 2,
+    note: (c) => (c.has('adrenal_insufficiency')
+      ? { ar: 'قصور الكظرية: جرعة الهيدروكورتيزون الطارئة مستحقة — لا تؤخرها', en: 'Adrenal insufficiency: emergency hydrocortisone is due — do not delay' }
+      : { ar: 'لا تنتظر نتيجة السكر؛ نقص السكر علامة متأخرة. اطلب رسالة الطوارئ', en: 'Do not wait for glucose (low glucose is a late sign). Ask for the emergency letter' }),
   },
   {
     id: 'CR-CHD',
@@ -179,12 +202,49 @@ export const COMORBIDITY_RULES = [
     when: (c) => {
       if (!c.has('congenital_heart')) return null;
       if (c.any(BREATHLESS_KEYS) || c.cue('breathless') || c.fastBreathing) return { ar: 'ضيق تنفس', en: 'breathlessness' };
-      if (c.cue('cyanosis')) return { ar: 'ازرقاق', en: 'cyanosis' };
+      if (c.cue('newCyanosis')) return { ar: 'ازرقاق جديد أو أشد', en: 'new or worse cyanosis' };
       if (c.fever) return { ar: 'حمى', en: 'fever' };
+      if (c.cyanotic) {
+        // Cyanotic / single-ventricle physiology (local HMG rule, expert-based): dehydration is dangerous.
+        if (c.keys.has('vomiting_nausea') || c.cue('vomiting')) return { ar: 'قيء', en: 'vomiting' };
+        if (c.keys.has('diarrhea') || c.cue('diarrhoea')) return { ar: 'إسهال', en: 'diarrhoea' };
+        if (c.cue('poorFeeding')) return { ar: 'قلة الأكل / الرضاعة', en: 'poor feeding' };
+        if (c.cue('lethargy')) return { ar: 'خمول', en: 'lethargy' };
+        if (c.anyComplaint) return { ar: 'مرض حاد', en: 'acute illness', floor: 3 };
+      }
       return null;
     },
     requires: ['spo2'],
     floor: 2,
+  },
+  {
+    id: 'CR-AIRWAY-DEVICE',
+    condition: 'tracheostomy',
+    label_ar: 'فغر رغامى / تنفس صناعي منزلي', label_en: 'Tracheostomy / home ventilation',
+    // APAGBI/NTSP 2018: a blocked or displaced tube is a time-critical emergency.
+    when: (c) => {
+      if (!c.has('tracheostomy') && !c.has('home_ventilation')) return null;
+      if (c.any(BREATHLESS_KEYS) || c.cue('breathless') || c.fastBreathing) return { ar: 'ضيق تنفس', en: 'breathing difficulty' };
+      if (c.cue('secretions')) return { ar: 'إفرازات / مشكلة بالأنبوب', en: 'secretions / tube problem' };
+      if (c.keys.has('urti_complaints') || /cough|كحة|سعال/i.test(c.text)) return { ar: 'سعال', en: 'cough' };
+      if (c.spo2 != null && c.spo2 < 95) return { ar: 'نقص الأكسجين', en: 'low SpO₂' };
+      return null;
+    },
+    floor: 2,
+  },
+  {
+    id: 'CR-COMPLEX',
+    condition: 'medical_complexity',
+    label_ar: 'طفل ذو احتياجات طبية معقدة', label_en: 'Child with medical complexity',
+    // CTAS 2016: «Caregivers identifying need for care» → CTAS 3.
+    when: (c) => {
+      if (!c.complex) return null;
+      if (YES_RE.test(String(c.answers.different_from_usual ?? '')) || c.cue('notUsual')) {
+        return { ar: 'الأهل: ليس كعادته', en: 'parents: not their usual self' };
+      }
+      return null;
+    },
+    floor: 3,
   },
   {
     id: 'CR-DIALYSIS',
@@ -203,7 +263,7 @@ export const COMORBIDITY_RULES = [
 ];
 
 /** Conditions that can trigger a rule; a "probable" one needs the nurse to confirm it first. */
-const RULE_CONDITIONS = new Set(['diabetes', 'sickle_cell', 'immunocompromised', 'vp_shunt', 'metabolic_disorder', 'adrenal_insufficiency', 'congenital_heart', 'kidney_disease']);
+const RULE_CONDITIONS = new Set(['diabetes', 'sickle_cell', 'immunocompromised', 'vp_shunt', 'metabolic_disorder', 'adrenal_insufficiency', 'congenital_heart', 'kidney_disease', 'tracheostomy', 'home_ventilation', 'genetic_syndrome', 'cerebral_palsy', 'gastrostomy']);
 
 /**
  * Evaluate the rule table.
@@ -224,7 +284,7 @@ export function evaluateComorbidityRules(input = {}) {
   for (const rule of COMORBIDITY_RULES) {
     const trigger = rule.when(c);
     if (!trigger) continue;
-    const floor = typeof rule.floor === 'function' ? rule.floor(c) : rule.floor;
+    const floor = trigger.floor ?? (typeof rule.floor === 'function' ? rule.floor(c) : rule.floor);
     const note = rule.note ? rule.note(c) : null;
     applied.push({
       id: rule.id,
@@ -261,6 +321,39 @@ export function evaluateComorbidityRules(input = {}) {
       source: 'comorbidity_confirm',
       evidence: x.evidence,
     }));
+
+  // Known chronic low oxygen with a low reading and no usual level yet: ask for it (rule A).
+  const chronicLowO2 = c.cyanotic || ['copd', 'home_oxygen', 'interstitial_lung'].some((id) => c.has(id));
+  const hasUsual = Number.isFinite(parseFloat(c.patient.baseline_spo2 ?? (input.answers || {}).baseline_spo2))
+    || /(?:baseline|usual(?:ly)?|normally|runs? at|المعتاد|معتاد|عادة)[^\d]{0,30}\d{2}/i.test(c.text);
+  if (chronicLowO2 && c.spo2 != null && c.spo2 < 95 && !hasUsual && (input.answers || {}).baseline_spo2 == null) {
+    confirmQuestions.push({
+      id: 'baseline_spo2', field: 'baseline_spo2',
+      text_ar: 'ما تشبع الأكسجين المعتاد للمريض (حسب الأهل أو خطة الرعاية)؟',
+      text_en: "Patient's usual SpO₂ (family or care plan)?",
+      answer_type: 'options',
+      options: [
+        { value: '94', label_ar: '90–94', label_en: '90–94' },
+        { value: '89', label_ar: '85–89', label_en: '85–89' },
+        { value: '84', label_ar: '80–84', label_en: '80–84' },
+        { value: '79', label_ar: '75–79', label_en: '75–79' },
+        { value: '74', label_ar: '70–74', label_en: '70–74' },
+        { value: 'unknown', label_ar: 'غير معروف', label_en: 'Unknown' },
+      ],
+      question_category: 'ctas_modifier', priority: 1, source: 'comorbidity_baseline_spo2',
+      reason_en: 'Within 3 of usual → not new hypoxia; more than 3 below → CTAS 2; below 70 → CTAS 1. Unknown → standard cut-offs. (Top of the range is used, which errs towards urgency.)',
+      reason_ar: 'ضمن 3 من المعتاد → ليس نقصاً جديداً؛ أقل بأكثر من 3 → CTAS 2؛ أقل من 70 → CTAS 1.',
+    });
+  }
+
+  // Child with medical complexity: ask the family whether the child is different from usual.
+  if (c.complex && c.pediatric && (input.answers || {}).different_from_usual == null && !c.cue('notUsual')) {
+    confirmQuestions.push({
+      id: 'different_from_usual', field: 'different_from_usual',
+      text_ar: 'هل يقول الأهل إن الطفل مختلف عن حالته المعتادة؟', text_en: 'Do the parents say the child is different from their usual self?',
+      answer_type: 'yes_no', question_category: 'ctas_modifier', priority: 1, source: 'comorbidity_complex',
+    });
+  }
 
   return {
     version: COMORBIDITY_RULES_VERSION,

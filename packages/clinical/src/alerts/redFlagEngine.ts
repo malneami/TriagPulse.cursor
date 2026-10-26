@@ -5,6 +5,7 @@ import { detectKnownModifier } from '../ctas/modifierEngine.js';
 import { getActiveModifiers } from '../ctas/modifierLibrary.js';
 // @ts-ignore — plain JS module
 import { assessHeartRate } from '../ctas/rules/hemodynamicRules.js';
+import { assessSpo2AgainstBaseline, parseBaselineSpo2 } from '../ctas/ctasRulesEngine.js';
 import { assessRespiratoryRate } from '../ctas/rules/respiratoryRateRules.js';
 
 const YES_RE = /^(نعم|yes|true|1)$/i;
@@ -92,7 +93,14 @@ export function detectRedFlags(
     ctasLevel = ctasLevel === null ? level : Math.min(ctasLevel, level);
   };
 
-  if (spo2 !== null && spo2 < th.spo2_urgent) {
+  // Known usual SpO₂ (local HMG rule): alert on a fall of more than 3 below usual (2) or < 70 (1).
+  const usualSpo2 = (parseBaselineSpo2 as unknown as (p: unknown, a: unknown, t: string) => number | null)(
+    patient, answers || {}, `${patient.transcription || ''} ${patient.chief_complaint || ''}`);
+  const vsUsual = (assessSpo2AgainstBaseline as unknown as (o: Record<string, unknown>) => { level: number | null; label_en: string; label_ar: string } | null)(
+    { spo2, baselineSpo2: usualSpo2 });
+  if (vsUsual) {
+    if (vsUsual.level != null) add(vsUsual.level, vsUsual.label_ar, vsUsual.label_en);
+  } else if (spo2 !== null && spo2 < th.spo2_urgent) {
     add(
       spo2 < th.spo2_critical ? 1 : 2,
       `SpO₂ ${spo2}% — نقص أكسجين`,
