@@ -746,6 +746,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     age: patient.age,
     answers,
     pathway,
+    text: `${tx} ${patient.chief_complaint || ''}`,
   });
 
   const feverAdult = (!isPediatric && hasFever)
