@@ -372,55 +372,63 @@ const CENTRAL_PAIN_PATHWAYS = new Set([
  * Chronic rows are unchanged until checked against the CTAS manual.
  * Location: the nurse's answer (pain_location) wins; otherwise it follows the complaint.
  */
-function evaluatePainPrimary({ vitals, answers, isPediatric, chronicity, pathway }) {
+/**
+ * CTAS 2025 pain modifier (approved by the clinical lead 2026-10-29, option A — CTAS as written).
+ * Adults: severity × central/peripheral × acute/chronic. Children: severity × acute/chronic.
+ * Chronic pain WITH objective signs (tachycardia, hypertension, diaphoresis) is triaged as acute.
+ * Pain at a peripheral site with a suspected life/limb threat is scored as central.
+ */
+export const CTAS_PAIN_TABLE = {
+  adult: {
+    central: { acute: { severe: 2, moderate: 3, mild: 4 }, chronic: { severe: 3, moderate: 4, mild: 5 } },
+    peripheral: { acute: { severe: 3, moderate: 4, mild: 5 }, chronic: { severe: 4, moderate: 5, mild: 5 } },
+  },
+  paeds: { acute: { severe: 2, moderate: 3, mild: 4 }, chronic: { severe: 3, moderate: 4, mild: 5 } },
+};
+const LIFE_LIMB_RE = /necrotiz\w*|necrotis\w*|compartment syndrome|pulseless|cold (?:pale )?limb|torsion|tense swelling|التهاب\s*اللفافة\s*الناخر|متلازمة\s*الحيز|طرف\s*بارد/i;
+const SWEAT_RE = /diaphore\w*|sweat\w*|clammy|تعرق|عرق\s*بارد/i;
+
+function evaluatePainPrimary({ vitals, answers, isPediatric, chronicity, pathway, text = '', candidateKeys = [] }) {
   const candidates = [];
   const applied = [];
   const pain = vitals.pain;
-  if (pain == null) return { candidates, applied };
+  if (pain == null || pain < 1) return { candidates, applied };
   const locAnswer = answerText(answers.pain_location);
   const saidCentral = /central|مركزي|داخلي/.test(locAnswer);
-  const saidPeripheral = /peripheral|طرفي|خارجي/.test(locAnswer);
-  const central = saidCentral || (!saidPeripheral && CENTRAL_PAIN_PATHWAYS.has(pathway));
-  const where = saidCentral ? 'central' : central ? 'central (from the complaint)' : 'peripheral';
+  // Chest-wall / musculoskeletal pain is peripheral in CTAS (soft tissue, axial skeleton).
+  const saidPeripheral = /peripheral|طرفي|خارجي/.test(locAnswer)
+    || /chest wall|tender (?:on|to) (?:pressing|palpation)|reproducible (?:on|with) (?:pressing|palpation)|\brib\b|muscul\w*|ألم\s*جدار\s*الصدر|يؤلم\s*عند\s*الضغط/i.test(text);
+  const lifeLimb = LIFE_LIMB_RE.test(text) || /^(نعم|yes|true|1)$/i.test(String(answers.pain_life_limb_threat ?? '').trim());
+  // Complaint not yet confirmed: central if any suggested complaint is central, or the words name a body
+  // cavity or organ (safer while the nurse confirms).
+  const pendingCentral = !pathway && (candidateKeys.some((k) => CENTRAL_PAIN_PATHWAYS.has(k))
+    || /abdom\w*|flank|loin|chest|head(?:ache)?|pelvi\w*|testic\w*|scrot\w*|\beye\b|بطن|خاصرة|صدر|رأس|صداع|حوض|خصية|عين/i.test(text));
+  const central = saidCentral || lifeLimb || (!saidPeripheral && (CENTRAL_PAIN_PATHWAYS.has(pathway) || pendingCentral));
+  const where = lifeLimb && !saidCentral && !CENTRAL_PAIN_PATHWAYS.has(pathway) ? 'peripheral site, life/limb threat → central'
+    : saidCentral ? 'central' : central ? 'central (from the complaint)' : 'peripheral';
   const whereAr = central ? 'مركزي' : 'طرفي';
-  const chronic = isChronicUnchanged(chronicity?.status)
-    || /chronic|مزمن/.test(answerText(answers.pain_duration_type));
-  // Acute-on-chronic / worse / new → allow pain upgrades
-  const allowAcutePain = !chronic || isAcuteAcuity(chronicity?.status);
-  if (pain >= 8) {
-    if (isPediatric && allowAcutePain) {
-      pushCandidate(candidates, { level: 2, rule_id: 'pain_ped_severe', label_en: `Severe pediatric pain ${pain}/10 → CTAS 2`, label_ar: 'ألم شديد أطفال' });
-    } else if (central && allowAcutePain) {
-      pushCandidate(candidates, { level: 2, rule_id: 'pain_central_acute', label_en: `Severe ${where} acute pain ${pain}/10 → CTAS 2`, label_ar: `ألم ${whereAr} حاد شديد` });
-    } else if (allowAcutePain) {
-      pushCandidate(candidates, { level: 3, rule_id: 'pain_severe', label_en: `Severe pain ${pain}/10 → CTAS 3`, label_ar: 'ألم شديد' });
-    } else {
-      applied.push({
-        label_en: `Severe pain ${pain}/10 — chronic unchanged, acute pain upgrade suppressed`,
-        label_ar: `ألم شديد ${pain}/10 — مزمن مستقر، كُبح ترقية الألم الحاد`,
-        result: 'chronicity_gate',
-      });
-    }
-  } else if (pain >= 4 && allowAcutePain) {
-    if (isPediatric) {
-      pushCandidate(candidates, { level: 3, rule_id: 'pain_ped_moderate', label_en: `Moderate pediatric pain ${pain}/10 → CTAS 3`, label_ar: 'ألم متوسط أطفال' });
-    } else if (central) {
-      pushCandidate(candidates, { level: 3, rule_id: 'pain_central_moderate', label_en: `Moderate ${where} acute pain ${pain}/10 → CTAS 3`, label_ar: `ألم ${whereAr} متوسط حاد` });
-    } else {
-      pushCandidate(candidates, { level: 4, rule_id: 'pain_moderate', label_en: `Moderate pain → CTAS 4`, label_ar: 'ألم متوسط' });
-    }
-  } else if (pain >= 1) {
-    if (allowAcutePain && pain < 4 && isPediatric) {
-      pushCandidate(candidates, { level: 4, rule_id: 'pain_ped_mild', label_en: `Mild pediatric pain ${pain}/10 → CTAS 4`, label_ar: 'ألم خفيف أطفال' });
-    } else if (allowAcutePain && pain < 4 && central) {
-      pushCandidate(candidates, { level: 4, rule_id: 'pain_central_mild', label_en: `Mild ${where} acute pain ${pain}/10 → CTAS 4`, label_ar: `ألم ${whereAr} خفيف حاد` });
-    } else {
-      pushCandidate(candidates, pain >= 4
-        ? { level: 5, rule_id: 'pain_chronic', label_en: `Chronic pain ${pain}/10, usual pattern → CTAS 5`, label_ar: 'ألم مزمن بنمطه المعتاد' }
-        : { level: 5, rule_id: 'pain_mild', label_en: `Mild pain ${pain}/10 → CTAS 5`, label_ar: 'ألم خفيف' });
-    }
-    applied.push({ label_en: `Pain ${pain}/10`, label_ar: `ألم ${pain}/10`, result: 'noted' });
+  const chronicStated = isChronicUnchanged(chronicity?.status) || /chronic|مزمن/.test(answerText(answers.pain_duration_type));
+  // Objective signs of sympathetic response → triage as acute (CTAS 2025 definition of chronic pain).
+  const objective = [];
+  if (!isPediatric && vitals.hr != null && vitals.hr > 100) objective.push(`HR ${vitals.hr}`);
+  if (!isPediatric && vitals.sbp != null && vitals.sbp >= 160) objective.push(`SBP ${vitals.sbp}`);
+  if (SWEAT_RE.test(text)) objective.push('diaphoresis');
+  const chronic = chronicStated && !isAcuteAcuity(chronicity?.status) && objective.length === 0;
+  const band = pain >= 8 ? 'severe' : pain >= 4 ? 'moderate' : 'mild';
+  const dur = chronic ? 'chronic' : 'acute';
+  const level = isPediatric ? CTAS_PAIN_TABLE.paeds[dur][band] : CTAS_PAIN_TABLE.adult[central ? 'central' : 'peripheral'][dur][band];
+  const bandAr = { severe: 'شديد', moderate: 'متوسط', mild: 'خفيف' }[band];
+  const label_en = isPediatric
+    ? `${band[0].toUpperCase()}${band.slice(1)} ${dur} paediatric pain ${pain}/10 → CTAS ${level}`
+    : `${band[0].toUpperCase()}${band.slice(1)} ${where} ${dur} pain ${pain}/10 → CTAS ${level}`;
+  const label_ar = isPediatric ? `ألم ${bandAr} ${chronic ? 'مزمن' : 'حاد'} (طفل) ${pain}/10 → CTAS ${level}`
+    : `ألم ${whereAr} ${bandAr} ${chronic ? 'مزمن' : 'حاد'} ${pain}/10 → CTAS ${level}`;
+  pushCandidate(candidates, { level, rule_id: `pain_${isPediatric ? 'ped' : central ? 'central' : 'peripheral'}_${dur}_${band}`, label_en, label_ar });
+  if (chronicStated && !chronic) {
+    applied.push({ label_en: `Chronic pain with objective signs (${objective.join(', ') || 'acute change'}) → triaged as acute`,
+      label_ar: 'ألم مزمن مع علامات موضوعية → يُعامل كحاد', result: 'ctas2025_chronic_as_acute' });
   }
+  applied.push({ label_en: `Pain ${pain}/10 (CTAS 2025 pain table)`, label_ar: `ألم ${pain}/10`, result: `CTAS ${level}` });
   return { candidates, applied };
 }
 
@@ -740,7 +748,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     answers,
   });
   const loc = evaluateLocPrimary({ vitals: normalized.vitals, flags: normalized.flags });
-  const pain = evaluatePainPrimary({ vitals: normalized.vitals, answers, isPediatric, chronicity, pathway });
+  const pain = evaluatePainPrimary({ vitals: normalized.vitals, answers, isPediatric, chronicity, pathway: complaint.needs_confirmation ? null : pathway, text: `${tx} ${patient.chief_complaint || ''}`, candidateKeys: (complaint.resolution?.candidates || []).map((x) => x.complaintKey) });
 
   // Library CTAS effects only (destination-only excluded inside applyModifierLibraryEffects)
   const lib = applyModifierLibraryEffects(answers, 5);
