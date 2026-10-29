@@ -123,7 +123,9 @@ export function parseBaselineSpo2(patient = {}, answers = {}, transcript = '') {
   const direct = parseFloat(patient.baseline_spo2 ?? answers.baseline_spo2);
   if (Number.isFinite(direct)) return direct;
   const tx = `${transcript || ''} ${patient.transcription || ''} ${patient.onset_duration || ''}`;
-  const m = tx.match(/(?:baseline|usual(?:ly)?|normally|runs? at|المعتاد|معتاد|عادة|خط\s*الأساس)[^\d]{0,30}(\d{2})\s*%?/i)
+  // Same sentence only, and not when the family says they do not know it.
+  if (/(?:do(?:es)?\s*n[o']t|not|never)\s+know\w*[^.]{0,30}(?:usual|baseline|normal)|(?:usual|baseline)[^.]{0,20}(?:unknown|not known)|لا\s*(?:ي|ن|أ)عرف\w*[^.]{0,30}(?:المعتاد|العادي)/i.test(tx)) return null;
+  const m = tx.match(/(?:baseline|usual(?:ly)?|normally|runs? at|المعتاد|معتاد|عادة|خط\s*الأساس)[^\d.!?\n]{0,30}(\d{2})\s*%?/i)
     || tx.match(/(\d{2})\s*%\s*(?:baseline|usual|at\s+home|منزلي|معتاد)/i);
   if (m) {
     const n = parseFloat(m[1]);
@@ -429,6 +431,38 @@ function evaluatePainPrimary({ vitals, answers, isPediatric, chronicity, pathway
       label_ar: 'ألم مزمن مع علامات موضوعية → يُعامل كحاد', result: 'ctas2025_chronic_as_acute' });
   }
   applied.push({ label_en: `Pain ${pain}/10 (CTAS 2025 pain table)`, label_ar: `ألم ${pain}/10`, result: `CTAS ${level}` });
+  return { candidates, applied };
+}
+
+/**
+ * CTAS 2025 «Extremity weakness / symptoms of CVA»: wake-up stroke or within the therapeutic
+ * window → CTAS 2; outside the window or resolved → CTAS 3. Window = 24 h from onset / last known
+ * well (thrombectomy window; Canadian Stroke Best Practice). Onset unknown → treated as within.
+ */
+export const STROKE_WINDOW_HOURS = 24;
+function evaluateStrokeWindow({ pathway, text }) {
+  const candidates = [];
+  const applied = [];
+  if (pathway !== 'stroke_cva') return { candidates, applied };
+  const t = String(text || '');
+  const resolved = /\b(?:resolved|now (?:normal|back to normal)|back to (?:normal|baseline)|completely better|symptoms? (?:gone|disappeared))\b|زال|اختف\w*|رجع\s*طبيعي/i.test(t);
+  const wakeUp = /woke (?:up )?with|wake[- ]?up stroke|on waking|صحي\s*(?:من\s*النوم)?\s*و|استيقظ/i.test(t);
+  let hours = null;
+  const m = t.match(/(\d+(?:[.,]\d+)?)\s*(min(?:ute)?s?|hours?|hrs?|h\b|days?|دقيق\w*|ساع\w*|يوم|أيام)/i);
+  if (m) {
+    const n = parseFloat(m[1].replace(',', '.'));
+    const u = m[2].toLowerCase();
+    hours = /^min|دقيق/.test(u) ? n / 60 : /^day|يوم|أيام/.test(u) ? n * 24 : n;
+  }
+  if (resolved) {
+    pushCandidate(candidates, { level: 3, rule_id: 'stroke_resolved', label_en: 'Stroke symptoms resolved → CTAS 3', label_ar: 'أعراض سكتة زالت → CTAS 3' });
+  } else if (wakeUp || hours == null || hours <= STROKE_WINDOW_HOURS) {
+    const why = wakeUp ? 'wake-up stroke' : hours == null ? 'onset not stated — treated as within the window' : `onset ${Math.round(hours * 10) / 10} h ago`;
+    pushCandidate(candidates, { level: 2, rule_id: 'stroke_within_window', label_en: `Stroke symptoms, ${why} → CTAS 2 (stroke team)`, label_ar: 'أعراض سكتة ضمن النافذة العلاجية → CTAS 2' });
+    applied.push({ label_en: `Stroke within therapeutic window (≤ ${STROKE_WINDOW_HOURS} h, CTAS 2025)`, label_ar: 'سكتة ضمن النافذة العلاجية', result: 'CTAS 2' });
+  } else {
+    pushCandidate(candidates, { level: 3, rule_id: 'stroke_outside_window', label_en: `Stroke symptoms > ${STROKE_WINDOW_HOURS} h → CTAS 3`, label_ar: 'أعراض سكتة خارج النافذة → CTAS 3' });
+  }
   return { candidates, applied };
 }
 
@@ -779,6 +813,8 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
   for (const c of resp.candidates) pushCandidate(primaryCandidates, { ...c, source: 'primary_respiratory' });
   for (const c of loc.candidates) pushCandidate(primaryCandidates, { ...c, source: 'primary_loc' });
   for (const c of pain.candidates) pushCandidate(primaryCandidates, { ...c, source: 'primary_pain' });
+  const stroke = evaluateStrokeWindow({ pathway: complaint.needs_confirmation ? null : pathway, text: `${tx} ${patient.chief_complaint || ''}` });
+  for (const c of stroke.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
 
   for (const a of lib.applied || []) {
     if (a.ctas_effect != null) {
@@ -879,6 +915,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     ...resp.applied,
     ...loc.applied,
     ...pain.applied,
+    ...stroke.applied,
   ];
 
   const assessment_trail = {

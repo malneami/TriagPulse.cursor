@@ -330,7 +330,7 @@ export function evaluateComorbidityRules(input = {}) {
   // Known chronic low oxygen with a low reading and no usual level yet: ask for it (rule A).
   const chronicLowO2 = c.cyanotic || ['copd', 'home_oxygen', 'interstitial_lung'].some((id) => c.has(id));
   const hasUsual = Number.isFinite(parseFloat(c.patient.baseline_spo2 ?? (input.answers || {}).baseline_spo2))
-    || /(?:baseline|usual(?:ly)?|normally|runs? at|المعتاد|معتاد|عادة)[^\d]{0,30}\d{2}/i.test(c.text);
+    || /(?:baseline|usual(?:ly)?|normally|runs? at|المعتاد|معتاد|عادة)[^\d.!?\n]{0,30}\d{2}/i.test(c.text);
   if (chronicLowO2 && c.spo2 != null && c.spo2 < 95 && !hasUsual && (input.answers || {}).baseline_spo2 == null) {
     confirmQuestions.push({
       id: 'baseline_spo2', field: 'baseline_spo2',

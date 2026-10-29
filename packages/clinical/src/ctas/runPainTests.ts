@@ -34,6 +34,20 @@ export function runPainTests(assert: Assert) {
   assert(bad.length === 0, 'PN-02', 'Paediatric CTAS 2025 pain table: all 6 cells', bad.join('; '));
   assert(lvl({ age: '40', ...C, pain_score: 9, hr: '112' }, chronic) === 2, 'PN-03', 'Chronic central severe pain with tachycardia → triaged as acute (2)');
   assert(lvl({ age: '40', chief_complaint: 'leg pain, swelling, suspected necrotizing fasciitis', pain_score: 8 }) === 2, 'PN-04', 'Peripheral site, suspected life/limb threat → scored as central (2)');
+  // Complaint matching and CTAS 2025 stroke window (physician-reviewed A4-1, A2-1, A2-5)
+  const stroke = { age: '66', hr: '88', bp_systolic: '170', pain_score: 0 };
+  assert(lvl({ ...stroke, chief_complaint: 'weakness of right arm and slurred speech for 1 hour' }) === 2, 'PN-09', 'A4-1 one-sided arm weakness + slurred speech, 1 h → stroke, CTAS 2 (was general weakness, 4)');
+  assert(lvl({ ...stroke, chief_complaint: 'left facial droop, woke up with it' }) === 2, 'PN-10', 'Wake-up stroke → CTAS 2');
+  assert(lvl({ ...stroke, chief_complaint: 'right arm weakness 3 days ago' }) === 3, 'PN-11', 'Stroke symptoms > 24 h → CTAS 3');
+  assert(lvl({ ...stroke, chief_complaint: 'slurred speech this morning, now resolved, back to normal' }) === 3, 'PN-12', 'Resolved symptoms (TIA) → CTAS 3');
+  assert(lvl({ ...stroke, chief_complaint: 'generalised weakness and fatigue for a week', hr: '80', bp_systolic: '130' }) >= 4, 'PN-13', 'Generalised weakness is not a stroke');
+  const rc = (cc: string, tx = '') => (computeLiveCTAS as any)({ ...base, age: '40', chief_complaint: cc, transcription: tx }, {}).assessment_trail.complaint_resolution;
+  const top = (r) => (r.selected || r.candidates?.[0] || {}).complaintKey;
+  assert(top(rc('fever', 'fever and rigors, confused at times')) === 'fever', 'PN-14', 'A2-1 "fever" in the complaint field outranks "confused" in the story');
+  assert(top(rc('fever and joint pain, known sickle cell disease')) === 'fever', 'PN-15', 'A2-5 fever + joint pain without injury → fever, not lower-extremity injury');
+  assert(top(rc('fever and burning urination')) !== 'burn', 'PN-16', '"Burning urination" is not a burn');
+  assert(top(rc('ankle sprain')) === 'lower_extremity_injury' && top(rc('chest wall pain after exercise')) === 'chest_pain_non_cardiac', 'PN-17', 'Ankle sprain and chest-wall pain are matched to a complaint');
+
   // Physician-reviewed adult cases (Set 4, 28 Oct 2026)
   assert(lvl({ age: '37', chief_complaint: 'flank pain', pain_score: 8, hr: '100', bp_systolic: '140' }) === 2, 'PN-05', 'A4-5 renal colic 8/10 → 2 (CTAS 2025, option A)');
   assert(lvl({ age: '42', chief_complaint: 'sudden severe headache', pain_score: 9, hr: '92', bp_systolic: '165' }) === 2, 'PN-06', 'A4-4 thunderclap headache 9/10 → 2');

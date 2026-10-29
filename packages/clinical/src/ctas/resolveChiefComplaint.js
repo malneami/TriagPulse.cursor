@@ -7,7 +7,7 @@
  */
 import { CTAS_DB } from './ctasDatabase.js';
 
-export const COMPLAINT_RESOLVER_VERSION = '1.0.0';
+export const COMPLAINT_RESOLVER_VERSION = '1.1.0';
 export const AUTO_MIN = 0.82;
 export const AUTO_MARGIN = 0.12;
 
@@ -19,7 +19,8 @@ const EXTRA_SYNONYMS = {
   ],
   chest_pain_non_cardiac: [
     'chest pain non cardiac', 'non-cardiac chest', 'no cardiac features',
-    'musculoskeletal chest pain', 'reproducible chest pain',
+    'musculoskeletal chest pain', 'reproducible chest pain', 'chest wall pain', 'chest wall',
+    'ألم جدار الصدر',
     'ألم صدري غير قلبي', 'ألم صدر عضلي',
   ],
   shortness_of_breath: [
@@ -68,6 +69,7 @@ const EXTRA_SYNONYMS = {
   ],
   uti: [
     'uti', 'dysuria', 'urinary symptoms', 'burning urine', 'flank pain uti',
+    'burning urination', 'burning on urination', 'burning micturition', 'painful urination', 'pain on passing urine',
     'التهاب مسالك', 'بول مؤلم', 'حرقة بول',
   ],
   back_pain: ['back pain', 'lumbar pain', 'ألم الظهر', 'ظهر'],
@@ -77,10 +79,12 @@ const EXTRA_SYNONYMS = {
     'ألم في المفصل', 'ألم المفصل', 'ألم المفاصل', 'ألم في المفاصل', 'تورم المفصل', 'تورم في المفصل',
     'عرج', 'يعرج', 'عرج في المشي', 'ما يمشي', 'لا يمشي', 'رافض يمشي',
     'leg pain', 'knee pain', 'ankle pain', 'foot pain', 'neck pain',
+    'ankle sprain', 'sprained ankle', 'twisted ankle', 'ankle injury', 'knee injury', 'foot injury', 'leg injury',
+    'التواء الكاحل', 'التواء القدم', 'إصابة الكاحل', 'إصابة الركبة',
     'ألم الساق', 'ألم الركبة', 'ألم القدم', 'ألم الرقبة', 'رقبة',
   ],
   upper_extremity_injury: [
-    'arm pain', 'shoulder pain', 'wrist pain', 'hand injury',
+    'arm pain', 'shoulder pain', 'wrist pain', 'hand injury', 'forearm injury', 'wrist injury', 'arm injury', 'finger injury',
     'ألم الذراع', 'ألم الكتف', 'إصابة اليد',
   ],
   traumatic_back_spine: [
@@ -203,13 +207,25 @@ const LEXICON = buildLexicon();
 /**
  * Score one complaint entry against haystack text.
  */
-function scoreEntry(entry, haystack) {
+/** Focal neurological deficit wording (stroke), English and Arabic. */
+export const FOCAL_NEURO_RE = new RegExp([
+  String.raw`\b(?:right|left|one[- ]sided|unilateral)[- ](?:sided )?(?:arm|leg|hand|face|body|side)\b[^.;,]{0,20}(?:weak\w*|numb\w*|heav\w*|paraly\w*)`,
+  String.raw`(?:weak\w*|numb\w*|heav\w*|paraly\w*)\s+(?:of|in)\s+(?:the\s+)?(?:right|left)\s+(?:arm|leg|hand|side|face)`,
+  String.raw`slurred speech|facial (?:droop|asymmetry|palsy)|face droop\w*|droop\w* (?:of the )?face|aphasi\w*|dysarthri\w*|(?:can.?t|cannot|unable to) (?:speak|talk|find words)|hemipare\w*|hemipleg\w*`,
+  String.raw`ضعف\s*(?:في\s*)?(?:اليد|الذراع|الرجل|الساق|الجهة|الطرف|نصف)\s*(?:ال)?(?:يمنى|يسرى|أيمن|أيسر)`,
+  String.raw`تلعثم|ثقل\s*(?:في\s*)?(?:ال)?(?:كلام|لسان)|ميلان\s*(?:في\s*)?(?:ال)?(?:وجه|فم)|شلل\s*نصفي|صعوبة\s*(?:في\s*)?(?:ال)?كلام`,
+].join('|'), 'i');
+const TRAUMA_RE = /injur\w*|trauma|fall|fell|twist\w*|sprain\w*|fractur\w*|hit|kick\w*|إصابة|سقط|سقوط|التواء|كسر|ضرب/i;
+
+function scoreEntry(entry, haystack, complaintText = '') {
   let score = 0;
   const matched = [];
   for (const term of entry.terms) {
     if (!term || term.length < 2) continue;
     if (haystack.includes(term)) {
-      const w = termWeight(term);
+      // A complaint named in the chief-complaint field outranks one heard only in the story.
+      let w = termWeight(term);
+      if (complaintText) w = complaintText.includes(term) ? Math.min(1, w + 0.2) : w * 0.85;
       if (w > score) score = w;
       matched.push(term);
       // Phrase exact-ish equality boost
@@ -223,6 +239,21 @@ function scoreEntry(entry, haystack) {
       score = Math.min(1, Math.max(score, 0.5) + b.boost);
       matched.push(b.phrase);
     }
+  }
+  // Focal deficit (one-sided weakness/numbness, slurred speech, facial droop) is a stroke, not general weakness.
+  const focal = FOCAL_NEURO_RE.test(haystack);
+  if (focal && entry.complaintKey === 'stroke_cva') {
+    score = Math.max(score, 0.97);
+    matched.push('focal neurological deficit');
+  }
+  if (focal && entry.complaintKey === 'general_weakness') score = Math.min(score, 0.4);
+  // Joint/limb pain with fever and no injury is not an injury complaint (e.g. sickle cell, septic joint).
+  if (/^(?:lower|upper)_extremity_injury$/.test(entry.complaintKey) && /\bfever|febrile|حمى|سخونة|حرارة/.test(haystack) && !TRAUMA_RE.test(haystack)) {
+    score = Math.min(score, 0.6);
+  }
+  // "Burning" urination / sensation is not a burn injury.
+  if (entry.complaintKey === 'burn' && /burning\s+(?:urin\w*|on urination|micturition|sensation|pee)|حرقة/.test(haystack)) {
+    score = Math.min(score, 0.2);
   }
   // Penalize stroke when heat stroke present
   if (entry.complaintKey === 'stroke_cva' && /heat\s*stroke|heatstroke|ضربة\s*شمس/.test(haystack)) {
@@ -295,7 +326,7 @@ export function resolveChiefComplaint({
 
   const scored = [];
   for (const entry of LEXICON.values()) {
-    const { score, matched_terms } = scoreEntry(entry, haystack);
+    const { score, matched_terms } = scoreEntry(entry, haystack, complaintText);
     if (score <= 0) continue;
     scored.push({
       complaintKey: entry.complaintKey,
