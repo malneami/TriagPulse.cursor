@@ -17,6 +17,7 @@ import {
   evaluateHemodynamicModifier, hypotensiveForAge, HR_REASON_QUESTION, HR_RECOUNT_QUESTION,
 } from './rules/hemodynamicRules.js';
 import { assessRespiratoryRate, RR_RECOUNT_QUESTION } from './rules/respiratoryRateRules.js';
+import { evaluatePregnancy, GESTATION_QUESTION } from './rules/pregnancyRules.js';
 import {
   detectSymptomChronicity,
   isChronicUnchanged,
@@ -816,6 +817,9 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
   for (const c of pain.candidates) pushCandidate(primaryCandidates, { ...c, source: 'primary_pain' });
   const stroke = evaluateStrokeWindow({ pathway: complaint.needs_confirmation ? null : pathway, text: `${tx} ${patient.chief_complaint || ''}` });
   for (const c of stroke.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
+  // CTAS 2025 pregnancy / postpartum modifiers (approved 2026-10-30).
+  const pregnancy = evaluatePregnancy({ patient, answers, text: `${tx} ${patient.chief_complaint || ''}` });
+  for (const c of pregnancy.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
 
   for (const a of lib.applied || []) {
     if (a.ctas_effect != null) {
@@ -917,6 +921,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     ...loc.applied,
     ...pain.applied,
     ...stroke.applied,
+    ...pregnancy.candidates.map((c) => ({ label_en: c.label_en, label_ar: c.label_ar, result: `CTAS ${c.level}` })),
   ];
 
   const assessment_trail = {
@@ -1053,7 +1058,9 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
       ...(resp.respiratory_rate?.needs_recount ? [RR_RECOUNT_QUESTION] : []),
       ...((feverPed.fever_questions || []).includes('immunisations_up_to_date') ? [FEVER_IMMUNISED_QUESTION] : []),
       ...((feverPed.fever_questions || []).includes('fever_clear_source') ? [FEVER_SOURCE_QUESTION] : []),
+      ...(pregnancy.needs_gestation ? [GESTATION_QUESTION] : []),
     ],
+    pregnancy: pregnancy.status === 'none' ? null : { status: pregnancy.status, weeks: pregnancy.weeks },
     respiratory_rate: resp.respiratory_rate || null,
   };
 }
