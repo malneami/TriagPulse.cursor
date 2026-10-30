@@ -20,7 +20,7 @@ export const FEVER_VALIDATION_CASES = [
     id: 'FEVER-02',
     name: 'Fever + tachycardia, looks unwell, <3 SIRS',
     patient: {
-      age: 50, chief_complaint: 'Fever / حمى', hr: 125, bp_systolic: 118, bp_diastolic: 70,
+      age: 50, chief_complaint: 'Fever / حمى', hr: 115, bp_systolic: 118, bp_diastolic: 70,
       spo2: 98, rr: 18, temperature: 39.0, gcs: 15, pain_score: 2,
     },
     answers: { looks_unwell: 'نعم' },

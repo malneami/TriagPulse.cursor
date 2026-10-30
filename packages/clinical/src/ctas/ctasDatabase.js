@@ -123,7 +123,7 @@ export const CTAS_DB = {
     color: '#3333CC', label_ar: 'النساء والولادة', label_en: 'OB-GYN',
     complaints: {
       vaginal_bleed: { label_en: 'Vaginal Bleed', label_ar: 'نزيف مهبلي', default_ctas: 4, specific_modifiers: [{ modifier: 'Heavy Vaginal Bleeding +/- Pregnancy', ctas: 2 }, { modifier: 'With Recent High Risk Mechanism of Injury', ctas: 2 }, { modifier: 'Vaginal Bleeding - Normal VS', ctas: 3 }, { modifier: 'Vaginal Bleeding - Minor/Spotting', ctas: 4 }] },
-      pregnancy_over_20: { label_en: 'Pregnancy Issues > 20 weeks', label_ar: 'مشاكل الحمل > 20 أسبوع', default_ctas: 4, specific_modifiers: [{ modifier: 'Active Vaginal Bleeding', ctas: 1 }, { modifier: 'Actively Seizing or Postictal', ctas: 1 }, { modifier: 'Decreased Fetal Movement', ctas: 1 }, { modifier: 'No Fetal Movement', ctas: 1 }, { modifier: 'Penetrating Trauma to the Abdomen', ctas: 1 }, { modifier: 'Presenting Fetal Parts or Prolapsed Cord', ctas: 1 }, { modifier: 'Active Labor (Contractions <= 5 min.)', ctas: 2 }, { modifier: 'Decreased Fetal Movement', ctas: 2 }, { modifier: 'Hypertension SBP > 160 or DBP > 100', ctas: 2 }] },
+      pregnancy_over_20: { label_en: 'Pregnancy Issues > 20 weeks', label_ar: 'مشاكل الحمل > 20 أسبوع', default_ctas: 4, specific_modifiers: [{ modifier: 'Active Vaginal Bleeding', ctas: 1 }, { modifier: 'Actively Seizing or Postictal', ctas: 1 }, { modifier: 'No Fetal Movement', ctas: 1 }, { modifier: 'Penetrating Trauma to the Abdomen', ctas: 1 }, { modifier: 'Presenting Fetal Parts or Prolapsed Cord', ctas: 1 }, { modifier: 'Active Labor (Contractions <= 5 min.)', ctas: 2 }, { modifier: 'Decreased Fetal Movement', ctas: 2 }, { modifier: 'Hypertension SBP > 160 or DBP > 100', ctas: 2 }] },
     }
   },
   SKIN: {

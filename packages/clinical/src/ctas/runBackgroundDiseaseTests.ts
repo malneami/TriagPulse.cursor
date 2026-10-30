@@ -39,6 +39,10 @@ export function runBackgroundDiseaseTests(assert: Assert) {
     'BD-31', 'Usual SpO₂ already in the history → no question');
   assert(lvl({ ...chd, spo2: '82' }, { baseline_spo2: '84' }) > 2 && lvl({ ...chd, spo2: '82' }, { baseline_spo2: 'unknown' }) === 1, 'BD-32', 'Answer "80–84" (84) → at usual; "unknown" → standard');
 
+  assert(lvl({ ...chd, spo2: '84', chief_complaint: 'cough, known cyanotic heart disease' }, {}) === 1
+      && lvl({ ...chd, spo2: '84', transcription: 'Parents do not know the usual saturation. SpO2 84.', chief_complaint: 'cough, cyanotic heart disease' }) === 1,
+    'BD-34', '"Parents do not know the usual saturation. SpO₂ 84" is NOT read as usual = 84 (standard cut-off → CTAS 1)');
+
   // B. Cyanotic heart disease
   const cy = 'known cyanotic congenital heart disease, Glenn';
   assert(floorOf(`2 year old cough, ${cy}`, { age: '2', spo2: '81' }) === 3, 'BD-12', 'Cyanotic CHD + cough → at least CTAS 3');

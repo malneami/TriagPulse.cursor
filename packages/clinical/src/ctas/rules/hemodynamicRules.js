@@ -96,7 +96,11 @@ export const ED_HR_CENTILES = [
 ];
 
 /** Adult heart-rate limits (CTAS hemodynamic modifier, approved T1–T3 and 2026-10-25). */
-export const ADULT_HR_LIMITS = { normal_high: 100, never_explained: 130, low_ctas3: 50, low_ctas2: 40 };
+/** Adult limits — CTAS 2025 (approved 2026-10-29): HR > 120 → 2 (auto, never explained); explained 101–120 → 3. */
+export const ADULT_HR_LIMITS = { normal_high: 100, never_explained: 121, low_ctas3: 50, low_ctas2: 40 };
+/** Complaints in which a slow heart rate counts as symptomatic (CTAS 2025 «significant bradycardia»). */
+export const BRADY_SYMPTOM_PATHWAYS = new Set(['syncope', 'chest_pain_cardiac', 'chest_pain_non_cardiac', 'general_weakness', 'palpitations', 'shortness_of_breath', 'altered_loc', 'confusion']);
+const BRADY_SYMPTOM_RE = /dizz\w*|faint\w*|syncop\w*|pass(?:ed)? out|light-?headed|collaps\w*|chest pain|weak\w*|confus\w*|short(?:ness)? of breath|دوخة|دوار|إغماء|اغماء|ضعف|ألم\s*(?:في\s*)?(?:ال)?صدر|ضيق\s*تنفس/i;
 
 /** Complaints where unexplained tachycardia is a cardiac finding → CTAS 2 + ECG. */
 export const CARDIAC_TACHY_PATHWAYS = new Set([
@@ -176,7 +180,7 @@ export const HR_RECOUNT_QUESTION = {
  *   needs_reason: boolean, needs_recount: boolean, display: 'normal'|'explained'|'abnormal'|'critical',
  *   rule_id: string, label_en: string, label_ar: string }}
  */
-export function assessHeartRate({ hr, age, temp = null, answers = {}, pathway = '' } = {}) {
+export function assessHeartRate({ hr, age, temp = null, answers = {}, pathway = '', text = '' } = {}) {
   const h = hr == null || hr === '' ? NaN : Number(hr);
   if (!Number.isFinite(h) || h < 20 || h > 250) return null;
   const a = age == null || age === '' ? NaN : parseFloat(age);
@@ -205,6 +209,10 @@ export function assessHeartRate({ hr, age, temp = null, answers = {}, pathway = 
       return { ...base, row, direction: 'low', band: 'beyond', level: 2, alert: true, display: 'critical', rule_id: 'hr_adult_brady_severe',
         label_en: `HR ${h} — severe bradycardia (≤ ${L.low_ctas2})`, label_ar: `نبض ${h} — بطء شديد` };
     }
+    if (h < L.low_ctas3 && (BRADY_SYMPTOM_PATHWAYS.has(pathway) || BRADY_SYMPTOM_RE.test(text) || isYesAns(answers.brady_symptoms))) {
+      return { ...base, row, direction: 'low', band: 'beyond', level: 2, alert: true, display: 'critical', rule_id: 'hr_adult_brady_symptomatic',
+        label_en: `HR ${h} — symptomatic bradycardia (< ${L.low_ctas3}) → CTAS 2`, label_ar: `نبض ${h} — بطء مع أعراض → CTAS 2` };
+    }
     if (h < L.low_ctas3) {
       return { ...base, row, direction: 'low', band: 'sd1', level: 3, display: 'abnormal', rule_id: 'hr_adult_brady',
         label_en: `HR ${h} — bradycardia (< ${L.low_ctas3})`, label_ar: `نبض ${h} — بطء` };
@@ -212,13 +220,14 @@ export function assessHeartRate({ hr, age, temp = null, answers = {}, pathway = 
     if (h <= L.normal_high) return { ...base, row, rule_id: 'hr_normal', label_en: `HR ${h} normal`, label_ar: `نبض ${h} طبيعي` };
     if (h >= L.never_explained) {
       return { ...base, row, direction: 'high', band: 'beyond', level: 2, ceiling: true, alert: true, display: 'critical', rule_id: 'hr_adult_severe',
-        label_en: `HR ${h} ≥ ${L.never_explained} — severe tachycardia, never treated as explained`, label_ar: `نبض ${h} — تسرع شديد لا يُعدّ مفسَّراً` };
+        label_en: `HR ${h} > 120 — hemodynamic compromise (CTAS 2025), never treated as explained → CTAS 2`, label_ar: `نبض ${h} — تسرع شديد لا يُعدّ مفسَّراً` };
     }
     const why = explainWith();
     if (why) {
       const w = REASON_WORDS[why] || REASON_WORDS.documented;
-      return { ...base, row, direction: 'high', band: 'sd1', explained: true, explanation: why, display: 'explained', rule_id: 'hr_adult_explained',
-        label_en: `HR ${h} — tachycardia explained by ${w.en}; does not raise CTAS`, label_ar: `نبض ${h} — تسرع يفسره ${w.ar}؛ لا يرفع CTAS` };
+      // CTAS 2025: «pulse rate abnormal, hemodynamically stable» → CTAS 3.
+      return { ...base, row, direction: 'high', band: 'sd1', level: 3, explained: true, explanation: why, display: 'explained', rule_id: 'hr_adult_explained',
+        label_en: `HR ${h} — tachycardia explained by ${w.en}; abnormal pulse, stable → CTAS 3`, label_ar: `نبض ${h} — تسرع يفسره ${w.ar} → CTAS 3` };
     }
     if (reason === 'unexplained' || cardiac) {
       return { ...base, row, direction: 'high', band: 'sd2', level: 2, alert: true, display: 'critical', needs_reason: reason == null,
@@ -269,6 +278,15 @@ export function assessHeartRate({ hr, age, temp = null, answers = {}, pathway = 
 }
 
 /** Hypotension for age: < 70 + 2×age (1–10 y), < 90 from 10 y, < 60 under 1 y. */
+/** Usual systolic BP from the nurse's answer or the dictation ("usual BP 160/90"). */
+export function usualSystolic(answers = {}, text = '') {
+  const direct = parseFloat(answers.usual_sbp);
+  if (Number.isFinite(direct) && direct >= 70 && direct <= 260) return direct;
+  const m = String(text).match(/(?:usual(?:ly)?|normal(?:ly)?|baseline|at home)\s+(?:blood pressure|bp|systolic(?: bp)?)\b[^\d.\n]{0,15}(\d{2,3})(?:\s*\/\s*\d{2,3})?|(?:الضغط|ضغطه|ضغطها)\s*(?:ال)?(?:معتاد|عادة|العادي)[^\d.\n]{0,10}(\d{2,3})/i);
+  const v = m ? parseFloat(m[1] || m[2]) : NaN;
+  return Number.isFinite(v) && v >= 70 && v <= 260 ? v : null;
+}
+
 export function hypotensiveForAge(sbp, age) {
   if (sbp == null || sbp === '' || !Number.isFinite(Number(sbp))) return false;
   const s = Number(sbp);
@@ -327,6 +345,7 @@ export function evaluateHemodynamicModifier({
   age = null,
   answers = {},
   pathway = '',
+  text = '',
 }) {
   const norms = getNorms(ageGroup);
   const sbp = vitals.sbp;
@@ -336,7 +355,7 @@ export function evaluateHemodynamicModifier({
   const th = HEMODYNAMIC_THRESHOLDS;
 
   const tachy = classifyTachycardia({ vitals, flags, appearance, norms, isPediatric });
-  const hrA = assessHeartRate({ hr, age, temp: vitals.temp, answers, pathway });
+  const hrA = assessHeartRate({ hr, age, temp: vitals.temp, answers, pathway, text });
   // Hypotension: adult < 90; children by age (< 60 under 1 y, < 70 + 2×age to 10 y, < 90 after).
   const hypotensive = isPediatric ? hypotensiveForAge(sbp, age) : (sbp != null && sbp < th.adult_hypotension_sbp);
   const meta = HEMODYNAMIC_RULES_META;
@@ -354,6 +373,14 @@ export function evaluateHemodynamicModifier({
   // ── Shock CTAS 1 ──
   const shockFeatures = [];
   if (!isPediatric && sbp != null && sbp < th.adult_shock_sbp) shockFeatures.push(`SBP ${sbp} < ${th.adult_shock_sbp}`);
+  // CTAS 2025 shock (approved 2026-10-29): adult SBP 70–79 with any sign of hypoperfusion → CTAS 1.
+  const hypoperfusion = [];
+  if (gcs != null && gcs < 15) hypoperfusion.push(`GCS ${gcs}`);
+  if (hr != null && hr > 120) hypoperfusion.push(`HR ${hr}`);
+  if (spo2 != null && spo2 < 90) hypoperfusion.push(`SpO₂ ${spo2}`);
+  if (flags.poor_perfusion || /cold(?:,| and)? clammy|clammy|mottl\w*|cold peripher\w*|cool peripher\w*|بارد\w*\s*و?\s*متعرق|برودة\s*(?:ال)?أطراف|تبقع/i.test(text)) hypoperfusion.push('poor perfusion');
+  const adultLowShock = !isPediatric && sbp != null && sbp >= th.adult_shock_sbp && sbp < 80 && hypoperfusion.length > 0;
+  if (adultLowShock) shockFeatures.push(`SBP ${sbp} with ${hypoperfusion.join(', ')}`);
   if (appearance.shocked) shockFeatures.push('shocked_appearance');
   if (flags.septic_shock) shockFeatures.push('septic_shock');
   if (gcs != null && gcs <= 8) shockFeatures.push(`GCS ${gcs}`);
@@ -365,7 +392,7 @@ export function evaluateHemodynamicModifier({
     shockFeatures.push('pediatric_poor_perfusion_with_compromise');
   }
   const pedShock = isPediatric && flags.poor_perfusion && (appearance.shocked || (gcs != null && gcs < 15) || hypotensive);
-  if (shockFeatures.length && ((!isPediatric && sbp != null && sbp < th.adult_shock_sbp) || appearance.shocked || flags.septic_shock || (gcs != null && gcs <= 8) || pedShock || (isPediatric && hypotensive))) {
+  if (shockFeatures.length && ((!isPediatric && sbp != null && sbp < th.adult_shock_sbp) || appearance.shocked || flags.septic_shock || (gcs != null && gcs <= 8) || pedShock || (isPediatric && hypotensive) || adultLowShock)) {
     return out({
       level: 1,
       rule_id: 'hemo_shock',
@@ -380,7 +407,9 @@ export function evaluateHemodynamicModifier({
   // Heart rate alone never gives CTAS 1: only with hypotension, poor perfusion, shock signs or GCS < 15.
   if (hrLevel === 2) {
     const unstable = [];
-    if (hypotensive) unstable.push(`SBP ${sbp}`);
+    // Adults: SBP < 80, or SBP < 90 with HR ≥ 130 (approved T2, 2026-10-16), makes it CTAS 1.
+    // HR 121–129 with SBP 80–89 stays compromise → 2 (CTAS 2025; physician review A2-1).
+    if (hypotensive && (isPediatric || sbp < 80 || (hr != null && hr >= 130))) unstable.push(`SBP ${sbp}`);
     if (flags.poor_perfusion) unstable.push('poor perfusion');
     if (appearance.shocked) unstable.push('shock signs');
     if (gcs != null && gcs < 15) unstable.push(`GCS ${gcs}`);
@@ -407,6 +436,14 @@ export function evaluateHemodynamicModifier({
   const compromise = [];
   if (hypotensive) compromise.push(`hypotension for age SBP ${sbp}`);
   if (flags.postural_hypotension) compromise.push('postural_hypotension');
+  // CTAS 2025 «lower than expected for a given patient»: SBP ≥ 40 below the usual (approved 2026-10-29).
+  const usualSbp = usualSystolic(answers, text);
+  if (!isPediatric && sbp != null && usualSbp != null && sbp >= th.adult_hypotension_sbp && usualSbp - sbp >= 40) {
+    compromise.push(`SBP ${sbp}, ${usualSbp - sbp} below usual ${usualSbp}`);
+  }
+  if (!isPediatric && /(?:dizz\w*|faint\w*|light-?headed)\s+(?:on|when)\s+(?:standing|getting up|stand\w*)|postural|orthostatic|دوخة\s*(?:عند|لما)\s*(?:الوقوف|يقوم|تقوم)/i.test(text)) {
+    compromise.push('postural symptoms');
+  }
   if (flags.poor_perfusion) compromise.push('poor_perfusion');
   // A measured rate is judged by the heart-rate table above; the answer counts alone only without one.
   if (flags.unexplained_tachycardia && hr == null) compromise.push('unexplained_tachycardia');

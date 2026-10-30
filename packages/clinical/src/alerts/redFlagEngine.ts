@@ -117,7 +117,13 @@ export function detectRedFlags(
   const ageYears = toNumber(patient.age);
   const pediatric = ageYears !== null && ageYears < 18;
   // Children: hypotension for age, as the CTAS rule reads it; adults: the library thresholds.
-  if (pediatric ? hypotensiveForAge(sbp, ageYears) : (sbp !== null && sbp < th.sbp_urgent)) {
+  // CTAS 2025 shock (approved 2026-10-29): adult SBP 70–79 with hypoperfusion → CTAS 1.
+  const lowShock = !pediatric && sbp !== null && sbp >= th.sbp_critical && sbp < 80
+    && ((gcs !== null && gcs < 15) || (hr !== null && hr > 120) || (spo2 !== null && spo2 < 90)
+      || /cold(?:,| and)? clammy|clammy|mottl\w*|cold peripher\w*/i.test(complaintText));
+  if (lowShock) {
+    add(1, `ضغط انقباضي ${sbp} مع علامات نقص التروية — صدمة`, `SBP ${sbp} with hypoperfusion — shock`);
+  } else if (pediatric ? hypotensiveForAge(sbp, ageYears) : (sbp !== null && sbp < th.sbp_urgent)) {
     add(
       pediatric || (sbp !== null && sbp < th.sbp_critical) ? 1 : 2,
       `ضغط انقباضي ${sbp} — ${pediatric ? 'انخفاض للعمر' : 'عدم استقرار'}`,
@@ -132,9 +138,10 @@ export function detectRedFlags(
     temp: toVital(patient.temperature ?? patient.temp, 32, 43),
     answers: answers || {},
     pathway: CARDIAC_TEXT.test(complaintText) ? 'palpitations' : '',
+    text: complaintText,
   }) as { alert: boolean; direction: string | null; label_en: string; label_ar: string } | null;
   if (hr !== null && hrA?.alert) {
-    const unstable = hypotensiveForAge(sbp, ageYears)
+    const unstable = (pediatric ? hypotensiveForAge(sbp, ageYears) : (sbp !== null && (sbp < 80 || (sbp < 90 && hr !== null && hr >= 130))))
       || (gcs !== null && gcs < 15)
       || SHOCK_SIGNS.test(complaintText);
     add(unstable ? 1 : 2, hrA.label_ar, hrA.label_en);

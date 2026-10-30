@@ -104,12 +104,32 @@ export function runHeartRateTests(assert: Assert) {
     const st = { ...ad, hr: '118', chief_complaint: 'sore throat' };
     assert(lvl(st) === 3 && qs(st).includes('tachycardia_reason'), 'HR-24', 'Adult, no fever, HR 118, not answered → CTAS 3 and asks the reason');
     assert(lvl({ ...ad, hr: '125', chief_complaint: 'sore throat' }, { tachycardia_reason: 'unexplained' }) === 2, 'HR-25', 'Adult, HR 125, unexplained → CTAS 2');
-    assert(lvl(st, { tachycardia_reason: 'anxiety' }) > 3 || hrOf(st, { tachycardia_reason: 'anxiety' }).level == null, 'HR-26', 'Adult, HR 118, anxiety recorded → HR does not raise CTAS');
+    assert(lvl(st, { tachycardia_reason: 'anxiety' }) === 3 && hrOf(st, { tachycardia_reason: 'anxiety' }).explained === true, 'HR-26', 'Adult, HR 118, anxiety recorded → explained, abnormal pulse stable → CTAS 3 (CTAS 2025)');
     const cp = { ...ad, hr: '118', chief_complaint: 'chest pain' };
     assert(lvl(cp) === 2 && hrOf(cp).rule_id === 'hr_adult_unexplained_cardiac', 'HR-27', 'Adult, HR 118, chest pain → CTAS 2 + ECG (unexplained with cardiac complaint)');
     assert(lvl({ ...ad, hr: '125', chief_complaint: 'palpitations' }) === 2, 'HR-28', 'Adult palpitations, HR 125, not answered → CTAS 2');
     assert(lvl({ ...ad, hr: '135', chief_complaint: 'sore throat' }, { tachycardia_reason: 'anxiety' }) === 2, 'HR-29', 'Adult HR 135, anxiety → still CTAS 2 (≥ 130 never explained)');
     assert(hrOf({ ...ad, hr: '118', temperature: '38.6', chief_complaint: 'fever' }).explained === true, 'HR-30', 'Adult, 38.6 °C, HR 118 → explained by fever (SIRS still counts it)');
+  }
+
+  // Adult heart rate and blood pressure (CTAS 2025, approved 2026-10-29)
+  {
+    const ad = { age: '45', temperature: '36.8', rr: '16', spo2: '98', gcs: '15', pain_score: 0 };
+    assert(lvl({ ...ad, hr: '125', bp_systolic: '125', chief_complaint: 'sore throat' }, { tachycardia_reason: 'anxiety' }) === 2, 'HR-40', 'Adult HR 125 (> 120) → CTAS 2 even with a reason');
+    assert(lvl({ ...ad, hr: '120', bp_systolic: '125', chief_complaint: 'sore throat' }, { tachycardia_reason: 'pain' }) === 3, 'HR-41', 'Adult HR 120 explained → CTAS 3 (abnormal pulse, stable)');
+    assert(lvl({ ...ad, hr: '45', bp_systolic: '120', chief_complaint: 'dizziness and near fainting' }) === 2, 'HR-42', 'Adult HR 45 with dizziness → symptomatic bradycardia → CTAS 2');
+    assert(lvl({ ...ad, hr: '46', bp_systolic: '120', chief_complaint: 'ankle sprain', pain_score: 2 }) === 3, 'HR-43', 'Adult HR 46, no symptoms → CTAS 3');
+    assert(lvl({ ...ad, hr: '42', bp_systolic: '110', chief_complaint: 'weakness' }) === 2, 'HR-44', 'A1-6 HR 42 with weakness → CTAS 2');
+    assert(lvl({ ...ad, hr: '110', bp_systolic: '76', chief_complaint: 'confused, cold and clammy', gcs: '14' }) === 1, 'HR-45', 'SBP 76 + hypoperfusion (GCS 14, clammy) → CTAS 1');
+    assert(lvl({ ...ad, hr: '95', bp_systolic: '78', chief_complaint: 'dizziness' }) === 2, 'HR-46', 'SBP 78 without hypoperfusion signs → CTAS 2');
+    assert(lvl({ ...ad, hr: '90', bp_systolic: '68', chief_complaint: 'dizziness' }) === 1, 'HR-47', 'SBP < 70 → CTAS 1');
+    assert(lvl({ ...ad, hr: '95', bp_systolic: '88', chief_complaint: 'dizziness' }) === 2, 'HR-48', 'SBP < 90 → CTAS 2 (HMG keeps 90, stricter than CTAS 80)');
+    assert(lvl({ ...ad, age: '70', hr: '92', bp_systolic: '105', chief_complaint: 'weakness, usual blood pressure 160/90' }) === 2, 'HR-49', 'SBP 105 with usual 160 (≥ 40 below) → relative hypotension → CTAS 2');
+    assert(lvl({ ...ad, hr: '88', bp_systolic: '120', chief_complaint: 'dizzy on standing since morning' }) === 2, 'HR-50', 'Postural dizziness → CTAS 2');
+    assert(lvl({ ...ad, age: '2', hr: '120', rr: '30', bp_systolic: '95', spo2: '82', chief_complaint: 'cough, cyanotic heart disease, usual saturation 80' }) > 2, 'HR-51', '"usual saturation 80" is not read as usual blood pressure');
+    assert(lvl({ ...ad, age: '55', hr: '125', rr: '26', temperature: '39.2', bp_systolic: '88', chief_complaint: 'fever' }) === 2, 'HR-53', 'A2-1 sepsis picture HR 125, SBP 88, GCS 15 → CTAS 2 (physician: right); SBP 80–89 is compromise, not shock');
+    const shock = (detectRedFlags({ ...base, ...ad, hr: '110', bp_systolic: '76', gcs: '14', chief_complaint: 'confused' }, {}) as any)?.ctas_level;
+    assert(shock === 1, 'HR-52', 'Red-flag alert: SBP 76 + GCS 14 → CTAS 1 alert');
   }
 
   // The tile, the alert and the level agree

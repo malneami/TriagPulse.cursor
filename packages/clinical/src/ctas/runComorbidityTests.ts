@@ -381,7 +381,7 @@ export function runComorbidityTests(assert: Assert) {
     assert(lvl({ age: '55', hr: '180' }) === 2, 'CR-60', 'Adult epigastric pain + HR 180, normal BP → CTAS 2 (T1)', String(lvl({ age: '55', hr: '180' })));
     assert(lvl({ age: '55', hr: '130' }) === 2 && lvl({ age: '55', hr: '40' }) === 2, 'CR-61', 'Adult HR 130 and HR 40 → CTAS 2 (T1)');
     assert(lvl({ age: '55', hr: '180', bp_systolic: '85' }) === 1 && lvl({ age: '55', hr: '180', gcs: '14' }) === 1, 'CR-62', 'Severe rate + SBP < 90 or GCS < 15 → CTAS 1 (T2)');
-    assert(lvl({ age: '55', hr: '118', temperature: '38.6' }, { expected_tachycardia: 'نعم' }) === 3 && lvl({ age: '55', hr: '125' }) === 3, 'CR-63', 'Adult HR 110–129 stays CTAS 3 (T3)', `${lvl({ age: '55', hr: '118', temperature: '38.6' })}`);
+    assert(lvl({ age: '55', hr: '118', temperature: '38.6' }, { expected_tachycardia: 'نعم' }) === 3 && lvl({ age: '55', hr: '125' }) === 2, 'CR-63', 'Adult explained HR 118 → CTAS 3; HR 125 (> 120, CTAS 2025) → CTAS 2', `${lvl({ age: '55', hr: '118', temperature: '38.6' })}`);
     assert(lvl({ age: '2', hr: '165' }) === 2 && lvl({ age: '2', hr: '150' }) === 3 && lvl({ age: '2', hr: '140' }) === 3 && lvl({ age: '8', hr: '145' }) === 2,
       'CR-64', "Children use ED centiles (O'Leary 2015, local rule): 2 y HR 140 within range (complaint level 3), 150 → 3, 165 → 2; 8 y HR 145 → 2 (capped)");
     let agree = true; const bad: string[] = [];
