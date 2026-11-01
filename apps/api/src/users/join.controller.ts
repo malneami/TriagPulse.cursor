@@ -3,7 +3,6 @@ import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
 import { JoinService } from './join.service';
 
 class JoinDto {
-  @IsString() @MaxLength(20) code: string;
   @IsString() @MaxLength(120) fullName: string;
   @IsEmail() @MaxLength(120) email: string;
   @IsString() @MaxLength(128) password: string;
@@ -20,7 +19,7 @@ function clientIp(req: { headers: Record<string, string | string[] | undefined>;
   return list.at(-1) || req.ip || 'unknown';
 }
 
-/** Public staff sign-up (join link). No sign-in; closed unless an admin opened it with a pilot code. */
+/** Public staff sign-up (join link). No sign-in; every request needs admin approval. */
 @Controller('join')
 export class JoinController {
   constructor(private join: JoinService) {}

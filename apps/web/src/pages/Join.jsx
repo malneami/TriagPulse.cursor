@@ -5,8 +5,7 @@ import { api } from '@/api/client';
 
 /**
  * Public staff sign-up (join link). Name, e-mail, job title, branch and the person's own
- * password (sent once, stored hashed). Needs the pilot code from the TriagePulse admin.
- * The account works only after the admin approves it.
+ * password (sent once, stored hashed). The account works only after the admin approves it.
  */
 /** Same rule as the server: 10+ characters, letters and digits, not the e-mail name. */
 function passwordProblemOf(p, email) {
@@ -19,7 +18,7 @@ function passwordProblemOf(p, email) {
 
 export default function Join() {
   const [open, setOpen] = useState(null);
-  const [form, setForm] = useState({ code: '', fullName: '', email: '', jobTitle: '', jobTitleOther: '', branch: '', branchOther: '', password: '', confirm: '' });
+  const [form, setForm] = useState({ fullName: '', email: '', jobTitle: '', jobTitleOther: '', branch: '', branchOther: '', password: '', confirm: '' });
   const [show, setShow] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -31,7 +30,7 @@ export default function Join() {
 
   const set = (k) => (e) => { setForm((f) => ({ ...f, [k]: e.target.value })); setError(''); };
   const pwProblem = passwordProblemOf(form.password, form.email);
-  const ready = !pwProblem && form.password === form.confirm && form.code.trim() && form.fullName.trim().length >= 3 && /\S+@\S+\.\S+/.test(form.email)
+  const ready = !pwProblem && form.password === form.confirm && form.fullName.trim().length >= 3 && /\S+@\S+\.\S+/.test(form.email)
     && form.jobTitle && (form.jobTitle !== 'other' || form.jobTitleOther.trim())
     && form.branch && (form.branch !== 'other' || form.branchOther.trim());
 
@@ -42,7 +41,6 @@ export default function Join() {
     setError('');
     try {
       await api.join.submit({
-        code: form.code.trim(),
         fullName: form.fullName.trim(),
         email: form.email.trim(),
         jobTitle: form.jobTitle,
@@ -90,10 +88,6 @@ export default function Join() {
 
         {open && !done && (
           <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
-            <label className="flex flex-col gap-1 text-sm font-medium">
-              رمز التجربة · Pilot code
-              <input value={form.code} onChange={set('code')} dir="ltr" autoCapitalize="characters" autoComplete="off" spellCheck={false} maxLength={20} className={`${input} font-mono tracking-widest uppercase`} />
-            </label>
             <label className="flex flex-col gap-1 text-sm font-medium">
               الاسم الكامل · Full name
               <input value={form.fullName} onChange={set('fullName')} autoComplete="name" maxLength={120} className={input} />

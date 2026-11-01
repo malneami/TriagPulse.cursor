@@ -485,11 +485,10 @@ model StaffRequest {
   @@map("staff_requests")
 }
 
-/// Join link settings (one row, id "default"). The pilot code is stored hashed.
+/// Join link settings (one row, id "default"): the admin can close or reopen sign-up.
 model JoinSetting {
   id        String   @id @default("default")
-  enabled   Boolean  @default(false)
-  codeHash  String?  @map("code_hash")
+  enabled   Boolean  @default(true)
   updatedAt DateTime @updatedAt @map("updated_at")
   updatedById String? @map("updated_by_id")
 

@@ -358,33 +358,28 @@ export default function StaffAdmin() {
   );
 }
 
-/** Sign-up link: open or close it, and set the pilot code (stored hashed; shown only when set). */
+/** Sign-up link: copy it, and close or reopen sign-up. Every request still needs approval. */
 function JoinLinkCard() {
   const queryClient = useQueryClient();
   const { data: st } = useQuery({ queryKey: ['join-settings'], queryFn: () => api.users.joinSettings() });
-  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const link = `${window.location.origin}/join`;
-  const save = async (data, ok) => {
+  const open = st ? st.enabled : true;
+  const toggle = async () => {
     setBusy(true);
     try {
-      await api.users.updateJoinSettings(data);
-      toast.success(ok);
+      await api.users.updateJoinSettings({ enabled: !open });
+      toast.success(open ? 'أُغلق التسجيل · Sign-up closed' : 'فُتح التسجيل · Sign-up open');
       queryClient.invalidateQueries({ queryKey: ['join-settings'] });
-      if (data.code) setCode('');
     } catch (err) { toast.error(err?.message || 'Failed'); } finally { setBusy(false); }
-  };
-  const newCode = () => {
-    const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-    setCode(Array.from({ length: 6 }, () => a[crypto.getRandomValues(new Uint32Array(1))[0] % a.length]).join(''));
   };
   return (
     <section aria-label="رابط التسجيل · Sign-up link" className="bg-white border border-mist rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Link2 className="w-5 h-5" aria-hidden="true" />
         <h2 className="m-0 text-lg font-semibold">رابط تسجيل الموظفين · Staff sign-up link</h2>
-        <span className={`ms-auto text-sm rounded-lg px-2 py-1 ${st?.enabled ? 'bg-ink text-white' : 'border border-mist text-graphite'}`}>
-          {st?.enabled ? 'مفتوح · Open' : 'مغلق · Closed'}
+        <span className={`ms-auto text-sm rounded-lg px-2 py-1 ${open ? 'bg-ink text-white' : 'border border-mist text-graphite'}`}>
+          {open ? 'مفتوح · Open' : 'مغلق · Closed'}
         </span>
       </div>
       <div className="flex gap-2">
@@ -393,22 +388,14 @@ function JoinLinkCard() {
           <Copy className="w-4 h-4" aria-hidden="true" /> نسخ · Copy
         </button>
       </div>
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium">رمز التجربة · Pilot code {st?.hasCode && <span className="text-graphite font-normal">(مُعيَّن · set — type a new one to change it)</span>}</span>
-        <div className="flex gap-2">
-          <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 20))} dir="ltr" placeholder={st?.hasCode ? '••••••' : 'e.g. HMG-ED26'} className="flex-1 min-w-0 h-11 border border-mist rounded-xl px-3 font-mono tracking-widest bg-white" />
-          <button type="button" onClick={newCode} className="h-11 px-3 rounded-xl border border-mist flex items-center gap-1 text-sm"><Wand2 className="w-4 h-4" aria-hidden="true" /> توليد</button>
-          <button type="button" disabled={busy || code.length < 4} onClick={() => save({ code }, 'حُفظ الرمز · Code saved')} className="h-11 px-4 rounded-xl bg-ink text-white text-sm font-medium disabled:opacity-40">حفظ · Save</button>
-        </div>
-        <span className="text-xs text-graphite">انسخ الرمز قبل الحفظ؛ لا يظهر بعدها. · Copy the code before saving: it is not shown again. Share it with the pilot team only.</span>
-      </div>
+      <span className="text-xs text-graphite">كل طلب يحتاج موافقتك قبل أن يعمل الحساب. · Every request needs your approval before the account works.</span>
       <button
         type="button"
-        disabled={busy || (!st?.enabled && !st?.hasCode)}
-        onClick={() => save({ enabled: !st?.enabled }, st?.enabled ? 'أُغلق الرابط · Link closed' : 'فُتح الرابط · Link open')}
-        className={`h-11 rounded-xl text-sm font-semibold disabled:opacity-40 ${st?.enabled ? 'border-2 border-ink' : 'bg-ink text-white'}`}
+        disabled={busy}
+        onClick={toggle}
+        className={`h-11 rounded-xl text-sm font-semibold disabled:opacity-40 ${open ? 'border-2 border-ink' : 'bg-ink text-white'}`}
       >
-        {st?.enabled ? 'إغلاق التسجيل · Close sign-up' : 'فتح التسجيل · Open sign-up'}
+        {open ? 'إغلاق التسجيل · Close sign-up' : 'فتح التسجيل · Open sign-up'}
       </button>
     </section>
   );

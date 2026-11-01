@@ -10,25 +10,23 @@ import { passwordProblem } from '../auth/password-policy';
 type Actor = { id: string; role: string; full_name?: string; email?: string };
 
 export type JoinBody = {
-  code: string; fullName: string; email: string; password: string;
+  fullName: string; email: string; password: string;
   jobTitle: string; jobTitleOther?: string; branch: string; branchOther?: string;
 };
 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_SUBMITS = 10;     // per address per window
-const MAX_BAD_CODES = 5;    // wrong pilot codes per address per window
 const MAX_PENDING = 500;    // stop a flood of requests
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 
 /**
- * Staff sign-up through the join link. Public, but closed unless an admin turned it on and set
- * a pilot code. The person gives name, e-mail, job title, branch and their own password (kept
+ * Staff sign-up through the join link (public; the admin can close it). The person gives name, e-mail, job title, branch and their own password (kept
  * hashed; nobody sees it). Nothing works until the admin approves: approval creates the account
  * with that password and the access level the admin chooses. Reject deletes the password.
  */
 @Injectable()
 export class JoinService {
-  private hits = new Map<string, { at: number[]; bad: number[] }>();
+  private hits = new Map<string, { at: number[] }>();
 
   constructor(private prisma: PrismaService, private audit: AuditService, private users: UsersService) {}
 
@@ -38,14 +36,13 @@ export class JoinService {
 
   async publicStatus() {
     const s = await this.settings();
-    return { open: !!(s?.enabled && s.codeHash) };
+    return { open: s ? s.enabled : true };
   }
 
   private limiter(ip: string) {
     const now = Date.now();
-    const h = this.hits.get(ip) ?? { at: [], bad: [] };
+    const h = this.hits.get(ip) ?? { at: [] };
     h.at = h.at.filter((t) => now - t < WINDOW_MS);
-    h.bad = h.bad.filter((t) => now - t < WINDOW_MS);
     this.hits.set(ip, h);
     if (this.hits.size > 5000) this.hits.clear();
     return h;
@@ -57,16 +54,11 @@ export class JoinService {
 
   async submit(body: JoinBody, ip: string) {
     const h = this.limiter(ip);
-    if (h.at.length >= MAX_SUBMITS || h.bad.length >= MAX_BAD_CODES) throw this.tooMany();
+    if (h.at.length >= MAX_SUBMITS) throw this.tooMany();
     h.at.push(Date.now());
 
     const s = await this.settings();
-    if (!s?.enabled || !s.codeHash) throw new ForbiddenException('The sign-up link is closed.');
-    const code = String(body.code || '').trim().toUpperCase();
-    if (!code || !(await bcrypt.compare(code, s.codeHash))) {
-      h.bad.push(Date.now());
-      throw new ForbiddenException('Wrong pilot code.');
-    }
+    if (s && !s.enabled) throw new ForbiddenException('Sign-up is closed. Contact the TriagePulse admin.');
 
     const fullName = String(body.fullName || '').trim().replace(/\s+/g, ' ');
     const email = String(body.email || '').trim().toLowerCase();
@@ -101,27 +93,17 @@ export class JoinService {
   // ── Admin ─────────────────────────────────────────────────────────────
   async adminSettings() {
     const s = await this.settings();
-    return { enabled: !!s?.enabled, hasCode: !!s?.codeHash, updatedAt: s?.updatedAt ?? null };
+    return { enabled: s ? s.enabled : true, updatedAt: s?.updatedAt ?? null };
   }
 
-  async updateSettings(data: { enabled?: boolean; code?: string }, actor: Actor) {
-    const patch: { enabled?: boolean; codeHash?: string } = {};
-    if (data.code !== undefined) {
-      const code = String(data.code).trim().toUpperCase();
-      if (!/^[A-Z0-9-]{4,20}$/.test(code)) throw new BadRequestException('Pilot code: 4–20 letters or digits.');
-      patch.codeHash = await bcrypt.hash(code, 10);
-    }
-    if (data.enabled !== undefined) patch.enabled = data.enabled;
-    const current = await this.settings();
-    if (patch.enabled && !(patch.codeHash || current?.codeHash)) throw new BadRequestException('Set a pilot code first.');
+  async updateSettings(data: { enabled?: boolean }, actor: Actor) {
+    if (data.enabled === undefined) return this.adminSettings();
     await this.prisma.joinSetting.upsert({
       where: { id: 'default' },
-      create: { id: 'default', enabled: patch.enabled ?? false, codeHash: patch.codeHash ?? null, updatedById: actor.id },
-      update: { ...patch, updatedById: actor.id },
+      create: { id: 'default', enabled: data.enabled, updatedById: actor.id },
+      update: { enabled: data.enabled, updatedById: actor.id },
     });
-    await this.audit.log('JoinSetting', 'default', 'join_settings_updated', actor, {
-      enabled: patch.enabled, codeChanged: !!patch.codeHash,
-    });
+    await this.audit.log('JoinSetting', 'default', 'join_settings_updated', actor, { enabled: data.enabled });
     return this.adminSettings();
   }
 

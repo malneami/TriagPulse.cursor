@@ -29,11 +29,11 @@ CREATE TABLE "staff_requests" (
 CREATE INDEX "staff_requests_status_created_at_idx" ON "staff_requests"("status", "created_at");
 CREATE INDEX "staff_requests_email_idx" ON "staff_requests"("email");
 
--- Join link settings: one row; the pilot code is stored hashed. Off until an admin sets a code.
+-- Join link settings: one row. Open by default (every request still needs admin approval);
+-- the admin can close or reopen sign-up.
 CREATE TABLE "join_settings" (
   "id" TEXT NOT NULL DEFAULT 'default',
-  "enabled" BOOLEAN NOT NULL DEFAULT false,
-  "code_hash" TEXT,
+  "enabled" BOOLEAN NOT NULL DEFAULT true,
   "updated_at" TIMESTAMP(3) NOT NULL,
   "updated_by_id" TEXT,
   CONSTRAINT "join_settings_pkey" PRIMARY KEY ("id")

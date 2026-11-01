@@ -510,21 +510,21 @@ check(/default-src 'self'/.test(hdr.headers.get('content-security-policy') || ''
 check(hdr.headers.get('x-frame-options') === 'SAMEORIGIN' || /frame-ancestors 'none'/.test(hdr.headers.get('content-security-policy') || ''), 'the app cannot be framed');
 check(hdr.headers.get('x-content-type-options') === 'nosniff', 'no MIME sniffing');
 
-// ── Staff sign-up link (pilot code) and the Viewer access level ─────────────
-const joinClosed = await call('/join');
-check(joinClosed.status === 200 && joinClosed.json?.open === false, 'the sign-up link starts closed', joinClosed.text.slice(0, 120));
-const joinBody = (over = {}) => ({ code: 'E2E-PILOT', fullName: 'E2E Joiner', email: `join.${Date.now()}@example.com`, jobTitle: 'paramedic', branch: 'takhassusi', password: 'MyOwnPass2468', ...over });
+// ── Staff sign-up link and the Viewer access level ──────────────────────────
+const joinOpen = await call('/join');
+check(joinOpen.status === 200 && joinOpen.json?.open === true, 'the sign-up link is open by default', joinOpen.text.slice(0, 120));
+const joinBody = (over = {}) => ({ fullName: 'E2E Joiner', email: `join.${Date.now()}@example.com`, jobTitle: 'paramedic', branch: 'takhassusi', password: 'MyOwnPass2468', ...over });
+const nurseJoinSet = await call('/users/join-settings', { token: nurse, method: 'PUT', body: { enabled: false } });
+check(nurseJoinSet.status === 403, 'only an admin can close the link (403)', `got ${nurseJoinSet.status}`);
+const closeFirst = await call('/users/join-settings', { token: admin, method: 'PUT', body: { enabled: false } });
+check(closeFirst.status === 200 && closeFirst.json?.enabled === false, 'the admin closes the link', closeFirst.text.slice(0, 120));
 const whileClosed = await call('/join', { method: 'POST', body: joinBody() });
 check(whileClosed.status === 403, 'a closed link refuses sign-ups (403)', `got ${whileClosed.status}`);
-const nurseJoinSet = await call('/users/join-settings', { token: nurse, method: 'PUT', body: { code: 'E2E-PILOT', enabled: true } });
-check(nurseJoinSet.status === 403, 'only an admin can open the link (403)', `got ${nurseJoinSet.status}`);
-const openLink = await call('/users/join-settings', { token: admin, method: 'PUT', body: { code: 'e2e-pilot', enabled: true } });
-check(openLink.status === 200 && openLink.json?.enabled === true && openLink.json?.hasCode === true && !('codeHash' in (openLink.json || {})), 'the admin sets the pilot code and opens the link (code never returned)', openLink.text.slice(0, 200));
-const wrongCode = await call('/join', { method: 'POST', body: joinBody({ code: 'WRONG1' }) });
-check(wrongCode.status === 403, 'a wrong pilot code is refused (403)', `got ${wrongCode.status}`);
+const reopen = await call('/users/join-settings', { token: admin, method: 'PUT', body: { enabled: true } });
+check(reopen.status === 200 && reopen.json?.enabled === true, 'the admin reopens the link', reopen.text.slice(0, 120));
 const joinEmail = `join.${Date.now()}@example.com`;
-const joined = await call('/join', { method: 'POST', body: joinBody({ email: joinEmail, code: 'e2e-pilot' }) });
-check(joined.status === 201 && joined.json?.ok === true, 'a staff member signs up with the pilot code (any case)', `status ${joined.status} ${joined.text.slice(0, 200)}`);
+const joined = await call('/join', { method: 'POST', body: joinBody({ email: joinEmail }) });
+check(joined.status === 201 && joined.json?.ok === true, 'a staff member signs up', `status ${joined.status} ${joined.text.slice(0, 200)}`);
 const again2 = await call('/join', { method: 'POST', body: joinBody({ email: joinEmail }) });
 check(again2.status === 201, 'signing up twice gives the same answer (no account discovery)', `got ${again2.status}`);
 const otherNeedsText = await call('/join', { method: 'POST', body: joinBody({ jobTitle: 'other' }) });

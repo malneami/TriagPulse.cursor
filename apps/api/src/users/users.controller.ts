@@ -27,7 +27,6 @@ class ApproveRequestDto {
 }
 class JoinSettingsDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
-  @IsOptional() @IsString() @MaxLength(20) code?: string;
 }
 class ResetPasswordDto {
   @IsString() @MaxLength(128) password: string;
@@ -45,7 +44,7 @@ export class UsersController {
   @Get()
   list() { return this.users.list(); }
 
-  // ── Join link: sign-up requests and the pilot code ─────────────────────
+  // ── Join link: sign-up requests, open/close ───────────────────────────
   @Get('requests')
   requests(@Query('status') status?: string) { return this.join.listRequests(status); }
 
