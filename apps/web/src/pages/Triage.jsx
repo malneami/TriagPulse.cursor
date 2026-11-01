@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { draftKey, saveDraft, loadDraft, clearDraft, hasTriageWork } from '@/lib/triageDraft';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import { useAuth } from '@/lib/AuthContext';
 import { canAccess } from '@/lib/security/roles';
@@ -186,11 +186,14 @@ export default function Triage() {
   // ── Draft autosave (review H6): a refresh, a screen error or the idle lock no longer
   // loses the triage in progress. Kept per nurse and patient in this tab only.
   const dKey = draftKey(user?.id, urlPid);
+  // "New patient": start empty, and drop any unsaved draft without a patient.
+  const freshStart = useLocation().state?.fresh;
   const [restoredDraft, setRestoredDraft] = useState(null);
   const draftCheckedRef = useRef(null);
   useEffect(() => {
     if (!user?.id || draftCheckedRef.current === dKey) return;
     draftCheckedRef.current = dKey;
+    if (freshStart && !urlPid) { clearDraft(dKey); return; }
     const d = loadDraft(dKey);
     if (!d || !hasTriageWork(d.patient, d.clarifyingAnswers)) return;
     setPatient((prev) => ({ ...prev, ...d.patient }));
@@ -201,7 +204,7 @@ export default function Triage() {
     manualEditedFieldsRef.current = new Set(d.manualEdited || []);
     sttLastDictatedRef.current = d.lastDictated || {};
     setRestoredDraft({ at: d.at });
-  }, [dKey, user?.id]);
+  }, [dKey, user?.id, freshStart, urlPid]);
 
   // Pre-populate patient demographics from the linked journey record
   useEffect(() => {
@@ -1552,7 +1555,7 @@ export default function Triage() {
 
   const startNewPatient = () => {
     const hasWork = !!(patient.chief_complaint || patient.transcription || urlPid);
-    if (done || !hasWork) navigate('/visual-triage');
+    if (done || !hasWork) navigate('/triage', { state: { fresh: Date.now() } });
     else setShowNewPatientConfirm(true);
   };
 

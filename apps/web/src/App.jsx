@@ -9,6 +9,12 @@ import Layout from './components/Layout';
 import RoleGuard from '@/components/auth/RoleGuard';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import Triage from './pages/Triage';
+
+/** "New patient" opens a fresh CTAS page: a new key remounts it with empty state. */
+function TriageRoute() {
+  const location = useLocation();
+  return <Triage key={location.state?.fresh || 'triage'} />;
+}
 import VisualTriage from './pages/VisualTriage';
 import PatientTracking from './pages/PatientTracking';
 import TrackingWall from './pages/TrackingWall';
@@ -80,7 +86,7 @@ const AuthenticatedApp = () => {
       <Route element={<Layout><Outlet /></Layout>}>
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/visual-triage" element={<Guarded permission="perform_triage"><VisualTriage /></Guarded>} />
-        <Route path="/triage" element={<Guarded permission="perform_triage"><Triage /></Guarded>} />
+        <Route path="/triage" element={<Guarded permission="perform_triage"><TriageRoute /></Guarded>} />
         <Route path="/tracking" element={<Guarded permission="perform_triage"><PatientTracking /></Guarded>} />
         <Route path="/outcomes" element={<Guarded permission="review_outcome"><OutcomeReview /></Guarded>} />
         <Route path="/my-triage" element={<Guarded permission="view_own_feedback"><MyTriage /></Guarded>} />
