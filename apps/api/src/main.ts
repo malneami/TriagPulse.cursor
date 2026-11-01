@@ -50,10 +50,21 @@ function serveWebApp(server: express.Express) {
     console.warn(`[web] SERVE_WEB_DIR=${dir} has no index.html (build the web app first); UI not served.`);
     return;
   }
-  server.use(express.static(root, { index: 'index.html' }));
+  // Hashed build files (/assets/*) never change → cache for a year. The OCR model files
+  // change rarely → a day. index.html must always be re-checked so a release shows at once.
+  server.use(express.static(root, {
+    index: 'index.html',
+    setHeaders: (res, filePath) => {
+      const rel = filePath.slice(root.length).replace(/\\/g, '/');
+      if (rel.startsWith('/assets/')) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      else if (rel.startsWith('/ocr/')) res.setHeader('Cache-Control', 'public, max-age=86400');
+      else res.setHeader('Cache-Control', 'no-cache');
+    },
+  }));
   server.use((req: Request, res: Response, next: NextFunction) => {
     const isApi = req.path.startsWith('/api') || req.path.startsWith('/socket.io');
     if (req.method !== 'GET' || isApi || !req.accepts('html')) return next();
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(indexFile);
   });
   console.log(`[web] Serving the web app from ${root}`);
