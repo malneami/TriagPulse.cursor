@@ -4,6 +4,8 @@ import { draftKey, saveDraft, loadDraft, clearDraft, hasTriageWork } from '@/lib
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import { useAuth } from '@/lib/AuthContext';
+import { canAccess } from '@/lib/security/roles';
+import { PracticeModeBanner } from '@/components/triage/PracticeModeBanner';
 import { toast } from 'sonner';
 import { Plus, ShieldAlert } from 'lucide-react';
 import PatientSelectorStrip from '@/components/triage/PatientSelectorStrip';
@@ -103,6 +105,8 @@ const REQUIRED_FIELDS = CTAS_REQUIRED_FIELDS;
 export default function Triage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  // Only Nurse / PCT and admin save; others run the triage in practice mode.
+  const canSave = canAccess(user, 'save_triage');
   const [patient, setPatient] = useState(emptyPatient());
   const [ctasResult, setCtasResult] = useState(null);
   const [showNewPatientConfirm, setShowNewPatientConfirm] = useState(false);
@@ -1514,6 +1518,10 @@ export default function Triage() {
 
   const finalize = async (decision) => {
     if (savingRef.current || savedRecord) return;
+    if (!canSave) {
+      toast.info('وضع التدريب — لم يُحفظ · Practice mode — not saved (Nurse / PCT or admin only)');
+      return;
+    }
     const validation = validateTriageReady(patient);
     if (!validation.ok) {
       toast.error(validation.errors[0] || 'أدخل الشكوى الرئيسية · Enter the chief complaint');
@@ -1607,6 +1615,7 @@ export default function Triage() {
 
   return (
     <div dir="rtl" className="flex flex-col gap-3">
+      {!canSave && <PracticeModeBanner />}
       {showNewPatientConfirm && (
         <NewPatientConfirm
           currentPid={urlPid}

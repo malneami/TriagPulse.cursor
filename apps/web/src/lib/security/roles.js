@@ -5,7 +5,7 @@ export const ROLES = {
 };
 
 export const ROLE_LABELS = {
-  nurse: 'Nurse / ممرض',
+  nurse: 'Nurse / PCT · ممرض / فني رعاية',
   physician: 'Physician / طبيب',
   admin: 'Admin / مسؤول',
 };
@@ -30,6 +30,11 @@ export const PERMISSIONS = {
   review_outcome: ['physician', 'admin'],
   /** Admin assigns the physician who may complete Outcome Review. */
   assign_outcome_physician: ['admin'],
+  /**
+   * Save a triage (new patient, visual triage, CTAS record): Nurse / PCT and admin only.
+   * Physicians can run the triage and see the CTAS level, but nothing is saved.
+   */
+  save_triage: ['nurse', 'admin'],
 };
 
 export function getUserRole(user) {

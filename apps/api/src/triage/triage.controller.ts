@@ -26,7 +26,8 @@ export class TriageController {
   }
 
   @Post('save')
-  @RequirePermission('perform_triage')
+  // Nurse / PCT and admin only; others may evaluate but not save.
+  @RequirePermission('save_triage')
   save(
     @Body() dto: SaveTriageDto,
     @Request() req: { user: { id: string; full_name?: string; email?: string } },

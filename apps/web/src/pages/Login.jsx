@@ -12,7 +12,7 @@ const SHOW_DEMO = import.meta.env.DEV;
 const DEMO_PASSWORD = 'triage123';
 const DEMO_ACCOUNTS = SHOW_DEMO
   ? [
-      { role: 'Nurse', email: 'nurse@triagepulse.local', note: 'Bedside triage' },
+      { role: 'Nurse / PCT', email: 'nurse@triagepulse.local', note: 'Bedside triage' },
       { role: 'Physician', email: 'physician@triagepulse.local', note: 'AI Eval + Stats' },
       { role: 'Admin', email: 'admin@triagepulse.local', note: 'AI Eval + Libraries' },
     ]

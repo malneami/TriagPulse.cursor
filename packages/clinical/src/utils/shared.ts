@@ -69,6 +69,11 @@ export const PERMISSIONS: Record<string, Role[]> = {
   review_outcome: ['physician', 'admin'],
   /** Admin assigns the physician who may complete Outcome Review. */
   assign_outcome_physician: ['admin'],
+  /**
+   * Save a triage (new patient, visual triage, CTAS record): Nurse / PCT and admin only.
+   * Physicians can run the triage and see the CTAS level, but nothing is saved.
+   */
+  save_triage: ['nurse', 'admin'],
 };
 
 export function canAccess(role: Role, permission: string): boolean {

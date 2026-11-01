@@ -59,7 +59,8 @@ export class JourneysController {
   constructor(private journeysService: JourneysService) {}
 
   @Post()
-  @RequirePermission('perform_triage')
+  // Starting a saved case: Nurse / PCT and admin only.
+  @RequirePermission('save_triage')
   create(@Body() dto: CreateJourneyDto, @Request() req: { user: { id: string; full_name?: string; email?: string } }) {
     return this.journeysService.create(dto, req.user);
   }
@@ -92,7 +93,7 @@ export class JourneysController {
   }
 
   @Post(':id/visual-triage')
-  @RequirePermission('perform_triage')
+  @RequirePermission('save_triage')
   visualTriage(
     @Param('id') id: string,
     @Body() dto: VisualTriageDto,
