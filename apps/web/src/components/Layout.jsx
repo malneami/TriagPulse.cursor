@@ -27,8 +27,8 @@ function initials(name) {
 
 /** The two screens the triage nurse uses all shift; everything else lives in the menu. */
 const TABS = [
-  { path: '/visual-triage', label: 'الفرز البصري', short: 'بصري', labelEn: 'Visual triage', Icon: Eye },
   { path: '/triage', label: 'فرز CTAS', short: 'CTAS', labelEn: 'CTAS triage', Icon: Activity },
+  { path: '/visual-triage', label: 'الفرز البصري', short: 'بصري', labelEn: 'Visual triage', Icon: Eye },
 ];
 
 function menuGroups(user) {

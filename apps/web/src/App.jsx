@@ -29,7 +29,8 @@ import { syncRoutingConfigFromApi } from './lib/routingConfigSync';
 function HomeRedirect() {
   const location = useLocation();
   const { user } = useAuth();
-  const home = user?.role === 'physician' ? '/tracking' : '/visual-triage';
+  // Opens straight on the CTAS page (physicians keep their validation board).
+  const home = user?.role === 'physician' ? '/tracking' : '/triage';
   return <Navigate to={`${home}${location.search || ''}`} replace />;
 }
 
