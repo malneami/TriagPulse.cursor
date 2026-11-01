@@ -231,6 +231,11 @@ const linked = await call(`/journeys/${journeyId}/encounter`, { token: nurse, me
 check(linked.status === 200 && linked.json?.encounterNo === encNo, 'the nurse links the Transaction No. (spaces trimmed)', `status ${linked.status} ${linked.text.slice(0, 200)}`);
 check(linked.json?.currentStatus === 'pending_physician_validation', 'linking the visit number sends the case to physician validation', linked.json?.currentStatus);
 const other = await call('/journeys', { token: nurse, method: 'POST', body: { patientNameEn: 'E2E Other', age: 30, gender: 'female' } });
+// Slip age is kept beside the triage age (30 y here) and never replaces it.
+const slipAge = await call(`/journeys/${other.json.id}/encounter`, { token: nurse, method: 'PATCH', body: { ageMonths: 31 * 12 + 2 } });
+check(slipAge.status === 200 && slipAge.json?.hisAgeMonths === 374 && slipAge.json?.age === 30, 'the slip age is saved beside the triage age without replacing it', `status ${slipAge.status} ${slipAge.text.slice(0, 200)}`);
+const badAge = await call(`/journeys/${other.json.id}/encounter`, { token: nurse, method: 'PATCH', body: { ageMonths: 5000 } });
+check(badAge.status === 400, 'an impossible slip age is refused (400)', `got ${badAge.status}`);
 const dupEnc = await call(`/journeys/${other.json.id}/encounter`, { token: nurse, method: 'PATCH', body: { encounterNo: encNo } });
 check(dupEnc.status === 409, 'the same encounter number cannot be linked to a second patient (409)', `got ${dupEnc.status}`);
 const encAtStart = `8${Date.now().toString().slice(-8)}`;
@@ -323,6 +328,15 @@ check(nurseOutcome.status === 403, 'the triage nurse cannot record the outcome (
 const unassignedOutcome = await call(`/outcomes/${journeyId}`, { token: physician, method: 'PUT', body: outcomeBody });
 check(unassignedOutcome.status === 403, 'a physician not assigned by an admin cannot record the outcome (403)', `got ${unassignedOutcome.status}`);
 const physMe = await call('/auth/me', { token: physician });
+// Only physicians marked as outcome reviewers can be assigned (Staff → Edit).
+const notReviewer = await call(`/outcomes/${journeyId}/assign`, { token: admin, method: 'POST', body: { physicianId: physMe.json.id } });
+check(notReviewer.status === 400, 'a physician not marked as outcome reviewer cannot be assigned (400)', `got ${notReviewer.status}`);
+const listBefore = await call('/outcomes/physicians', { token: admin });
+check(listBefore.status === 200 && !listBefore.json.some((p) => p.id === physMe.json.id), 'the assign list shows outcome reviewers only', listBefore.text.slice(0, 200));
+const markReviewer = await call(`/users/${physMe.json.id}`, { token: admin, method: 'PATCH', body: { outcomeReviewer: true } });
+check(markReviewer.status === 200 && markReviewer.json.outcomeReviewer === true, 'the admin marks the physician as outcome reviewer', `status ${markReviewer.status} ${markReviewer.text.slice(0, 200)}`);
+const listAfter = await call('/outcomes/physicians', { token: admin });
+check(listAfter.status === 200 && listAfter.json.some((p) => p.id === physMe.json.id), 'the reviewer now appears in the assign list', listAfter.text.slice(0, 200));
 const assignedOut = await call(`/outcomes/${journeyId}/assign`, { token: admin, method: 'POST', body: { physicianId: physMe.json.id } });
 check(assignedOut.status === 201, 'the admin assigns the outcome physician', `status ${assignedOut.status} ${assignedOut.text.slice(0, 200)}`);
 const nurseBulk = await call('/outcomes/assign-bulk', { token: nurse, method: 'POST', body: { journeyIds: [journeyId], physicianId: physMe.json.id } });
