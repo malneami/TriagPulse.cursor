@@ -72,7 +72,7 @@ export default function Layout({ children }) {
     queryKey: ['tracking-board'],
     queryFn: () => api.tracking.board(),
     refetchInterval: 15000,
-    enabled: canAccess(user, 'perform_triage'),
+    enabled: canAccess(user, 'view_tracking'),
   });
   const waitingCtas = board.filter((p) => !p.ctas_level).length;
   const awaitingHis = board.filter((p) => p.current_status === 'awaiting_his_link').length;

@@ -10,6 +10,7 @@ type Actor = { id: string; role: string; full_name?: string; email?: string };
 
 const PUBLIC = {
   id: true, email: true, fullName: true, role: true, active: true, outcomeReviewer: true, mustChangePassword: true,
+  jobTitle: true, jobTitleOther: true, branch: true, branchOther: true,
   lockedUntil: true, lastLoginAt: true, createdAt: true,
 } as const;
 
@@ -27,17 +28,26 @@ export class UsersService {
     if (problem) throw new BadRequestException(problem);
   }
 
-  async create(data: { email: string; fullName: string; role: UserRole; password: string; outcomeReviewer?: boolean }, actor: Actor) {
+  async create(data: {
+    email: string; fullName: string; role: UserRole; password?: string; passwordHash?: string; outcomeReviewer?: boolean;
+    jobTitle?: string | null; jobTitleOther?: string | null; branch?: string | null; branchOther?: string | null;
+  }, actor: Actor) {
     const email = data.email.trim().toLowerCase();
     const fullName = data.fullName.trim();
     if (!fullName) throw new BadRequestException('Enter the full name.');
-    this.checkPassword(data.password, email);
+    // A password the person chose at sign-up arrives already hashed and is their own (no forced change).
+    const ownPassword = !!data.passwordHash;
+    if (!ownPassword) this.checkPassword(String(data.password || ''), email);
     if (await this.prisma.user.findUnique({ where: { email } })) throw new ConflictException('An account with this e-mail already exists.');
     const user = await this.prisma.user.create({
       data: {
-        email, fullName, role: data.role, passwordHash: await bcrypt.hash(data.password, 10), mustChangePassword: true,
+        email, fullName, role: data.role,
+        passwordHash: ownPassword ? data.passwordHash! : await bcrypt.hash(String(data.password), 10),
+        mustChangePassword: !ownPassword,
         // Outcome reviewer is a physician-only switch.
         outcomeReviewer: data.role === 'physician' && data.outcomeReviewer === true,
+        jobTitle: data.jobTitle ?? null, jobTitleOther: data.jobTitleOther ?? null,
+        branch: data.branch ?? null, branchOther: data.branchOther ?? null,
       },
       select: PUBLIC,
     });

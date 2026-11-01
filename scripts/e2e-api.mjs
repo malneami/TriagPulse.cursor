@@ -510,6 +510,58 @@ check(/default-src 'self'/.test(hdr.headers.get('content-security-policy') || ''
 check(hdr.headers.get('x-frame-options') === 'SAMEORIGIN' || /frame-ancestors 'none'/.test(hdr.headers.get('content-security-policy') || ''), 'the app cannot be framed');
 check(hdr.headers.get('x-content-type-options') === 'nosniff', 'no MIME sniffing');
 
+// ── Staff sign-up link and the Viewer access level ──────────────────────────
+const joinOpen = await call('/join');
+check(joinOpen.status === 200 && joinOpen.json?.open === true, 'the sign-up link is open by default', joinOpen.text.slice(0, 120));
+const joinBody = (over = {}) => ({ fullName: 'E2E Joiner', email: `join.${Date.now()}@example.com`, jobTitle: 'paramedic', branch: 'takhassusi', password: 'MyOwnPass2468', ...over });
+const nurseJoinSet = await call('/users/join-settings', { token: nurse, method: 'PUT', body: { enabled: false } });
+check(nurseJoinSet.status === 403, 'only an admin can close the link (403)', `got ${nurseJoinSet.status}`);
+const closeFirst = await call('/users/join-settings', { token: admin, method: 'PUT', body: { enabled: false } });
+check(closeFirst.status === 200 && closeFirst.json?.enabled === false, 'the admin closes the link', closeFirst.text.slice(0, 120));
+const whileClosed = await call('/join', { method: 'POST', body: joinBody() });
+check(whileClosed.status === 403, 'a closed link refuses sign-ups (403)', `got ${whileClosed.status}`);
+const reopen = await call('/users/join-settings', { token: admin, method: 'PUT', body: { enabled: true } });
+check(reopen.status === 200 && reopen.json?.enabled === true, 'the admin reopens the link', reopen.text.slice(0, 120));
+const joinEmail = `join.${Date.now()}@example.com`;
+const joined = await call('/join', { method: 'POST', body: joinBody({ email: joinEmail }) });
+check(joined.status === 201 && joined.json?.ok === true, 'a staff member signs up', `status ${joined.status} ${joined.text.slice(0, 200)}`);
+const again2 = await call('/join', { method: 'POST', body: joinBody({ email: joinEmail }) });
+check(again2.status === 201, 'signing up twice gives the same answer (no account discovery)', `got ${again2.status}`);
+const otherNeedsText = await call('/join', { method: 'POST', body: joinBody({ jobTitle: 'other' }) });
+check(otherNeedsText.status === 400, '"Other" job title needs the title written (400)', `got ${otherNeedsText.status}`);
+const reqs = await call('/users/requests', { token: admin });
+const joinReqs = (reqs.json || []).filter((r) => r.email === joinEmail);
+check(reqs.status === 200 && joinReqs.length === 1 && joinReqs[0].jobTitle === 'paramedic' && joinReqs[0].branch === 'takhassusi', 'one pending request with job title and branch', reqs.text.slice(0, 200));
+const weakPw = await call('/join', { method: 'POST', body: joinBody({ password: 'short1' }) });
+check(weakPw.status === 400, 'a weak password is refused at sign-up (400)', `got ${weakPw.status}`);
+check(!('passwordHash' in (joinReqs[0] || {})), 'the request list never includes the password');
+const beforeApproval = await call('/auth/login', { method: 'POST', body: { email: joinEmail, password: 'MyOwnPass2468' } });
+check(beforeApproval.status === 401, 'the password does not work before approval (401)', `got ${beforeApproval.status}`);
+const approved = await call(`/users/requests/${joinReqs[0].id}/approve`, { token: admin, method: 'POST', body: { role: 'viewer' } });
+check(approved.status === 201 && approved.json?.role === 'viewer' && approved.json?.jobTitle === 'paramedic' && approved.json?.mustChangePassword === false, 'approval creates a Viewer account with their own password (no forced change)', `status ${approved.status} ${approved.text.slice(0, 200)}`);
+const twice = await call(`/users/requests/${joinReqs[0].id}/approve`, { token: admin, method: 'POST', body: { role: 'viewer' } });
+check(twice.status === 409, 'a request cannot be approved twice (409)', `got ${twice.status}`);
+const vLogin = await call('/auth/login', { method: 'POST', body: { email: joinEmail, password: 'MyOwnPass2468' } });
+check(vLogin.status === 201 && vLogin.json?.user?.must_change_password === false, 'after approval they sign in with the password they chose', `status ${vLogin.status}`);
+const vTok = vLogin.json?.access_token;
+const vBoard = await call('/tracking/board', { token: vTok });
+check(vBoard.status === 200, 'a Viewer can see the tracking board', `got ${vBoard.status}`);
+const vEval = await call('/triage/evaluate', { token: vTok, method: 'POST', body: { patient: { chief_complaint: 'Back Pain', age: 30 } } });
+check(vEval.status === 403, 'a Viewer cannot run triage (403)', `got ${vEval.status}`);
+const vCreate = await call('/journeys', { token: vTok, method: 'POST', body: { age: 30 } });
+check(vCreate.status === 403, 'a Viewer cannot start a case (403)', `got ${vCreate.status}`);
+const vExport = await call('/analytics/export/validated', { token: vTok });
+check(vExport.status === 403, 'a Viewer cannot export patient-level data (403)', `got ${vExport.status}`);
+const rejEmail = `join.rej.${Date.now()}@example.com`;
+await call('/join', { method: 'POST', body: joinBody({ email: rejEmail, jobTitle: 'other', jobTitleOther: 'Unit clerk', branch: 'other', branchOther: 'Test branch' }) });
+const reqs2 = await call('/users/requests', { token: admin });
+const rej = (reqs2.json || []).find((r) => r.email === rejEmail);
+check(rej?.jobTitleOther === 'Unit clerk' && rej?.branchOther === 'Test branch', '"Other" job title and branch are kept as written', JSON.stringify(rej || {}).slice(0, 200));
+const rejected = await call(`/users/requests/${rej?.id}/reject`, { token: admin, method: 'POST', body: {} });
+check(rejected.status === 201, 'the admin rejects a request', `got ${rejected.status}`);
+const closeLink = await call('/users/join-settings', { token: admin, method: 'PUT', body: { enabled: false } });
+check(closeLink.status === 200 && closeLink.json?.enabled === false, 'the admin closes the link');
+
 // The admin account is not used above, so locking it here affects nothing else.
 const lockEmail = 'admin@triagepulse.local';
 for (let i = 0; i < 5; i += 1) {

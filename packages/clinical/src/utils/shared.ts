@@ -45,6 +45,8 @@ export const ROLES = {
   nurse: 'nurse',
   physician: 'physician',
   admin: 'admin',
+  /** Read-only: tracking board and wall screen. No triage, no saving, no exports. */
+  viewer: 'viewer',
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
@@ -74,6 +76,8 @@ export const PERMISSIONS: Record<string, Role[]> = {
    * Physicians can run the triage and see the CTAS level, but nothing is saved.
    */
   save_triage: ['nurse', 'admin'],
+  /** Tracking board and wall screen (read). Viewer has only this. */
+  view_tracking: ['nurse', 'physician', 'admin', 'viewer'],
 };
 
 export function canAccess(role: Role, permission: string): boolean {

@@ -9,7 +9,8 @@ export class TrackingController {
   constructor(private trackingService: TrackingService) {}
 
   @Get('board')
-  @RequirePermission('perform_triage')
+  // Read-only board: every role, including Viewer.
+  @RequirePermission('view_tracking')
   getBoard(@Request() req: { user: { id: string; role: string } }) {
     return this.trackingService.getBoard(req.user);
   }

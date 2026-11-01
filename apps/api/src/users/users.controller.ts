@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Request, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { UserRole } from '@prisma/client';
 import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { RolesGuard, RequirePermission } from '../auth/roles.guard';
 import { UsersService } from './users.service';
+import { JoinService } from './join.service';
 
 class CreateUserDto {
   @IsEmail() @MaxLength(120) email: string;
@@ -20,6 +21,13 @@ class UpdateUserDto {
   /** Physicians only: may be assigned outcome reviews. */
   @IsOptional() @IsBoolean() outcomeReviewer?: boolean;
 }
+class ApproveRequestDto {
+  @IsEnum(UserRole) role: UserRole;
+  @IsOptional() @IsBoolean() outcomeReviewer?: boolean;
+}
+class JoinSettingsDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+}
 class ResetPasswordDto {
   @IsString() @MaxLength(128) password: string;
 }
@@ -31,10 +39,26 @@ type Req = { user: { id: string; role: string; full_name?: string; email?: strin
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @RequirePermission('manage_security')
 export class UsersController {
-  constructor(private users: UsersService) {}
+  constructor(private users: UsersService, private join: JoinService) {}
 
   @Get()
   list() { return this.users.list(); }
+
+  // ── Join link: sign-up requests, open/close ───────────────────────────
+  @Get('requests')
+  requests(@Query('status') status?: string) { return this.join.listRequests(status); }
+
+  @Post('requests/:id/approve')
+  approve(@Param('id') id: string, @Body() dto: ApproveRequestDto, @Request() req: Req) { return this.join.approve(id, dto, req.user); }
+
+  @Post('requests/:id/reject')
+  reject(@Param('id') id: string, @Request() req: Req) { return this.join.reject(id, req.user); }
+
+  @Get('join-settings')
+  joinSettings() { return this.join.adminSettings(); }
+
+  @Put('join-settings')
+  updateJoinSettings(@Body() dto: JoinSettingsDto, @Request() req: Req) { return this.join.updateSettings(dto, req.user); }
 
   @Post()
   create(@Body() dto: CreateUserDto, @Request() req: Req) { return this.users.create(dto, req.user); }

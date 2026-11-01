@@ -2,12 +2,14 @@ export const ROLES = {
   nurse: 'nurse',
   physician: 'physician',
   admin: 'admin',
+  viewer: 'viewer',
 };
 
 export const ROLE_LABELS = {
   nurse: 'Nurse / PCT · ممرض / فني رعاية',
   physician: 'Physician / طبيب',
   admin: 'Admin / مسؤول',
+  viewer: 'Viewer / مشاهد',
 };
 
 export const PERMISSIONS = {
@@ -35,11 +37,13 @@ export const PERMISSIONS = {
    * Physicians can run the triage and see the CTAS level, but nothing is saved.
    */
   save_triage: ['nurse', 'admin'],
+  /** Tracking board and wall screen (read). Viewer has only this. */
+  view_tracking: ['nurse', 'physician', 'admin', 'viewer'],
 };
 
 export function getUserRole(user) {
   const role = user?.clinical_role || user?.role;
-  if (role === ROLES.physician || role === ROLES.admin || role === ROLES.nurse) return role;
+  if (role === ROLES.physician || role === ROLES.admin || role === ROLES.nurse || role === ROLES.viewer) return role;
   if (role === 'user') return ROLES.nurse;
   return ROLES.nurse;
 }

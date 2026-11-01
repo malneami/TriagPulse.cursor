@@ -9,6 +9,7 @@ import Layout from './components/Layout';
 import RoleGuard from '@/components/auth/RoleGuard';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import Triage from './pages/Triage';
+import Join from './pages/Join';
 
 /** "New patient" opens a fresh CTAS page: a new key remounts it with empty state. */
 function TriageRoute() {
@@ -36,7 +37,7 @@ function HomeRedirect() {
   const location = useLocation();
   const { user } = useAuth();
   // Opens straight on the CTAS page (physicians keep their validation board).
-  const home = user?.role === 'physician' ? '/tracking' : '/triage';
+  const home = user?.role === 'physician' || user?.role === 'viewer' ? '/tracking' : '/triage';
   return <Navigate to={`${home}${location.search || ''}`} replace />;
 }
 
@@ -76,6 +77,7 @@ const AuthenticatedApp = () => {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/join" element={<Join />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -87,7 +89,7 @@ const AuthenticatedApp = () => {
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/visual-triage" element={<Guarded permission="perform_triage"><VisualTriage /></Guarded>} />
         <Route path="/triage" element={<Guarded permission="perform_triage"><TriageRoute /></Guarded>} />
-        <Route path="/tracking" element={<Guarded permission="perform_triage"><PatientTracking /></Guarded>} />
+        <Route path="/tracking" element={<Guarded permission="view_tracking"><PatientTracking /></Guarded>} />
         <Route path="/outcomes" element={<Guarded permission="review_outcome"><OutcomeReview /></Guarded>} />
         <Route path="/my-triage" element={<Guarded permission="view_own_feedback"><MyTriage /></Guarded>} />
         <Route path="/admin/libraries" element={<Guarded permission="manage_clinical_libraries"><ClinicalLibrariesAdmin /></Guarded>} />
@@ -99,7 +101,8 @@ const AuthenticatedApp = () => {
         <Route path="/admin/ai-evaluation" element={<Guarded permission="view_clinical_analytics"><AiEvaluationDashboard /></Guarded>} />
       </Route>
       {/* Wall display: full screen, no app chrome, ticket codes only. */}
-      <Route path="/tracking/wall" element={<Guarded permission="perform_triage"><TrackingWall /></Guarded>} />
+      <Route path="/tracking/wall" element={<Guarded permission="view_tracking"><TrackingWall /></Guarded>} />
+      <Route path="/join" element={<Join />} />
       <Route path="/login" element={<HomeRedirect />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
