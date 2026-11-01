@@ -611,6 +611,12 @@ export default function OutcomeReview() {
         )}
       </div>
 
+      {canAssign && physicians.length === 0 && (
+        <p role="status" className="m-0 border-2 border-ink rounded-xl px-4 py-3 text-sm font-semibold">
+          لا يوجد مراجع نتائج بعد: فعّل «مراجع النتائج» لطبيب من صفحة الموظفين · No outcome reviewer yet: turn on “Outcome reviewer” for a physician in Staff → Edit.
+        </p>
+      )}
+
       {canAssign && selected.size > 0 && (
         <div className="sticky top-2 z-10 bg-ink text-white rounded-2xl p-3 flex flex-wrap items-center gap-2">
           <span className="font-semibold">{selected.size} محددة · selected</span>

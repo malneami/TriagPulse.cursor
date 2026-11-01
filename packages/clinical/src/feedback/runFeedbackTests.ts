@@ -10,7 +10,7 @@ import {
   outcomeReviewMayAct, outcomeReviewVisible, resourceCount,
 } from './outcomeHandoff.js';
 import { computeEvaluationReport, referenceSource } from '../analytics/computeEvaluation.js';
-import { mrnSuffixFromBarcode, mrnSuffixFromText, patientNoFromBarcode, patientNoFromText, transactionNoFromText, visitNumberFromText } from './ticketText.js';
+import { ageFromText, mrnSuffixFromBarcode, mrnSuffixFromText, patientNoFromBarcode, patientNoFromText, transactionNoFromText, visitNumberFromText } from './ticketText.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -94,6 +94,38 @@ export function runFeedbackTests(assert: Assert) {
   assert(t7?.value === '264408364' && t7.source === 'voucher', 'FB-18', 'Follow-up voucher: Voucher No. when Transaction No. is missing', JSON.stringify(t7));
   assert(t8?.value === '264409220' && t8.source === 'transaction', 'FB-19', 'Outpatient ticket prefers Transaction No. over Invoice No.', JSON.stringify(t8));
   assert(s1 === '255' && s2 === null && s3 === '255' && s4 === null && p1 === '1793255' && p2 === '1793255', 'FB-20', 'Patient No. is the MRN; last 3 for tracking; 9-digit barcode is not MRN', JSON.stringify({ s1, s2, s3, s4, p1, p2 }));
+  {
+    const today = new Date(2026, 10, 1); // 1 Nov 2026
+    const a1 = ageFromText('Patient No: 1793255\nAge: 5 Y 3 M\nGender: M', today);
+    const a2 = ageFromText('Age : 34 Years', today);
+    const a3 = ageFromText('Age: 18 Months', today);
+    const a4 = ageFromText('Age:\n10 Days', today);
+    const a5 = ageFromText('العمر: 7 سنوات', today);
+    const a6 = ageFromText('DOB: 2024-05-20', today);
+    const a7 = ageFromText('Date of Birth: 25/12/2015', today); // day > 12: dd/mm
+    const a8 = ageFromText('DOB: 03/04/1990', today); // ambiguous but same years
+    const a9 = ageFromText('DOB: 03/04/2026', today); // ambiguous infant: unclear
+    const a10 = ageFromText('Patient No: 1793255\nVoucher Date: 10/20/2026', today);
+    const a11 = ageFromText('Age: 200 Y', today);
+    // Real HMG outpatient tickets: "Patient Age: 9 Yr 4 Mnth 16 Days", Arabic label on the same line.
+    const r1 = ageFromText('Patient Gender: Female العيادة:\nPatient Age: 9 Yr 4 Mnth 16 Days الدكتور:', today);
+    const r2 = ageFromText('Patient Age: 4 Yr 5 Mnth 9 Days', today);
+    const r3 = ageFromText('Patient Age: 0 Yr 2 Mnth 3 Days', today);
+    // Real OCR output of the two HMG tickets: a dropped "9" must not become 0 months.
+    const o1 = ageFromText('Patient Age: Yr 4 Mrith 16 Days ssl bss Pie', today);
+    const o2 = ageFromText('. | Patient Age: 4 Yr 5 Mnth © Days seal', today);
+    const o3 = ageFromText('Patient Age: 9 Yr 4 Mrith 16 Days', today);
+    assert(
+      a1?.months === 63 && a1.label === '5 y 3 m' && a1.source === 'age'
+      && a2?.years === 34 && a3?.months === 18 && a3.label === '18 m' && a4?.months === 0
+      && a5?.years === 7 && a6?.months === 29 && a6.source === 'dob'
+      && a7?.years === 10 && a8?.years === 36 && a9 === null && a10 === null && a11 === null
+      && r1?.months === 112 && r1.label === '9 y 4 m' && r2?.months === 53 && r3?.months === 2
+      && o1 === null && o2?.months === 53 && o3?.months === 112,
+      'FB-29', 'Slip age: Age label (y/m/days, Arabic) or date of birth; unclear day/month in infants and other dates are not taken',
+      JSON.stringify({ a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, r1, r2, r3, o1, o2, o3 }),
+    );
+  }
   assert(
     weekKey('2026-10-17T21:00:00Z') === '2026-10-18'
     && weekKey('2026-10-17T20:59:00Z') === '2026-10-11'

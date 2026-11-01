@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useRef } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import { assignDestination } from '@triagepulse/clinical';
@@ -39,6 +39,12 @@ export default function VisualTriage() {
   const [patientAge, setPatientAge] = useState('');
   const [encounterNo, setEncounterNo] = useState('');
   const [mrnSuffix, setMrnSuffix] = useState('');
+  // Age read from the slip (months); fills the age box only when it is empty.
+  const [slipAge, setSlipAge] = useState(null);
+  const onSlipAge = useCallback((age) => {
+    setSlipAge(age);
+    setPatientAge((cur) => (cur !== '' ? cur : age.months < 12 ? (age.months / 12).toFixed(2) : String(age.years)));
+  }, []);
   const [notRegistered, setNotRegistered] = useState(false);
   const [sectionA, setSectionA] = useState(defaultSectionA);
   const [symptoms, setSymptoms] = useState({});
@@ -100,6 +106,7 @@ export default function VisualTriage() {
         encounterNo: encounterOk ? cleanEncounter(encounterNo) : undefined,
         mrnSuffix: suffixFromPatientNo(mrnSuffix) || undefined,
         age: ageInCompletedYears(patientAge),
+        ageMonths: slipAge?.months,
       });
 
       const { journey, destination: serverDest } = await api.journeys.visualTriage(created.id, {
@@ -145,6 +152,7 @@ export default function VisualTriage() {
 
   const resetAll = () => {
     setPatientAge('');
+    setSlipAge(null);
     setEncounterNo('');
     setMrnSuffix('');
     setNotRegistered(false);
@@ -219,6 +227,7 @@ export default function VisualTriage() {
               value={encounterNo}
               onChange={setEncounterNo}
               onMrnSuffix={setMrnSuffix}
+              onAge={onSlipAge}
               disabled={notRegistered}
               inputClassName={inputCls}
             />

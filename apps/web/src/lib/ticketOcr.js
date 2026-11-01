@@ -1,4 +1,4 @@
-import { patientNoFromText, visitNumberFromText } from '@triagepulse/clinical';
+import { ageFromText, patientNoFromText, visitNumberFromText } from '@triagepulse/clinical';
 
 /**
  * On-device reading of the visit slip (Transaction No. or Voucher No., and Patient No. / MRN).
@@ -69,10 +69,10 @@ export function frameToCanvas(video, maxWidth = 1600) {
   return canvas;
 }
 
-/** Reads one frame; visit number (transaction/voucher) and printed Patient No. (MRN). */
+/** Reads one frame; visit number (transaction/voucher), printed Patient No. (MRN) and age (date of birth is used only to work out the age). */
 export async function readTicketFields(video, pattern) {
   const canvas = frameToCanvas(video);
-  if (!canvas) return { visit: null, patientNo: null, mrnSuffix: null };
+  if (!canvas) return { visit: null, patientNo: null, mrnSuffix: null, age: null };
   const worker = await getTicketReader(progressListener);
   const { data } = await worker.recognize(canvas);
   const patientNo = patientNoFromText(data.text);
@@ -80,6 +80,7 @@ export async function readTicketFields(video, pattern) {
     visit: visitNumberFromText(data.text, pattern),
     patientNo,
     mrnSuffix: patientNo ? patientNo.slice(-3) : null,
+    age: ageFromText(data.text),
   };
 }
 

@@ -3,13 +3,15 @@ import { toast } from 'sonner';
 import { Barcode, Camera, CameraOff, Check, Link2 } from 'lucide-react';
 import { api } from '@/api/client';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { patientNoFromBarcode } from '@triagepulse/clinical';
+import { ageLabel, patientNoFromBarcode } from '@triagepulse/clinical';
 
 /**
  * HIS visit number for a journey = Transaction No. on an outpatient ticket, or Voucher No.
  * on a follow-up slip (9–10 digits). Last 3 of Patient No. / a 6–7 digit MRN barcode fill
- * the tracking suffix. The camera stays on until both the visit/voucher number and the full
- * Patient No. are read (or the nurse stops it); it only fills the boxes; the nurse checks before save.
+ * the tracking suffix. The camera stays on until the visit/voucher number, the full Patient No.
+ * and the age are read (or the nurse finishes without age / stops it); it only fills the boxes;
+ * the nurse checks before save. Age comes from the printed Age, or is worked out from the date of
+ * birth on the device — the date of birth itself is never kept or sent.
  *
  * Barcodes: native BarcodeDetector first, @zxing/browser when missing (iPad Safari).
  * Text: tesseract.js, served by the app, loaded on first use (lib/ticketOcr).
@@ -24,6 +26,15 @@ const FORMATS = ['code_128', 'code_39', 'code_93', 'codabar', 'itf', 'ean_13', '
 const LOOKS_RIGHT = (() => {
   try { return new RegExp(import.meta.env.VITE_ENCOUNTER_PATTERN || '^\\d{9,10}$'); } catch { return /^\d{9,10}$/; }
 })();
+
+/** Slip age boxes → whole months (null when empty or out of range). */
+export function slipAgeMonths(years, months) {
+  if (String(years ?? '') === '' && String(months ?? '') === '') return null;
+  const y = parseInt(years || '0', 10);
+  const m = parseInt(months || '0', 10);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m > 11 || y > 130) return null;
+  return y * 12 + m;
+}
 
 /** Why a value is not accepted, in plain words (null when it is fine or empty). */
 export function encounterProblem(raw) {
@@ -82,7 +93,7 @@ async function nativeDetector() {
  */
 function Scanner({ onResult, onComplete }) {
   const videoRef = useRef(null);
-  const [got, setGot] = useState({ visit: '', patientNo: '' });
+  const [got, setGot] = useState({ visit: '', patientNo: '', age: null });
   const [state, setState] = useState('starting'); // starting | scanning | blocked | unsupported
   const [ocr, setOcr] = useState({ phase: 'loading', pct: 0 }); // loading | reading | failed
   const [note, setNote] = useState('');
@@ -95,20 +106,21 @@ function Scanner({ onResult, onComplete }) {
     let slowTimer = null;
     let zxingControls = null;
 
-    // Keep reading until BOTH the visit/voucher number and the full Patient No. (6–7 digits) are caught.
-    const found = { visit: '', patientNo: '' };
+    // Keep reading until the visit/voucher number, the full Patient No. (6–7 digits) and the age are caught.
+    const found = { visit: '', patientNo: '', age: null };
     const report = (fields) => {
-      if (stopped || (!fields?.visit && !fields?.patientNo && !fields?.mrnSuffix)) return;
+      if (stopped || (!fields?.visit && !fields?.patientNo && !fields?.mrnSuffix && !fields?.age)) return;
       onResult(fields);
       const pn = fields.patientNo ? cleanPatientNo(fields.patientNo) : '';
       let changed = false;
       if (fields.visit && !found.visit) { found.visit = cleanEncounter(fields.visit); changed = true; }
       if (pn.length >= 6 && !found.patientNo) { found.patientNo = pn; changed = true; }
+      if (fields.age && found.age == null) { found.age = fields.age; changed = true; }
       if (changed) {
         setGot({ ...found });
         if (navigator.vibrate) navigator.vibrate(60);
       }
-      if (found.visit && found.patientNo) {
+      if (found.visit && found.patientNo && found.age) {
         stopped = true;
         if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
         onComplete?.({ ...found });
@@ -179,13 +191,19 @@ function Scanner({ onResult, onComplete }) {
         });
         if (stopped) return;
         setOcr({ phase: 'reading', pct: 100 });
+        // Printed text can be misread (a 6 read as 3): a value counts only when two frames agree.
+        const seen = { visit: new Map(), patientNo: new Map(), age: new Map() };
+        const confirmed = (kind, value) => {
+          if (value == null || value === '') return false;
+          const n = (seen[kind].get(value) || 0) + 1;
+          seen[kind].set(value, n);
+          return n >= 2;
+        };
         while (!stopped) {
           const fields = await readTicketFields(v, LOOKS_RIGHT).catch(() => null);
-          if (fields?.patientNo) report({ patientNo: fields.patientNo });
-          else if (fields?.mrnSuffix) report({ mrnSuffix: fields.mrnSuffix });
-          if (fields?.visit) {
-            report({ visit: fields.visit.value, patientNo: fields.patientNo || undefined, mrnSuffix: fields.mrnSuffix || undefined });
-          }
+          if (fields?.age && confirmed('age', fields.age.months)) report({ age: fields.age });
+          if (fields?.patientNo && confirmed('patientNo', fields.patientNo)) report({ patientNo: fields.patientNo });
+          if (fields?.visit && confirmed('visit', fields.visit.value)) report({ visit: fields.visit.value });
           await new Promise((r) => setTimeout(r, 300));
         }
       } catch {
@@ -235,12 +253,24 @@ function Scanner({ onResult, onComplete }) {
           <li className={got.patientNo ? 'font-semibold text-ink' : 'text-graphite'}>
             {got.patientNo ? '✓' : '…'} رقم المريض · Patient No. (MRN) {got.patientNo && <span dir="ltr">{got.patientNo}</span>}
           </li>
-          {(got.visit || got.patientNo) && !(got.visit && got.patientNo) && (
+          <li className={got.age ? 'font-semibold text-ink' : 'text-graphite'}>
+            {got.age ? '✓' : '…'} العمر · Age {got.age && <span dir="ltr">{got.age.label}{got.age.source === 'dob' ? ' (from DOB)' : ''}</span>}
+          </li>
+          {(got.visit || got.patientNo || got.age) && !(got.visit && got.patientNo && got.age) && (
             <li className="font-semibold text-ink">
-              الكاميرا تبقى مفتوحة حتى يُقرأ الرقمان · Camera stays on until both are read
+              الكاميرا تبقى مفتوحة حتى تُقرأ الثلاثة · Camera stays on until all three are read
             </li>
           )}
         </ul>
+      )}
+      {state === 'scanning' && got.visit && got.patientNo && !got.age && (
+        <button
+          type="button"
+          onClick={() => onComplete?.({ ...got })}
+          className="h-10 rounded-xl border border-ink text-ink text-sm font-semibold"
+        >
+          إنهاء بدون العمر (غير مطبوع) · Finish without age (not printed)
+        </button>
       )}
       {note && <p className="m-0 text-sm text-ink">{note}</p>}
       {slow && ocr.phase === 'reading' && (
@@ -262,6 +292,9 @@ function Scanner({ onResult, onComplete }) {
 export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick, initialValue = '', initialMrnSuffix = '' }) {
   const [value, setValue] = useState('');
   const [patientNo, setPatientNo] = useState('');
+  const [ageYears, setAgeYears] = useState('');
+  const [ageMonthsPart, setAgeMonthsPart] = useState('');
+  const [ageFromDob, setAgeFromDob] = useState(false);
   const [scanning, setScanning] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -270,6 +303,10 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
     if (open) {
       setValue(journey?.encounter_no || initialValue || '');
       setPatientNo(journey?.mrn_suffix || initialMrnSuffix || '');
+      const hm = journey?.his_age_months;
+      setAgeYears(hm != null ? String(Math.floor(hm / 12)) : '');
+      setAgeMonthsPart(hm != null && hm % 12 ? String(hm % 12) : '');
+      setAgeFromDob(false);
       setScanning(!(journey?.encounter_no || initialValue));
       setError('');
     }
@@ -280,6 +317,11 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
     if (fields.visit) setValue(cleanEncounter(fields.visit));
     if (fields.patientNo) setPatientNo(cleanPatientNo(fields.patientNo));
     else if (fields.mrnSuffix) setPatientNo(cleanPatientNo(fields.mrnSuffix));
+    if (fields.age) {
+      setAgeYears(String(fields.age.years));
+      setAgeMonthsPart(fields.age.months % 12 ? String(fields.age.months % 12) : '');
+      setAgeFromDob(fields.age.source === 'dob');
+    }
     setError('');
   }, []);
   const onComplete = useCallback(() => setScanning(false), []);
@@ -288,6 +330,9 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
   const suffix = suffixFromPatientNo(patientNo);
   const suffixOk = suffix.length === 3;
   const canSave = visitOk || suffixOk;
+  const ageMonths = slipAgeMonths(ageYears, ageMonthsPart);
+  const triageAge = journey?.age;
+  const ageMismatch = ageMonths != null && triageAge != null && triageAge !== '' && Math.floor(ageMonths / 12) !== Number(triageAge);
 
   const save = async () => {
     if (!canSave) return;
@@ -296,6 +341,7 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
     const payload = {
       encounterNo: visitOk ? clean : undefined,
       mrnSuffix: suffixOk ? suffix : undefined,
+      ageMonths: ageMonths ?? undefined,
     };
     try {
       if (!journey) {
@@ -379,6 +425,39 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
           />
           <span className="text-xs text-graphite">يُحفظ آخر ٣ فقط للتتبع · Only last 3 are kept for tracking</span>
         </label>
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-sm font-medium">العمر في التذكرة · Age on the slip</legend>
+          <div className="flex gap-2" dir="ltr">
+            <label className="flex items-center gap-1 flex-1">
+              <input
+                value={ageYears}
+                onChange={(e) => { setAgeYears(e.target.value.replace(/\D/g, '').slice(0, 3)); setAgeFromDob(false); }}
+                inputMode="numeric"
+                aria-label="Age years · سنوات"
+                placeholder="0"
+                className="h-12 w-full border border-mist rounded-xl px-3 text-lg font-semibold bg-white"
+              />
+              <span className="text-sm">y · سنة</span>
+            </label>
+            <label className="flex items-center gap-1 flex-1">
+              <input
+                value={ageMonthsPart}
+                onChange={(e) => { setAgeMonthsPart(e.target.value.replace(/\D/g, '').slice(0, 2)); setAgeFromDob(false); }}
+                inputMode="numeric"
+                aria-label="Age months · أشهر"
+                placeholder="0"
+                className="h-12 w-full border border-mist rounded-xl px-3 text-lg font-semibold bg-white"
+              />
+              <span className="text-sm">m · شهر</span>
+            </label>
+          </div>
+          {ageFromDob && <span className="text-xs text-graphite">محسوب من تاريخ الميلاد (لا يُحفظ التاريخ) · Worked out from the date of birth (the date is not kept)</span>}
+          {ageMismatch && (
+            <span role="alert" className="text-sm font-semibold text-ink border-2 border-ink rounded-lg px-3 py-2">
+              العمر في التذكرة ({ageLabel(ageMonths)}) يختلف عن عمر الفرز ({triageAge} y) — تأكد من المريض · Slip age differs from the triage age — check the patient
+            </span>
+          )}
+        </fieldset>
         {error && <p role="alert" className="text-sm font-semibold text-ink border-2 border-ink rounded-lg px-3 py-2">{error}</p>}
         <button
           type="button"
@@ -427,13 +506,14 @@ export default function EncounterLink({ journey, onLinked, tone = 'light', promi
  * camera fills this box and Patient No. when printed. Nothing is saved here; values go
  * with the new journey.
  */
-export function EncounterField({ value, onChange, onMrnSuffix, disabled = false, inputClassName = '' }) {
+export function EncounterField({ value, onChange, onMrnSuffix, onAge, disabled = false, inputClassName = '' }) {
   const [open, setOpen] = useState(false);
   const onResult = useCallback((fields) => {
     if (fields.visit) onChange(cleanEncounter(fields.visit));
     if (fields.patientNo) onMrnSuffix?.(cleanPatientNo(fields.patientNo));
     else if (fields.mrnSuffix) onMrnSuffix?.(cleanPatientNo(fields.mrnSuffix));
-  }, [onChange, onMrnSuffix]);
+    if (fields.age) onAge?.(fields.age);
+  }, [onChange, onMrnSuffix, onAge]);
   const onComplete = useCallback(() => setOpen(false), []);
   const bad = value && !encounterLooksRight(value);
   return (

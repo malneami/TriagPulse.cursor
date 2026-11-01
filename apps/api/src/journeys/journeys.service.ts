@@ -26,15 +26,19 @@ export class JourneysService {
       modeOfArrival?: string;
       encounterNo?: string;
       mrnSuffix?: string;
+      ageMonths?: number;
     },
     user: { id: string; full_name?: string; email?: string },
   ) {
+    const hisAgeMonths = data.ageMonths != null && Number.isInteger(data.ageMonths) && data.ageMonths >= 0 && data.ageMonths <= 1560
+      ? data.ageMonths : null;
     const encounterNo = data.encounterNo ? await this.checkEncounter(data.encounterNo) : null;
     const mrnSuffix = data.mrnSuffix ? this.checkMrnSuffix(data.mrnSuffix) : null;
     const journey = await this.prisma.patientJourney.create({
       data: {
         ...(encounterNo ? { encounterNo, encounterLinkedAt: new Date(), encounterLinkedById: user.id } : {}),
         ...(mrnSuffix ? { mrnSuffix } : {}),
+        ...(hisAgeMonths != null ? { hisAgeMonths } : {}),
         patientId: randomUUID(),
         createdById: user.id,
         age: data.age,
@@ -48,6 +52,7 @@ export class JourneysService {
       patientId: journey.patientId,
       encounterLinked: !!encounterNo,
       mrnSuffixSet: !!mrnSuffix,
+      hisAgeSet: hisAgeMonths != null,
     });
     return journey;
   }
@@ -223,7 +228,7 @@ export class JourneysService {
    */
   async linkEncounter(
     id: string,
-    body: { encounterNo?: string; mrnSuffix?: string },
+    body: { encounterNo?: string; mrnSuffix?: string; ageMonths?: number },
     user: { id: string; role: string; full_name?: string; email?: string },
   ) {
     const journey = await this.prisma.patientJourney.findUnique({ where: { id } });
@@ -252,8 +257,16 @@ export class JourneysService {
       if (journey.mrnSuffix !== mrnSuffix) patch.mrnSuffix = mrnSuffix;
     }
 
+    // Age from the slip: kept beside the triage age (never replaces it); fills the age only when none was entered.
+    const ageMonths = body.ageMonths != null && Number.isInteger(body.ageMonths) && body.ageMonths >= 0 && body.ageMonths <= 1560
+      ? body.ageMonths : null;
+    if (ageMonths != null && journey.hisAgeMonths !== ageMonths) {
+      patch.hisAgeMonths = ageMonths;
+      if (journey.age == null) patch.age = Math.floor(ageMonths / 12);
+    }
+
     if (Object.keys(patch).length === 0) {
-      if (rawEnc || rawSuffix) return journey;
+      if (rawEnc || rawSuffix || ageMonths != null) return journey;
       throw new BadRequestException(
         'Enter the visit or voucher number (9–10 digits), or the last 3 digits of the file number.',
       );
@@ -268,6 +281,16 @@ export class JourneysService {
     }
     if (patch.mrnSuffix) {
       await this.audit.log('PatientJourney', id, 'mrn_suffix_set', user, { ticketNo: journey.ticketNo });
+    }
+    if (patch.hisAgeMonths != null) {
+      const triageYears = journey.age;
+      await this.audit.log('PatientJourney', id, 'his_age_set', user, {
+        ticketNo: journey.ticketNo,
+        hisAgeMonths: patch.hisAgeMonths,
+        triageAge: triageYears,
+        ageFilled: patch.age != null,
+        mismatch: triageYears != null && triageYears !== Math.floor(Number(patch.hisAgeMonths) / 12),
+      });
     }
     return updated;
   }
