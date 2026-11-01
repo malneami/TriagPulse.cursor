@@ -510,6 +510,54 @@ check(/default-src 'self'/.test(hdr.headers.get('content-security-policy') || ''
 check(hdr.headers.get('x-frame-options') === 'SAMEORIGIN' || /frame-ancestors 'none'/.test(hdr.headers.get('content-security-policy') || ''), 'the app cannot be framed');
 check(hdr.headers.get('x-content-type-options') === 'nosniff', 'no MIME sniffing');
 
+// ── Staff sign-up link (pilot code) and the Viewer access level ─────────────
+const joinClosed = await call('/join');
+check(joinClosed.status === 200 && joinClosed.json?.open === false, 'the sign-up link starts closed', joinClosed.text.slice(0, 120));
+const joinBody = (over = {}) => ({ code: 'E2E-PILOT', fullName: 'E2E Joiner', email: `join.${Date.now()}@example.com`, jobTitle: 'paramedic', branch: 'takhassusi', ...over });
+const whileClosed = await call('/join', { method: 'POST', body: joinBody() });
+check(whileClosed.status === 403, 'a closed link refuses sign-ups (403)', `got ${whileClosed.status}`);
+const nurseJoinSet = await call('/users/join-settings', { token: nurse, method: 'PUT', body: { code: 'E2E-PILOT', enabled: true } });
+check(nurseJoinSet.status === 403, 'only an admin can open the link (403)', `got ${nurseJoinSet.status}`);
+const openLink = await call('/users/join-settings', { token: admin, method: 'PUT', body: { code: 'e2e-pilot', enabled: true } });
+check(openLink.status === 200 && openLink.json?.enabled === true && openLink.json?.hasCode === true && !('codeHash' in (openLink.json || {})), 'the admin sets the pilot code and opens the link (code never returned)', openLink.text.slice(0, 200));
+const wrongCode = await call('/join', { method: 'POST', body: joinBody({ code: 'WRONG1' }) });
+check(wrongCode.status === 403, 'a wrong pilot code is refused (403)', `got ${wrongCode.status}`);
+const joinEmail = `join.${Date.now()}@example.com`;
+const joined = await call('/join', { method: 'POST', body: joinBody({ email: joinEmail, code: 'e2e-pilot' }) });
+check(joined.status === 201 && joined.json?.ok === true, 'a staff member signs up with the pilot code (any case)', `status ${joined.status} ${joined.text.slice(0, 200)}`);
+const again2 = await call('/join', { method: 'POST', body: joinBody({ email: joinEmail }) });
+check(again2.status === 201, 'signing up twice gives the same answer (no account discovery)', `got ${again2.status}`);
+const otherNeedsText = await call('/join', { method: 'POST', body: joinBody({ jobTitle: 'other' }) });
+check(otherNeedsText.status === 400, '"Other" job title needs the title written (400)', `got ${otherNeedsText.status}`);
+const reqs = await call('/users/requests', { token: admin });
+const joinReqs = (reqs.json || []).filter((r) => r.email === joinEmail);
+check(reqs.status === 200 && joinReqs.length === 1 && joinReqs[0].jobTitle === 'paramedic' && joinReqs[0].branch === 'takhassusi', 'one pending request with job title and branch', reqs.text.slice(0, 200));
+const viewerPw = 'ViewPass2468ab';
+const approved = await call(`/users/requests/${joinReqs[0].id}/approve`, { token: admin, method: 'POST', body: { role: 'viewer', password: viewerPw } });
+check(approved.status === 201 && approved.json?.role === 'viewer' && approved.json?.jobTitle === 'paramedic' && approved.json?.mustChangePassword === true, 'approval creates a Viewer account with a temporary password', `status ${approved.status} ${approved.text.slice(0, 200)}`);
+const twice = await call(`/users/requests/${joinReqs[0].id}/approve`, { token: admin, method: 'POST', body: { role: 'viewer', password: viewerPw } });
+check(twice.status === 409, 'a request cannot be approved twice (409)', `got ${twice.status}`);
+const vLogin = await call('/auth/login', { method: 'POST', body: { email: joinEmail, password: viewerPw } });
+const vTok = vLogin.json?.access_token;
+await call('/auth/change-password', { token: vTok, method: 'POST', body: { currentPassword: viewerPw, newPassword: 'ViewPass1357cd' } });
+const vBoard = await call('/tracking/board', { token: vTok });
+check(vBoard.status === 200, 'a Viewer can see the tracking board', `got ${vBoard.status}`);
+const vEval = await call('/triage/evaluate', { token: vTok, method: 'POST', body: { patient: { chief_complaint: 'Back Pain', age: 30 } } });
+check(vEval.status === 403, 'a Viewer cannot run triage (403)', `got ${vEval.status}`);
+const vCreate = await call('/journeys', { token: vTok, method: 'POST', body: { age: 30 } });
+check(vCreate.status === 403, 'a Viewer cannot start a case (403)', `got ${vCreate.status}`);
+const vExport = await call('/analytics/export/validated', { token: vTok });
+check(vExport.status === 403, 'a Viewer cannot export patient-level data (403)', `got ${vExport.status}`);
+const rejEmail = `join.rej.${Date.now()}@example.com`;
+await call('/join', { method: 'POST', body: joinBody({ email: rejEmail, jobTitle: 'other', jobTitleOther: 'Unit clerk', branch: 'other', branchOther: 'Test branch' }) });
+const reqs2 = await call('/users/requests', { token: admin });
+const rej = (reqs2.json || []).find((r) => r.email === rejEmail);
+check(rej?.jobTitleOther === 'Unit clerk' && rej?.branchOther === 'Test branch', '"Other" job title and branch are kept as written', JSON.stringify(rej || {}).slice(0, 200));
+const rejected = await call(`/users/requests/${rej?.id}/reject`, { token: admin, method: 'POST', body: {} });
+check(rejected.status === 201, 'the admin rejects a request', `got ${rejected.status}`);
+const closeLink = await call('/users/join-settings', { token: admin, method: 'PUT', body: { enabled: false } });
+check(closeLink.status === 200 && closeLink.json?.enabled === false, 'the admin closes the link');
+
 // The admin account is not used above, so locking it here affects nothing else.
 const lockEmail = 'admin@triagepulse.local';
 for (let i = 0; i < 5; i += 1) {

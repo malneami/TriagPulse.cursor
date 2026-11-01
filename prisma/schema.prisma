@@ -16,6 +16,13 @@ enum UserRole {
   nurse
   physician
   admin
+  viewer
+}
+
+enum StaffRequestStatus {
+  pending
+  approved
+  rejected
 }
 
 enum Gender {
@@ -104,6 +111,11 @@ model User {
   active       Boolean  @default(true)
   /// Physician the admin has marked as an outcome reviewer: only these appear in the outcome assign list.
   outcomeReviewer Boolean @default(false) @map("outcome_reviewer")
+  /// Job title label (nurse, pct, physician, paramedic, other) and HMG branch, from the join form or the admin.
+  jobTitle     String?  @map("job_title") @db.VarChar(20)
+  jobTitleOther String? @map("job_title_other") @db.VarChar(60)
+  branch       String?  @db.VarChar(30)
+  branchOther  String?  @map("branch_other") @db.VarChar(60)
   /// Set when an admin creates the account or resets the password: change it at next sign-in.
   mustChangePassword Boolean @default(false) @map("must_change_password")
   lastLoginAt  DateTime? @map("last_login_at")
@@ -449,4 +461,35 @@ model AuthSession {
   @@index([userId])
   @@index([previousHash])
   @@map("auth_sessions")
+}
+
+/// Staff sign-up request from the join link. No password; the admin approves (creates the account) or rejects.
+model StaffRequest {
+  id            String             @id @default(uuid())
+  fullName      String             @map("full_name") @db.VarChar(120)
+  email         String             @db.VarChar(120)
+  jobTitle      String             @map("job_title") @db.VarChar(20)
+  jobTitleOther String?            @map("job_title_other") @db.VarChar(60)
+  branch        String             @db.VarChar(30)
+  branchOther   String?            @map("branch_other") @db.VarChar(60)
+  status        StaffRequestStatus @default(pending)
+  createdAt     DateTime           @default(now()) @map("created_at")
+  decidedAt     DateTime?          @map("decided_at")
+  decidedById   String?            @map("decided_by_id")
+  userId        String?            @map("user_id")
+
+  @@index([status, createdAt])
+  @@index([email])
+  @@map("staff_requests")
+}
+
+/// Join link settings (one row, id "default"). The pilot code is stored hashed.
+model JoinSetting {
+  id        String   @id @default("default")
+  enabled   Boolean  @default(false)
+  codeHash  String?  @map("code_hash")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedById String? @map("updated_by_id")
+
+  @@map("join_settings")
 }

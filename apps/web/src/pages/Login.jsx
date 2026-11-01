@@ -185,6 +185,9 @@ export default function Login() {
           </p>
         </div>
         )}
+        <a href="/join" className="block text-center text-sm text-graphite underline underline-offset-4">
+          ليس لديك حساب؟ اطلب حساباً · No account? Request one
+        </a>
       </form>
     </div>
   );

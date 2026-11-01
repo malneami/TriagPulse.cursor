@@ -10,6 +10,7 @@ type Actor = { id: string; role: string; full_name?: string; email?: string };
 
 const PUBLIC = {
   id: true, email: true, fullName: true, role: true, active: true, outcomeReviewer: true, mustChangePassword: true,
+  jobTitle: true, jobTitleOther: true, branch: true, branchOther: true,
   lockedUntil: true, lastLoginAt: true, createdAt: true,
 } as const;
 
@@ -27,7 +28,10 @@ export class UsersService {
     if (problem) throw new BadRequestException(problem);
   }
 
-  async create(data: { email: string; fullName: string; role: UserRole; password: string; outcomeReviewer?: boolean }, actor: Actor) {
+  async create(data: {
+    email: string; fullName: string; role: UserRole; password: string; outcomeReviewer?: boolean;
+    jobTitle?: string | null; jobTitleOther?: string | null; branch?: string | null; branchOther?: string | null;
+  }, actor: Actor) {
     const email = data.email.trim().toLowerCase();
     const fullName = data.fullName.trim();
     if (!fullName) throw new BadRequestException('Enter the full name.');
@@ -38,6 +42,8 @@ export class UsersService {
         email, fullName, role: data.role, passwordHash: await bcrypt.hash(data.password, 10), mustChangePassword: true,
         // Outcome reviewer is a physician-only switch.
         outcomeReviewer: data.role === 'physician' && data.outcomeReviewer === true,
+        jobTitle: data.jobTitle ?? null, jobTitleOther: data.jobTitleOther ?? null,
+        branch: data.branch ?? null, branchOther: data.branchOther ?? null,
       },
       select: PUBLIC,
     });

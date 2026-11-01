@@ -126,7 +126,7 @@ function ValidationCard({ patient, onAgree, onDisagree, user }) {
   );
 }
 
-function HisLinkCard({ patient, onLinked }) {
+function HisLinkCard({ patient, onLinked, readOnly = false }) {
   const detail = patient.chief_complaint || '';
   return (
     <li className="rounded-xl p-3 flex flex-col gap-2 bg-white border-2 border-ink">
@@ -145,7 +145,7 @@ function HisLinkCard({ patient, onLinked }) {
       <p className="m-0 text-xs text-graphite">
         CTAS completed. Link the visit number to send this case to the physician board.
       </p>
-      <EncounterLink journey={patient} onLinked={onLinked} prominent />
+      {!readOnly && <EncounterLink journey={patient} onLinked={onLinked} prominent />}
     </li>
   );
 }
@@ -166,13 +166,15 @@ function NurseQueueCard({ patient, onOpen }) {
       <span className="text-sm text-graphite">
         {patient.current_status === 'ctas_in_progress' ? 'قيد الفرز الآن' : 'بانتظار فرز CTAS'}
       </span>
-      <button
-        type="button"
-        onClick={() => onOpen(patient)}
-        className="h-12 rounded-lg bg-ink text-white text-sm font-medium"
-      >
-        {patient.current_status === 'ctas_in_progress' ? 'متابعة الفرز' : 'بدء فرز CTAS'}
-      </button>
+      {onOpen && (
+        <button
+          type="button"
+          onClick={() => onOpen(patient)}
+          className="h-12 rounded-lg bg-ink text-white text-sm font-medium"
+        >
+          {patient.current_status === 'ctas_in_progress' ? 'متابعة الفرز' : 'بدء فرز CTAS'}
+        </button>
+      )}
     </li>
   );
 }
@@ -182,6 +184,8 @@ export default function PatientTracking() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const physician = canAccess(user, 'review_ctas');
+  // Viewer: read-only board (no new patient, no linking, no opening a triage).
+  const canWork = canAccess(user, 'perform_triage');
   const [review, setReview] = useState(null);
   const [search, setSearch] = useState('');
   // Filters: age (years), date range and time of day of CTAS completion (else arrival).
@@ -326,7 +330,7 @@ export default function PatientTracking() {
         >
           <Monitor className="w-5 h-5" aria-hidden="true" /> شاشة الحائط
         </Link>
-        {!physician && (
+        {!physician && canWork && (
           <button
             type="button"
             onClick={() => navigate('/triage', { state: { fresh: Date.now() } })}
@@ -413,14 +417,14 @@ export default function PatientTracking() {
               <p className="m-0 text-sm text-graphite">CTAS is complete. Link the visit number to move the case to the physician board.</p>
               <ul className="list-none m-0 p-0 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {hisRequired.map((p) => (
-                  <HisLinkCard key={p.id} patient={p} onLinked={afterChange} />
+                  <HisLinkCard key={p.id} patient={p} onLinked={afterChange} readOnly={!canWork} />
                 ))}
               </ul>
             </section>
           )}
           <ul className="list-none m-0 p-0 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((p) => (
-              <NurseQueueCard key={p.id} patient={p} onOpen={openTriage} />
+              <NurseQueueCard key={p.id} patient={p} onOpen={canWork ? openTriage : null} />
             ))}
           </ul>
         </>
@@ -443,7 +447,7 @@ export default function PatientTracking() {
               ? 'No completed assessments waiting for physician validation.'
               : 'No patients waiting for CTAS. Start with a visual triage.'}
           </p>
-          {!physician && (
+          {!physician && canWork && (
             <button type="button" onClick={() => navigate('/triage', { state: { fresh: Date.now() } })} className="h-12 px-5 rounded-xl bg-ink text-white font-medium">
               بدء الفرز البصري
             </button>

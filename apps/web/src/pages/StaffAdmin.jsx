@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Copy, KeyRound, Lock, Pencil, Plus, Search, UserCheck, UserX, Wand2 } from 'lucide-react';
+import { Check, Copy, KeyRound, Link2, Lock, Pencil, Plus, Search, UserCheck, UserPlus, UserX, Wand2, X } from 'lucide-react';
+import { branchLabel, jobTitleLabel } from '@triagepulse/clinical';
 import { api } from '@/api/client';
 import { useAuth } from '@/lib/AuthContext';
 import { ROLE_LABELS } from '@/lib/security/roles';
@@ -13,8 +14,23 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
  * password that must be changed at first sign-in. Passwords are never shown again.
  */
 
-const ROLES = ['nurse', 'physician', 'admin'];
-const ROLE_AR = { nurse: 'ممرض', physician: 'طبيب', admin: 'مسؤول' };
+const ROLES = ['nurse', 'physician', 'admin', 'viewer'];
+const ROLE_AR = { nurse: 'ممرض / فني رعاية', physician: 'طبيب', admin: 'مسؤول', viewer: 'مشاهد' };
+
+/** What each access level can do (shown when choosing one). */
+const ROLE_HELP = {
+  nurse: 'Triage and save; own feedback',
+  physician: 'Practise triage (no saving), CTAS validation, outcome review if ticked, dashboards',
+  admin: 'Everything: staff, settings, assigning, exports',
+  viewer: 'Read only: tracking board and wall screen',
+};
+
+/** Suggested access level from the job title on a sign-up request. */
+function suggestedRole(jobTitle) {
+  if (jobTitle === 'nurse' || jobTitle === 'pct') return 'nurse';
+  if (jobTitle === 'physician') return 'physician';
+  return 'viewer';
+}
 
 /** 12 characters, letters and digits, no look-alikes (0/O, 1/l/I). */
 export function tempPassword() {
@@ -127,7 +143,7 @@ function StaffDialog({ open, onOpenChange, editing, onSaved }) {
         )}
         <fieldset className="flex flex-col gap-1">
           <legend className="text-sm font-medium mb-1">الدور · Role</legend>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {ROLES.map((r) => (
               <button
                 key={r}
@@ -140,6 +156,7 @@ function StaffDialog({ open, onOpenChange, editing, onSaved }) {
               </button>
             ))}
           </div>
+          <span className="text-xs text-graphite" dir="ltr">{ROLE_HELP[form.role]}</span>
         </fieldset>
         {form.role === 'physician' && (
           <label className="flex items-start gap-3 border border-mist rounded-xl px-3 py-3 cursor-pointer">
@@ -250,7 +267,10 @@ export default function StaffAdmin() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <JoinLinkCard />
+      <RequestsPanel onApproved={refresh} />
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {ROLES.map((r) => (
           <div key={r} className="bg-white border border-mist rounded-2xl px-4 py-3 flex flex-col">
             <span className="text-sm text-graphite">{ROLE_LABELS[r]}</span>
@@ -291,6 +311,11 @@ export default function StaffAdmin() {
               <div className="flex flex-col min-w-[200px] flex-1">
                 <span className="font-semibold text-[15px]">{u.fullName}{self && <span className="text-graphite font-normal"> · أنت / you</span>}</span>
                 <span dir="ltr" className="text-sm text-graphite text-start">{u.email}</span>
+                {(u.jobTitle || u.branch) && (
+                  <span dir="ltr" className="text-xs text-graphite text-start">
+                    {[jobTitleLabel(u.jobTitle, u.jobTitleOther), branchLabel(u.branch, u.branchOther)].filter(Boolean).join(' · ')}
+                  </span>
+                )}
               </div>
               <span className="text-sm border border-mist rounded-lg px-2 py-1">{ROLE_LABELS[u.role] || u.role}</span>
               {u.role === 'physician' && u.outcomeReviewer && (
@@ -330,5 +355,156 @@ export default function StaffAdmin() {
       <StaffDialog open={dialog.open} editing={dialog.editing} onOpenChange={(o) => setDialog((d) => ({ ...d, open: o }))} onSaved={refresh} />
       <ResetDialog user={resetFor} onOpenChange={(o) => { if (!o) setResetFor(null); }} onSaved={refresh} />
     </div>
+  );
+}
+
+/** Sign-up link: open or close it, and set the pilot code (stored hashed; shown only when set). */
+function JoinLinkCard() {
+  const queryClient = useQueryClient();
+  const { data: st } = useQuery({ queryKey: ['join-settings'], queryFn: () => api.users.joinSettings() });
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const link = `${window.location.origin}/join`;
+  const save = async (data, ok) => {
+    setBusy(true);
+    try {
+      await api.users.updateJoinSettings(data);
+      toast.success(ok);
+      queryClient.invalidateQueries({ queryKey: ['join-settings'] });
+      if (data.code) setCode('');
+    } catch (err) { toast.error(err?.message || 'Failed'); } finally { setBusy(false); }
+  };
+  const newCode = () => {
+    const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    setCode(Array.from({ length: 6 }, () => a[crypto.getRandomValues(new Uint32Array(1))[0] % a.length]).join(''));
+  };
+  return (
+    <section aria-label="رابط التسجيل · Sign-up link" className="bg-white border border-mist rounded-2xl p-4 flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link2 className="w-5 h-5" aria-hidden="true" />
+        <h2 className="m-0 text-lg font-semibold">رابط تسجيل الموظفين · Staff sign-up link</h2>
+        <span className={`ms-auto text-sm rounded-lg px-2 py-1 ${st?.enabled ? 'bg-ink text-white' : 'border border-mist text-graphite'}`}>
+          {st?.enabled ? 'مفتوح · Open' : 'مغلق · Closed'}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <input readOnly dir="ltr" value={link} aria-label="Sign-up link" className="flex-1 min-w-0 h-11 border border-mist rounded-xl px-3 text-sm bg-paper" />
+        <button type="button" onClick={() => navigator.clipboard?.writeText(link).then(() => toast.success('نُسخ الرابط · Link copied'))} className="h-11 px-3 rounded-xl border border-mist flex items-center gap-1 text-sm">
+          <Copy className="w-4 h-4" aria-hidden="true" /> نسخ · Copy
+        </button>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-medium">رمز التجربة · Pilot code {st?.hasCode && <span className="text-graphite font-normal">(مُعيَّن · set — type a new one to change it)</span>}</span>
+        <div className="flex gap-2">
+          <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 20))} dir="ltr" placeholder={st?.hasCode ? '••••••' : 'e.g. HMG-ED26'} className="flex-1 min-w-0 h-11 border border-mist rounded-xl px-3 font-mono tracking-widest bg-white" />
+          <button type="button" onClick={newCode} className="h-11 px-3 rounded-xl border border-mist flex items-center gap-1 text-sm"><Wand2 className="w-4 h-4" aria-hidden="true" /> توليد</button>
+          <button type="button" disabled={busy || code.length < 4} onClick={() => save({ code }, 'حُفظ الرمز · Code saved')} className="h-11 px-4 rounded-xl bg-ink text-white text-sm font-medium disabled:opacity-40">حفظ · Save</button>
+        </div>
+        <span className="text-xs text-graphite">انسخ الرمز قبل الحفظ؛ لا يظهر بعدها. · Copy the code before saving: it is not shown again. Share it with the pilot team only.</span>
+      </div>
+      <button
+        type="button"
+        disabled={busy || (!st?.enabled && !st?.hasCode)}
+        onClick={() => save({ enabled: !st?.enabled }, st?.enabled ? 'أُغلق الرابط · Link closed' : 'فُتح الرابط · Link open')}
+        className={`h-11 rounded-xl text-sm font-semibold disabled:opacity-40 ${st?.enabled ? 'border-2 border-ink' : 'bg-ink text-white'}`}
+      >
+        {st?.enabled ? 'إغلاق التسجيل · Close sign-up' : 'فتح التسجيل · Open sign-up'}
+      </button>
+    </section>
+  );
+}
+
+/** Pending sign-up requests: approve (choose access, temporary password) or reject. */
+function RequestsPanel({ onApproved }) {
+  const queryClient = useQueryClient();
+  const { data: requests = [] } = useQuery({ queryKey: ['staff-requests'], queryFn: () => api.users.requests('pending'), refetchInterval: 30000 });
+  const [approving, setApproving] = useState(null);
+  const [confirmReject, setConfirmReject] = useState(null);
+  const refresh = () => { queryClient.invalidateQueries({ queryKey: ['staff-requests'] }); onApproved?.(); };
+  const reject = async (r) => {
+    if (confirmReject !== r.id) { setConfirmReject(r.id); setTimeout(() => setConfirmReject((c) => (c === r.id ? null : c)), 4000); return; }
+    try { await api.users.rejectRequest(r.id); toast.success('رُفض الطلب · Rejected'); refresh(); } catch (err) { toast.error(err?.message || 'Failed'); }
+  };
+  if (!requests.length) return null;
+  return (
+    <section aria-label="طلبات التسجيل · Sign-up requests" className="bg-white border-2 border-ink rounded-2xl p-4 flex flex-col gap-2">
+      <h2 className="m-0 text-lg font-semibold">طلبات بانتظار الموافقة · Requests waiting ({requests.length})</h2>
+      <ul className="list-none m-0 p-0 flex flex-col gap-2">
+        {requests.map((r) => (
+          <li key={r.id} className="border border-mist rounded-xl p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex flex-col min-w-[200px] flex-1">
+              <span className="font-semibold">{r.fullName}</span>
+              <span dir="ltr" className="text-sm text-graphite text-start">{r.email}</span>
+              <span dir="ltr" className="text-xs text-graphite text-start">
+                {jobTitleLabel(r.jobTitle, r.jobTitleOther)} · {branchLabel(r.branch, r.branchOther)} · {fmt(r.createdAt)}
+              </span>
+            </div>
+            <div className="flex gap-1.5 ms-auto">
+              <button type="button" onClick={() => setApproving(r)} className="h-10 px-3 rounded-lg bg-ink text-white text-sm flex items-center gap-1">
+                <UserPlus className="w-4 h-4" aria-hidden="true" /> موافقة · Approve
+              </button>
+              <button type="button" onClick={() => reject(r)} className="h-10 px-3 rounded-lg border border-mist text-sm flex items-center gap-1">
+                <X className="w-4 h-4" aria-hidden="true" /> {confirmReject === r.id ? 'تأكيد الرفض؟ · Confirm' : 'رفض · Reject'}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <ApproveDialog request={approving} onOpenChange={(o) => { if (!o) setApproving(null); }} onDone={refresh} />
+    </section>
+  );
+}
+
+function ApproveDialog({ request, onOpenChange, onDone }) {
+  const [forId, setForId] = useState(null);
+  const [role, setRole] = useState('nurse');
+  const [reviewer, setReviewer] = useState(false);
+  const [password, setPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  if (request && request.id !== forId) {
+    setForId(request.id); setRole(suggestedRole(request.jobTitle)); setReviewer(false); setPassword(tempPassword()); setError('');
+  }
+  const save = async () => {
+    setSaving(true); setError('');
+    try {
+      await api.users.approveRequest(request.id, { role, password, outcomeReviewer: role === 'physician' && reviewer });
+      toast.success(`أُنشئ حساب ${request.fullName} · Account created`);
+      onDone?.(); onOpenChange(false);
+    } catch (err) { setError(err?.message || 'Could not approve'); } finally { setSaving(false); }
+  };
+  return (
+    <Dialog open={!!request} onOpenChange={onOpenChange}>
+      <DialogContent dir="rtl" className="max-w-lg max-h-[92dvh] overflow-y-auto">
+        <DialogTitle className="text-lg">موافقة · Approve</DialogTitle>
+        <DialogDescription className="text-sm text-graphite">
+          {request?.fullName} · <span dir="ltr">{request?.email}</span>
+          <span className="block" dir="ltr">{request && `${jobTitleLabel(request.jobTitle, request.jobTitleOther)} · ${branchLabel(request.branch, request.branchOther)}`}</span>
+        </DialogDescription>
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-sm font-medium mb-1">صلاحية الدخول · Access level</legend>
+          <div className="grid grid-cols-2 gap-2">
+            {ROLES.map((r) => (
+              <button key={r} type="button" aria-pressed={role === r} onClick={() => setRole(r)}
+                className={`h-12 rounded-xl text-sm font-medium ${role === r ? 'bg-ink text-white' : 'border border-mist'}`}>
+                {ROLE_LABELS[r]}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-graphite" dir="ltr">{ROLE_HELP[role]}</span>
+        </fieldset>
+        {role === 'physician' && (
+          <label className="flex items-center gap-3 border border-mist rounded-xl px-3 py-3">
+            <input type="checkbox" checked={reviewer} onChange={(e) => setReviewer(e.target.checked)} className="h-5 w-5" />
+            <span className="text-sm font-medium">مراجع النتائج · Outcome reviewer</span>
+          </label>
+        )}
+        <PasswordField value={password} onChange={setPassword} />
+        {error && <p role="alert" className="m-0 text-sm font-semibold border-2 border-ink rounded-lg px-3 py-2">{error}</p>}
+        <button type="button" disabled={saving || password.length < 10} onClick={save} className="h-12 rounded-xl bg-ink text-white font-medium flex items-center justify-center gap-2 disabled:opacity-40">
+          <Check className="w-5 h-5" aria-hidden="true" /> {saving ? '…' : 'إنشاء الحساب · Create account'}
+        </button>
+      </DialogContent>
+    </Dialog>
   );
 }

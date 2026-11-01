@@ -315,6 +315,16 @@ export const api = {
     resetPassword: (id, password) =>
       request(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) }),
     unlock: (id) => request(`/users/${id}/unlock`, { method: 'POST', body: '{}' }),
+    requests: (status = 'pending') => request(`/users/requests?status=${encodeURIComponent(status)}`),
+    approveRequest: (id, data) => request(`/users/requests/${id}/approve`, { method: 'POST', body: JSON.stringify(data) }),
+    rejectRequest: (id) => request(`/users/requests/${id}/reject`, { method: 'POST', body: '{}' }),
+    joinSettings: () => request('/users/join-settings'),
+    updateJoinSettings: (data) => request('/users/join-settings', { method: 'PUT', body: JSON.stringify(data) }),
+  },
+  /** Public staff sign-up (join link): no sign-in. */
+  join: {
+    status: () => request('/join'),
+    submit: (data) => request('/join', { method: 'POST', body: JSON.stringify(data) }),
   },
   feedback: {
     /** The signed-in nurse's own Riyadh week (Sunday–Saturday). */
