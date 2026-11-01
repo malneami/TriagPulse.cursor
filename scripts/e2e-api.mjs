@@ -204,7 +204,9 @@ const saved = await call('/triage/save', {
       transcription: 'اسمه محمد رقم هويته 1023456789 عنده ألم ظهر',
       override_reason: 'E2E-PDPL patient Ali, ID 1023456789',
       clinical_summary_en: 'Back pain. Patient name is Ali Saleh',
-      validated_payload: { patient_name_en: 'Ali Saleh', ctas: 4, nested: { phone: '0551234567', keep: 1 } },
+      validated_payload: { patient_name_en: 'Ali Saleh', ctas: 4, nested: { phone: '0551234567', keep: 1 }, initial_assessment: { level: 3 } },
+      // The system recommended 5 at the decision (first 3 before questions); the nurse chose 4.
+      rules_recommended_ctas: 5, ai_recommended_ctas: 5,
       // Sex not captured and a vital typed as text must not fail the save.
       gender: '', hr: '88',
     },
@@ -369,6 +371,13 @@ const inList = async (query) => (await call(`/outcomes?status=all&${query}`, { t
 check(await inList(`from=${todayRiyadh}&to=${todayRiyadh}&ageMin=30&ageMax=50`), 'the outcome list filters by arrival date and age (case included)');
 check(!(await inList('ageMin=60')) && !(await inList(`from=${tomorrowRiyadh}`)), 'the outcome list filters by arrival date and age (case excluded outside the range)');
 check(!(await inList('assigned=unassigned')), 'the "unassigned only" filter leaves out assigned cases');
+const sysRow = ((await call('/outcomes?status=all', { token: admin })).json || []).find((r) => r.id === journeyId);
+check(sysRow?.systemCtas === 5 && sysRow?.systemFirstCtas === 3 && sysRow?.nurseCtas === 4 && sysRow?.nurseChangedSystem === true,
+  'outcome review shows the system CTAS (at decision and first) beside the nurse level', JSON.stringify({ s: sysRow?.systemCtas, f: sysRow?.systemFirstCtas, n: sysRow?.nurseCtas, c: sysRow?.nurseChangedSystem }));
+check(await inList('changed=1'), 'the "nurse changed system level" filter includes this case');
+const csv = await call('/outcomes/export.csv?status=all', { token: admin });
+check(csv.status === 200 && /system_first_ctas,system_ctas,nurse_ctas,nurse_changed/.test(csv.text) && /system_vs_outcome,nurse_vs_outcome/.test(csv.text),
+  'the outcome export carries system, nurse and their comparisons', csv.text.slice(0, 200));
 const badFilter = await call('/outcomes?ageMin=50&ageMax=10', { token: admin });
 check(badFilter.status === 400, 'an impossible age range is refused (400)', `got ${badFilter.status}`);
 const earlyClose = await call(`/outcomes/${journeyId}/close`, { token: physician, method: 'POST', body: {} });
@@ -393,6 +402,9 @@ check(!JSON.stringify(exported.json).includes('clinician_final_ctas'), "the data
 const evalReport = await call('/analytics/evaluation?days=30', { token: admin });
 check(evalReport.status === 200 && evalReport.json?.sample_sizes?.reference_physician_validated >= 1 && evalReport.json?.sample_sizes?.not_validated >= 1,
   'the AI report scores against physician-validated cases only and counts the unvalidated ones as excluded', `status ${evalReport.status} ${JSON.stringify(evalReport.json?.sample_sizes || {}).slice(0, 300)}`);
+
+check(evalReport.json?.system_vs_nurse?.nurse_changed >= 1 && evalReport.json?.system_vs_nurse?.vs_physician?.system?.n >= 1,
+  'the AI report compares the system level with the nurse decision', JSON.stringify(evalReport.json?.system_vs_nurse || {}).slice(0, 300));
 
 const staff = await call('/users', { token: admin });
 check(staff.status === 200 && staff.json.some((u) => u.email === 'nurse@triagepulse.local') && !staff.text.includes('passwordHash') && !staff.text.includes('$2'), 'the admin lists staff, with no password data', `status ${staff.status}`);

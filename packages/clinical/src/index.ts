@@ -207,5 +207,6 @@ export * from './feedback/hisHandoff.js';
 export * from './feedback/outcomeHandoff.js';
 export * from './feedback/ticketText.js';
 export * from './utils/staffDirectory.js';
+export * from './analytics/systemVsNurse.js';
 
 export { redactIdentifiers, stripIdentifiers, findIdentifierKeys, IDENTIFIER_KEYS, REDACTED } from './privacy/redact';

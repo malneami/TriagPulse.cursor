@@ -10,6 +10,7 @@ import {
   outcomeReviewMayAct, outcomeReviewVisible, resourceCount,
 } from './outcomeHandoff.js';
 import { computeEvaluationReport, referenceSource } from '../analytics/computeEvaluation.js';
+import { computeSystemNurseComparison, overrideWinner, systemCtasOf, versusLevel, versusOutcome } from '../analytics/systemVsNurse.js';
 import { ageFromText, mrnSuffixFromBarcode, mrnSuffixFromText, patientNoFromBarcode, patientNoFromText, transactionNoFromText, visitNumberFromText } from './ticketText.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
@@ -124,6 +125,32 @@ export function runFeedbackTests(assert: Assert) {
       && o1 === null && o2?.months === 53 && o3?.months === 112,
       'FB-29', 'Slip age: Age label (y/m/days, Arabic) or date of birth; unclear day/month in infants and other dates are not taken',
       JSON.stringify({ a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, r1, r2, r3, o1, o2, o3 }),
+    );
+  }
+  {
+    // System CTAS (at decision + very first) vs nurse, physician and outcome.
+    const s1 = systemCtasOf({ aiRecommendedCtas: 4, nurseCtas: 3, validatedPayload: { initial_assessment: { level: 5 } } });
+    const s2 = systemCtasOf({ rulesRecommendedCtas: 2, ctasLevel: 2, validatedPayload: {} });
+    const vOut = [versusOutcome(3, true), versusOutcome(2, true), versusOutcome(2, false), versusOutcome(4, false), versusOutcome(4, null)];
+    const w1 = overrideWinner(4, 3, (l) => versusLevel(l, 3));       // nurse right
+    const w2 = overrideWinner(3, 4, (l) => versusLevel(l, 3));       // system right
+    const w3 = overrideWinner(4, 2, (l) => versusLevel(l, 3));       // both wrong, nurse safer
+    const rep = computeSystemNurseComparison([
+      { aiRecommendedCtas: 4, nurseCtas: 3, physicianCtas: 3, highAcuityOutcome: false, validatedPayload: { initial_assessment: { level: 4 } } },
+      { aiRecommendedCtas: 3, nurseCtas: 3, physicianCtas: 2, highAcuityOutcome: true },
+      { aiRecommendedCtas: 2, nurseCtas: 4, physicianCtas: 2, highAcuityOutcome: true, validatedPayload: { initial_assessment: { level: 3 } } },
+      { aiRecommendedCtas: 5, nurseCtas: 5, physicianCtas: 1, physicianConditionChanged: true },
+    ]);
+    assert(
+      s1.system === 4 && s1.first === 5 && s1.nurse === 3 && s1.nurseChanged && s1.questionsChanged
+      && s2.system === 2 && s2.first === null && !s2.nurseChanged
+      && vOut.join() === 'under,agree,over,agree,' && w1 === 'nurse' && w2 === 'system' && w3 === 'nurse_safer'
+      && rep.nurse_changed === 2 && rep.changed_up === 1 && rep.changed_down === 1 && rep.questions_changed === 1
+      && rep.vs_physician.system.n === 3 && rep.vs_physician.nurse.under === 2
+      && rep.when_nurse_changed.vs_physician.nurse === 1 && rep.when_nurse_changed.vs_physician.system === 1
+      && rep.vs_outcome.nurse.under === 2 && rep.vs_outcome.system.under === 1,
+      'FB-30', 'System CTAS (at decision, very first) vs nurse, physician and outcome; who was right when the nurse changed it',
+      JSON.stringify({ s1, s2, vOut, w1, w2, w3, rep }).slice(0, 600),
     );
   }
   assert(

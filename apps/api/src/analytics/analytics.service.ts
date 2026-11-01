@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { computeEvaluationReport, highAcuityOutcome } from '@triagepulse/clinical';
+import { computeEvaluationReport, computeSystemNurseComparison, highAcuityOutcome } from '@triagepulse/clinical';
 import { PrismaService } from '../prisma/prisma.module';
 
 type ExportOutcome = {
@@ -254,10 +254,12 @@ export class AnalyticsService {
         aiConfidence: true,
         clinicalSummaryAr: true,
         clinicalSummaryEn: true,
+        // Outcome reference for the system-vs-nurse comparison.
+        journey: { select: { outcomeReview: { select: { interventions: true, icuWithin24h: true, death: true } } } },
       },
     });
 
-    return computeEvaluationReport(
+    const report = computeEvaluationReport(
       rows.map((r) => ({
         id: r.id,
         createdAt: r.createdAt,
@@ -290,5 +292,17 @@ export class AnalyticsService {
       })),
       windowDays,
     );
+    // System CTAS (at decision and very first) vs the nurse/PCT, the physician and the outcome.
+    const system_vs_nurse = computeSystemNurseComparison(rows.map((r) => ({
+      aiRecommendedCtas: r.aiRecommendedCtas,
+      rulesRecommendedCtas: r.rulesRecommendedCtas,
+      nurseCtas: r.nurseCtas,
+      ctasLevel: r.ctasLevel,
+      validatedPayload: r.validatedPayload,
+      physicianCtas: r.physicianValidatedAt ? r.physicianCtas : null,
+      physicianConditionChanged: r.physicianConditionChanged,
+      highAcuityOutcome: r.journey?.outcomeReview ? highAcuityOutcome(r.journey.outcomeReview) : null,
+    })));
+    return { ...report, system_vs_nurse };
   }
 }

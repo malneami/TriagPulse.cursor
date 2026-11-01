@@ -280,6 +280,8 @@ export default function AiEvaluationDashboard() {
         )}
       </Section>
 
+      {report.system_vs_nurse && <SystemVsNurse data={report.system_vs_nurse} />}
+
       {/* D — Safety Gate */}
       <Section
         title_en="D. Safety Gate"
@@ -502,5 +504,73 @@ export default function AiEvaluationDashboard() {
         Thresholds v{report.thresholds_version} · project-proposed CPMAI gates · generated {report.generated_at}
       </p>
     </div>
+  );
+}
+
+/**
+ * System CTAS vs the nurse/PCT decision, judged against the physician and the outcome
+ * (high-acuity outcome = life-saving intervention, ICU within 24 h or death → should be CTAS 1–2).
+ */
+function SystemVsNurse({ data }) {
+  const fmt = (v) => (v == null ? '—' : `${v}%`);
+  const Row = ({ label, t }) => (
+    <tr className="border-t border-slate-100">
+      <td className="py-1.5 pr-3 text-slate-700">{label}</td>
+      <td className="py-1.5 pr-3 tabular-nums">{t?.n ?? 0}</td>
+      <td className="py-1.5 pr-3 tabular-nums">{fmt(t?.agree_pct)}</td>
+      <td className="py-1.5 pr-3 tabular-nums font-semibold">{fmt(t?.under_pct)}</td>
+      <td className="py-1.5 pr-3 tabular-nums">{fmt(t?.over_pct)}</td>
+    </tr>
+  );
+  const Table = ({ title, sub, block }) => (
+    <div>
+      <p className="text-sm font-semibold text-slate-800 m-0">{title}</p>
+      <p className="text-[11px] text-slate-500 m-0 mb-1">{sub}</p>
+      <table className="w-full text-xs">
+        <thead><tr className="text-slate-500 text-left"><th className="py-1 pr-3 font-medium">Level</th><th className="py-1 pr-3 font-medium">n</th><th className="py-1 pr-3 font-medium">Agree</th><th className="py-1 pr-3 font-medium">Under-triage</th><th className="py-1 pr-3 font-medium">Over-triage</th></tr></thead>
+        <tbody>
+          <Row label="System first (before questions)" t={block?.first} />
+          <Row label="System at decision" t={block?.system} />
+          <Row label="Nurse / PCT final" t={block?.nurse} />
+        </tbody>
+      </table>
+    </div>
+  );
+  const W = ({ title, w }) => (
+    <div className="border border-slate-200 rounded-xl p-3">
+      <p className="text-xs font-semibold text-slate-700 m-0 mb-1">{title} <span className="font-normal text-slate-400">(n={w?.n ?? 0})</span></p>
+      <ul className="m-0 p-0 list-none text-xs grid grid-cols-2 gap-x-3 gap-y-0.5">
+        <li>Nurse right: <b>{w?.nurse ?? 0}</b></li>
+        <li>System right: <b>{w?.system ?? 0}</b></li>
+        <li>Both wrong, nurse safer: <b>{w?.nurse_safer ?? 0}</b></li>
+        <li>Both wrong, system safer: <b>{w?.system_safer ?? 0}</b></li>
+        <li>Neither: <b>{w?.neither ?? 0}</b></li>
+      </ul>
+    </div>
+  );
+  return (
+    <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+      <div>
+        <h2 className="text-base font-semibold text-slate-800 m-0">System CTAS vs Nurse / PCT</h2>
+        <p className="text-[11px] text-slate-400 m-0" dir="rtl">مستوى النظام مقابل قرار الممرض / فني الرعاية</p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+        <div className="bg-slate-50 rounded-xl p-2"><p className="text-[11px] text-slate-500 m-0">Nurse changed system level</p><p className="text-lg font-semibold m-0">{data.nurse_changed} <span className="text-xs font-normal">({fmt(data.nurse_changed_pct)})</span></p></div>
+        <div className="bg-slate-50 rounded-xl p-2"><p className="text-[11px] text-slate-500 m-0">Changed to more urgent</p><p className="text-lg font-semibold m-0">{data.changed_up}</p></div>
+        <div className="bg-slate-50 rounded-xl p-2"><p className="text-[11px] text-slate-500 m-0">Changed to less urgent</p><p className="text-lg font-semibold m-0">{data.changed_down}</p></div>
+        <div className="bg-slate-50 rounded-xl p-2"><p className="text-[11px] text-slate-500 m-0">Questions changed the level</p><p className="text-lg font-semibold m-0">{data.questions_changed} <span className="text-xs font-normal">({fmt(data.questions_changed_pct)})</span></p></div>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        <Table title="Against the physician CTAS" sub="Physician-validated cases (condition changed after triage excluded)" block={data.vs_physician} />
+        <Table title="Against the outcome" sub="High-acuity outcome (life-saving intervention, ICU ≤24 h, death) should be CTAS 1–2" block={data.vs_outcome} />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-slate-800 m-0 mb-1">When the nurse changed the level, who was right?</p>
+        <div className="grid sm:grid-cols-2 gap-2">
+          <W title="Judged by the physician" w={data.when_nurse_changed?.vs_physician} />
+          <W title="Judged by the outcome" w={data.when_nurse_changed?.vs_outcome} />
+        </div>
+      </div>
+    </section>
   );
 }

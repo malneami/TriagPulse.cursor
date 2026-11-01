@@ -14,6 +14,9 @@ import { PrismaService } from '../prisma/prisma.module';
 import { AuditService } from '../audit/audit.service';
 import {
   highAcuityOutcome,
+  systemCtasOf,
+  versusLevel,
+  versusOutcome,
   normalizeOutcomeReview,
   outcomeCloseProblem,
   outcomeFieldSnapshot,
@@ -51,6 +54,10 @@ const ROW_INCLUDE = {
     select: {
       nurseCtas: true,
       ctasLevel: true,
+      // System CTAS at decision, and the very first level (validated_payload.initial_assessment).
+      aiRecommendedCtas: true,
+      rulesRecommendedCtas: true,
+      validatedPayload: true,
       chiefComplaint: true,
       disposition: true,
       ctasStartedAt: true,
@@ -77,6 +84,8 @@ export type OutcomeListQuery = {
   ageMax?: string | number;
   /** 'unassigned' = no outcome physician yet. */
   assigned?: string;
+  /** '1' = only cases where the nurse/PCT changed the system level. */
+  changed?: string;
 };
 
 /** Riyadh is UTC+3 all year: a Riyadh calendar day starts at 21:00 UTC the day before. */
@@ -225,6 +234,9 @@ export class OutcomesService {
     triageRecords: Array<{
       nurseCtas: number | null;
       ctasLevel: number | null;
+      aiRecommendedCtas?: number | null;
+      rulesRecommendedCtas?: number | null;
+      validatedPayload?: unknown;
       chiefComplaint: string | null;
       disposition: string | null;
       ctasStartedAt: Date | null;
@@ -260,6 +272,7 @@ export class OutcomesService {
     const started = rec?.ctasStartedAt ?? j.ctasStartedAt;
     const completed = rec?.ctasCompletedAt ?? j.ctasCompletedAt;
     const assignment = this.assignmentOf(j);
+    const sys = systemCtasOf({ ...(rec ?? {}), nurseCtas: rec?.nurseCtas ?? null, ctasLevel: rec?.ctasLevel ?? j.ctasLevel });
     return {
       id: j.id,
       ticketNo: j.ticketNo,
@@ -270,6 +283,10 @@ export class OutcomesService {
       gender: j.gender,
       chiefComplaint: rec?.chiefComplaint ?? j.chiefComplaint,
       nurseCtas: rec?.nurseCtas ?? rec?.ctasLevel ?? j.ctasLevel,
+      // System CTAS at the nurse's decision, the very first system level, and whether she changed it.
+      systemCtas: sys.system,
+      systemFirstCtas: sys.first,
+      nurseChangedSystem: sys.nurseChanged,
       physicianCtas: review?.reviewedLevel ?? null,
       agreed: review?.agreed ?? null,
       triageDurationSec: triageDurationSec(started, completed),
@@ -331,7 +348,8 @@ export class OutcomesService {
     return journeys
       .filter((j) => outcomeReviewVisible(user, this.assignmentOf(j)))
       .filter((j) => inTimeWindow(j.arrivalTime, timeFrom, timeTo))
-      .map((j) => this.mapRow(j, user));
+      .map((j) => this.mapRow(j, user))
+      .filter((r) => String(query.changed || '') !== '1' || r.nurseChangedSystem);
   }
 
   async awaitingCount(user: Actor) {
@@ -547,13 +565,14 @@ export class OutcomesService {
     const rows = await this.list(query, user);
     const headers = [
       'case_id', 'encounter_no', 'mrn_suffix', 'ctas_completed_at', 'age', 'sex',
-      'chief_complaint', 'nurse_ctas', 'physician_ctas', 'agreement',
+      'chief_complaint', 'system_first_ctas', 'system_ctas', 'nurse_ctas', 'nurse_changed', 'physician_ctas', 'agreement',
+      'system_vs_physician', 'nurse_vs_physician',
       'triage_duration_sec', 'direction', 'status',
       'ctas_nurse', 'assigned_physician',
       'disposition', 'admission_specialty', 'admission_location', 'hospital_unit',
       'discharge_destination', 'final_diagnosis_icd10', 'final_diagnosis', 'reviewer_comment',
       'interventions', 'icu_within_24h', 'death', 'resources', 'resource_count', 'return_72h',
-      'high_acuity_outcome',
+      'high_acuity_outcome', 'system_vs_outcome', 'nurse_vs_outcome',
       'direction_appropriate', 'direction_comment', 'source', 'reviewer_name', 'reviewed_at',
     ];
     const lines = [headers.join(',')];
@@ -567,9 +586,14 @@ export class OutcomesService {
         r.age,
         r.gender,
         r.chiefComplaint,
+        r.systemFirstCtas,
+        r.systemCtas,
         r.nurseCtas,
+        r.systemCtas == null ? '' : r.nurseChangedSystem ? 'yes' : 'no',
         r.physicianCtas,
         r.agreed == null ? '' : r.agreed ? 'agree' : 'disagree',
+        versusLevel(r.systemCtas, r.physicianCtas),
+        versusLevel(r.nurseCtas, r.physicianCtas),
         r.triageDurationSec,
         r.direction,
         r.currentStatus,
@@ -590,6 +614,8 @@ export class OutcomesService {
         o?.resourceCount,
         o?.return72h,
         o == null || o.highAcuityOutcome == null ? '' : o.highAcuityOutcome ? 'yes' : 'no',
+        versusOutcome(r.systemCtas, o?.highAcuityOutcome),
+        versusOutcome(r.nurseCtas, o?.highAcuityOutcome),
         o?.directionAppropriate,
         o?.directionComment,
         o?.source,

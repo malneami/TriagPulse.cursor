@@ -101,6 +101,23 @@ const RETURN_72H = [
   { id: 'unknown', ar: 'غير معروف بعد', en: 'Not known yet' },
 ];
 
+/**
+ * System CTAS: the level the system showed when the nurse confirmed or changed it. When the very
+ * first level (right after dictation, before the questions) was different, it is shown small.
+ */
+function SystemLevel({ row, plain = false }) {
+  const lvl = row.systemCtas;
+  const first = row.systemFirstCtas;
+  const firstNote = first != null && first !== lvl ? `أول ${first} · first ${first}` : '';
+  if (plain) return <>{lvl ?? '—'}{firstNote ? ` (${firstNote})` : ''}</>;
+  return (
+    <span className="inline-flex flex-col items-start">
+      <span className="rounded-md px-2 py-0.5 font-bold" style={ctasFill(lvl)}> {lvl ?? '—'} </span>
+      {firstNote && <span className="text-[11px] text-graphite mt-0.5" title="First system level, before the questions">{firstNote}</span>}
+    </span>
+  );
+}
+
 /** Multi-pick with an exclusive "None". */
 function togglePick(list, id) {
   if (id === 'none') return list.includes('none') ? [] : ['none'];
@@ -274,7 +291,7 @@ function OutcomeForm({ row, open, onOpenChange, onSaved }) {
           From the HIS record. These answers are the outcome reference for triage accuracy; nurse and physician CTAS are not changed.
         </DialogDescription>
         <p className="m-0 text-sm text-graphite">
-          CTAS ممرض {row.nurseCtas ?? '—'} · طبيب {row.physicianCtas ?? '—'} · {row.direction || '—'}
+          CTAS النظام <SystemLevel row={row} plain /> · ممرض {row.nurseCtas ?? '—'} · طبيب {row.physicianCtas ?? '—'} · {row.direction || '—'}
         </p>
 
         <fieldset className="flex flex-col gap-2">
@@ -416,11 +433,12 @@ export default function OutcomeReview() {
   const [ageMin, setAgeMin] = useState('');
   const [ageMax, setAgeMax] = useState('');
   const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [changedOnly, setChangedOnly] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [bulkPhysician, setBulkPhysician] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const filters = { status, q, from, to, timeFrom, timeTo, ageMin, ageMax, assigned: unassignedOnly ? 'unassigned' : '' };
+  const filters = { status, q, from, to, timeFrom, timeTo, ageMin, ageMax, assigned: unassignedOnly ? 'unassigned' : '', changed: changedOnly ? '1' : '' };
   const { data: rows = [], isFetching, isError, refetch } = useQuery({
     queryKey: ['outcomes', filters],
     queryFn: () => api.outcomes.list(filters),
@@ -600,10 +618,14 @@ export default function OutcomeReview() {
             غير معيّن فقط · Unassigned only
           </label>
         )}
-        {(from || to || timeFrom || timeTo || ageMin || ageMax || unassignedOnly) && (
+        <label className="flex items-center gap-2 h-11 px-3 rounded-xl border border-mist text-sm">
+          <input type="checkbox" checked={changedOnly} onChange={(e) => setChangedOnly(e.target.checked)} />
+          غيّر الممرض مستوى النظام · Nurse changed system level
+        </label>
+        {(from || to || timeFrom || timeTo || ageMin || ageMax || unassignedOnly || changedOnly) && (
           <button
             type="button"
-            onClick={() => { setFrom(''); setTo(''); setTimeFrom(''); setTimeTo(''); setAgeMin(''); setAgeMax(''); setUnassignedOnly(false); }}
+            onClick={() => { setFrom(''); setTo(''); setTimeFrom(''); setTimeTo(''); setAgeMin(''); setAgeMax(''); setUnassignedOnly(false); setChangedOnly(false); }}
             className="h-11 px-3 rounded-xl border border-mist text-sm"
           >
             مسح · Clear
@@ -658,6 +680,7 @@ export default function OutcomeReview() {
               <th className="p-3 font-medium">الوقت</th>
               <th className="p-3 font-medium">العمر</th>
               <th className="p-3 font-medium">الشكوى</th>
+              <th className="p-3 font-medium" title="System CTAS at the nurse's decision (first level before questions in small text)">النظام · System</th>
               <th className="p-3 font-medium">ممرض</th>
               <th className="p-3 font-medium">طبيب</th>
               <th className="p-3 font-medium">الاتفاق</th>
@@ -683,7 +706,11 @@ export default function OutcomeReview() {
                 <td className="p-3 whitespace-nowrap">{fmtWhen(row.ctasCompletedAt)}</td>
                 <td className="p-3 whitespace-nowrap">{ageSex(row)}</td>
                 <td className="p-3 max-w-[180px] truncate">{row.chiefComplaint || '—'}</td>
-                <td className="p-3"><span className="rounded-md px-2 py-0.5 font-bold" style={ctasFill(row.nurseCtas)}> {row.nurseCtas ?? '—'} </span></td>
+                <td className="p-3"><SystemLevel row={row} /></td>
+                <td className="p-3">
+                  <span className="rounded-md px-2 py-0.5 font-bold" style={ctasFill(row.nurseCtas)}> {row.nurseCtas ?? '—'} </span>
+                  {row.nurseChangedSystem && <span className="block text-[11px] font-semibold mt-0.5" title="Nurse/PCT changed the system level">{row.systemCtas} → {row.nurseCtas} · غيّر</span>}
+                </td>
                 <td className="p-3"><span className="rounded-md px-2 py-0.5 font-bold" style={ctasFill(row.physicianCtas)}> {row.physicianCtas ?? '—'} </span></td>
                 <td className="p-3">{row.agreed == null ? '—' : row.agreed ? 'موافق' : 'غير موافق'}</td>
                 <td className="p-3 whitespace-nowrap">{fmtDuration(row.triageDurationSec)}</td>
@@ -737,7 +764,7 @@ export default function OutcomeReview() {
             ))}
             {!isFetching && rows.length === 0 && (
               <tr>
-                <td colSpan={canAssign ? 16 : 15} className="p-8 text-center text-graphite">لا توجد حالات في هذا المرشح · No cases in this filter.</td>
+                <td colSpan={canAssign ? 17 : 16} className="p-8 text-center text-graphite">لا توجد حالات في هذا المرشح · No cases in this filter.</td>
               </tr>
             )}
           </tbody>
