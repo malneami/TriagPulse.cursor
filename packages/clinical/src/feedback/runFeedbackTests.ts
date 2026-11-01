@@ -107,13 +107,23 @@ export function runFeedbackTests(assert: Assert) {
     const a9 = ageFromText('DOB: 03/04/2026', today); // ambiguous infant: unclear
     const a10 = ageFromText('Patient No: 1793255\nVoucher Date: 10/20/2026', today);
     const a11 = ageFromText('Age: 200 Y', today);
+    // Real HMG outpatient tickets: "Patient Age: 9 Yr 4 Mnth 16 Days", Arabic label on the same line.
+    const r1 = ageFromText('Patient Gender: Female العيادة:\nPatient Age: 9 Yr 4 Mnth 16 Days الدكتور:', today);
+    const r2 = ageFromText('Patient Age: 4 Yr 5 Mnth 9 Days', today);
+    const r3 = ageFromText('Patient Age: 0 Yr 2 Mnth 3 Days', today);
+    // Real OCR output of the two HMG tickets: a dropped "9" must not become 0 months.
+    const o1 = ageFromText('Patient Age: Yr 4 Mrith 16 Days ssl bss Pie', today);
+    const o2 = ageFromText('. | Patient Age: 4 Yr 5 Mnth © Days seal', today);
+    const o3 = ageFromText('Patient Age: 9 Yr 4 Mrith 16 Days', today);
     assert(
       a1?.months === 63 && a1.label === '5 y 3 m' && a1.source === 'age'
       && a2?.years === 34 && a3?.months === 18 && a3.label === '18 m' && a4?.months === 0
       && a5?.years === 7 && a6?.months === 29 && a6.source === 'dob'
-      && a7?.years === 10 && a8?.years === 36 && a9 === null && a10 === null && a11 === null,
+      && a7?.years === 10 && a8?.years === 36 && a9 === null && a10 === null && a11 === null
+      && r1?.months === 112 && r1.label === '9 y 4 m' && r2?.months === 53 && r3?.months === 2
+      && o1 === null && o2?.months === 53 && o3?.months === 112,
       'FB-29', 'Slip age: Age label (y/m/days, Arabic) or date of birth; unclear day/month in infants and other dates are not taken',
-      JSON.stringify({ a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11 }),
+      JSON.stringify({ a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, r1, r2, r3, o1, o2, o3 }),
     );
   }
   assert(

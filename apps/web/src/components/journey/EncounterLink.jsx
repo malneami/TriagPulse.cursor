@@ -191,14 +191,19 @@ function Scanner({ onResult, onComplete }) {
         });
         if (stopped) return;
         setOcr({ phase: 'reading', pct: 100 });
+        // Printed text can be misread (a 6 read as 3): a value counts only when two frames agree.
+        const seen = { visit: new Map(), patientNo: new Map(), age: new Map() };
+        const confirmed = (kind, value) => {
+          if (value == null || value === '') return false;
+          const n = (seen[kind].get(value) || 0) + 1;
+          seen[kind].set(value, n);
+          return n >= 2;
+        };
         while (!stopped) {
           const fields = await readTicketFields(v, LOOKS_RIGHT).catch(() => null);
-          if (fields?.age) report({ age: fields.age });
-          if (fields?.patientNo) report({ patientNo: fields.patientNo });
-          else if (fields?.mrnSuffix) report({ mrnSuffix: fields.mrnSuffix });
-          if (fields?.visit) {
-            report({ visit: fields.visit.value, patientNo: fields.patientNo || undefined, mrnSuffix: fields.mrnSuffix || undefined });
-          }
+          if (fields?.age && confirmed('age', fields.age.months)) report({ age: fields.age });
+          if (fields?.patientNo && confirmed('patientNo', fields.patientNo)) report({ patientNo: fields.patientNo });
+          if (fields?.visit && confirmed('visit', fields.visit.value)) report({ visit: fields.visit.value });
           await new Promise((r) => setTimeout(r, 300));
         }
       } catch {

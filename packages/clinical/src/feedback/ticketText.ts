@@ -146,14 +146,39 @@ function ageResult(months: number, source: TicketAgeResult['source']): TicketAge
 const AGE_LABEL = /(?:\bage\b|العمر|السن)\s*[:.\-]?\s*(.{0,40})/i;
 const DOB_LABEL = /(?:\bd\.?\s?o\.?\s?b\b|date\s*of\s*birth|birth\s*date|b\.?\s?date|تاريخ\s*الميلاد)\s*[:.\-]?\s*(.{0,40})/i;
 
-/** "5 Y 3 M", "34 Years", "18 Months", "10 Days", "2Y", "34" → months. */
+/**
+ * "9 Yr 4 Mnth 16 Days", "5 Y 3 M", "34 Years", "18 Months", "10 Days", "34" → months.
+ * A unit with its number missing (OCR dropped a digit, e.g. "Yr 4 Mnth") makes the whole
+ * reading null, so the camera keeps reading instead of saving a wrong age. A missing day
+ * count is tolerated only when years and months were both read.
+ */
 function monthsFromAgeText(raw: string): number | null {
   const s = raw.replace(/[Oo](?=\s*\d|\d)/g, '0').toLowerCase();
-  const num = (re: RegExp) => { const m = s.match(re); return m ? parseInt(m[1], 10) : null; };
-  const y = num(/(\d{1,3})\s*(?:y(?:ears?|rs?)?\b|سن[ةه]|سنوات|عام)/);
-  const mo = num(/(\d{1,2})\s*(?:m(?:o|on|onths?|ths?)?\b|شهر|أشهر|اشهر)/);
-  const w = num(/(\d{1,2})\s*(?:w(?:ee)?ks?\b|w\b|أسبوع|اسابيع|أسابيع)/);
-  const d = num(/(\d{1,3})\s*(?:d(?:ays?)?\b|يوم|أيام|ايام)/);
+  let y: number | null = null; let mo: number | null = null; let w: number | null = null; let d: number | null = null;
+  // Latin units: any word after a number, classed by its first letter (OCR bends "Mnth" into "Mrith").
+  const numbered = /(\d{1,3})\s*\.?\s*([a-z]{1,7})\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = numbered.exec(s))) {
+    const n = parseInt(m[1], 10); const u = m[2];
+    if (u[0] === 'y' && y == null) y = n;
+    else if (u[0] === 'm' && mo == null) mo = n;
+    else if (u[0] === 'w' && w == null) w = n;
+    else if (u[0] === 'd' && d == null) d = n;
+  }
+  // Arabic units.
+  const ar = (re: RegExp) => { const x = s.match(re); return x ? parseInt(x[1], 10) : null; };
+  y ??= ar(/(\d{1,3})\s*(?:سن[ةه]|سنوات|عام)/);
+  mo ??= ar(/(\d{1,2})\s*(?:شهر|أشهر|اشهر)/);
+  w ??= ar(/(\d{1,2})\s*(?:أسبوع|اسابيع|أسابيع)/);
+  d ??= ar(/(\d{1,3})\s*(?:يوم|أيام|ايام)/);
+  // Unit words left without a number: the reading is incomplete.
+  const rest = s.replace(numbered, ' ');
+  const orphanYear = /\b(?:yrs?|years?)\b/.test(rest);
+  const orphanMonth = /\b(?:m[a-z]{0,2}t?h|mnths?|months?|mths?)\b/.test(rest);
+  const orphanDay = /\bdays?\b/.test(rest);
+  if (orphanYear || orphanMonth) return null;
+  if (orphanDay && (y == null || mo == null)) return null;
+  if (mo != null && mo > 11 && y != null) return null;
   if (y != null || mo != null) return (y ?? 0) * 12 + (mo ?? 0);
   if (w != null) return Math.floor((w * 7) / 30.44);
   if (d != null) return Math.floor(d / 30.44);
