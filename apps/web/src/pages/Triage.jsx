@@ -174,6 +174,15 @@ export default function Triage() {
   // Transaction No. read on this page before a patient exists: saved with the new journey.
   const [pendingEncounter, setPendingEncounter] = useState('');
   const [pendingMrnSuffix, setPendingMrnSuffix] = useState('');
+  // Age from the slip (whole months), kept with the new patient as the HIS age.
+  const [pendingAgeMonths, setPendingAgeMonths] = useState(null);
+  const takeSlipAge = (months) => {
+    setPendingAgeMonths(months);
+    setPatient((prev) => (prev.age !== '' && prev.age != null ? prev : {
+      ...prev,
+      age: months < 12 ? (months / 12).toFixed(2) : String(Math.floor(months / 12)),
+    }));
+  };
   const queryClient = useQueryClient();
   const visualTriage = activeJourney?.vt_destination
     ? {
@@ -1073,7 +1082,8 @@ export default function Triage() {
         const created = await api.journeys.create({
           encounterNo: pendingEncounter || undefined,
           mrnSuffix: suffixFromPatientNo(pendingMrnSuffix) || pendingMrnSuffix || undefined,
-          age: ageNum != null ? Math.round(ageNum) : undefined,
+          age: ageNum != null ? Math.floor(ageNum) : undefined,
+          ageMonths: pendingAgeMonths ?? undefined,
           gender: ['male', 'female'].includes(patient.gender) ? patient.gender : undefined,
         });
         journeyId = created.id;
@@ -1094,6 +1104,7 @@ export default function Triage() {
           overridden: !nurseValidation?.agreed,
           overrideReason: nurseValidation?.overrideReason,
           completedAt: now,
+          startedAt,
           caseModel: cc,
           whyGroups,
           outstandingLabels: outstanding,
@@ -1666,6 +1677,7 @@ export default function Triage() {
             onPendingEncounter={setPendingEncounter}
             pendingMrnSuffix={pendingMrnSuffix}
             onPendingMrnSuffix={setPendingMrnSuffix}
+            onPendingAge={takeSlipAge}
             onLinked={() => queryClient.invalidateQueries({ queryKey: ['journey-ctas', urlPid] })}
           />
         </div>

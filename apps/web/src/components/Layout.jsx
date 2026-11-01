@@ -28,7 +28,7 @@ function initials(name) {
 /** The two screens the triage nurse uses all shift; everything else lives in the menu. */
 const TABS = [
   { path: '/triage', label: 'فرز CTAS', short: 'CTAS', labelEn: 'CTAS triage', Icon: Activity },
-  { path: '/visual-triage', label: 'الفرز البصري', short: 'بصري', labelEn: 'Visual triage', Icon: Eye },
+  { path: '/visual-triage', label: 'الفرز البصري', short: 'بصري', labelEn: 'Visual triage', Icon: Eye, permission: 'visual_triage' },
 ];
 
 function menuGroups(user) {
@@ -112,7 +112,7 @@ export default function Layout({ children }) {
           </Link>
 
           <nav aria-label="الأقسام" className="flex gap-1 bg-paper rounded-xl p-1 min-w-0">
-            {TABS.map(({ path, label, short, labelEn, Icon }) => {
+            {TABS.filter((t) => !t.permission || canAccess(user, t.permission)).map(({ path, label, short, labelEn, Icon }) => {
               const active = isActive(path);
               return (
                 <Link

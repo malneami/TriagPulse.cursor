@@ -195,6 +195,7 @@ export default function PatientTracking() {
   const [dateTo, setDateTo] = useState('');
   const [timeFrom, setTimeFrom] = useState('');
   const [timeTo, setTimeTo] = useState('');
+  const activeFilters = [ageMin || ageMax, dateFrom || dateTo, timeFrom || timeTo].filter(Boolean).length;
   const filtersOn = !!(ageMin || ageMax || dateFrom || dateTo || timeFrom || timeTo);
   const clearFilters = () => { setAgeMin(''); setAgeMax(''); setDateFrom(''); setDateTo(''); setTimeFrom(''); setTimeTo(''); };
 
@@ -341,8 +342,15 @@ export default function PatientTracking() {
         )}
       </div>
 
-      <fieldset className="border border-mist rounded-xl bg-white p-3 flex flex-wrap gap-3 items-end">
-        <legend className="px-1 text-sm font-medium">تصفية · Filter</legend>
+      {/* Collapsed by default so the patient cards come first on a phone. */}
+      <details className="border border-mist rounded-xl bg-white group">
+        <summary className="list-none cursor-pointer select-none px-3 h-12 flex items-center gap-2 text-sm font-medium">
+          <span>تصفية · Filter</span>
+          {activeFilters > 0 && <span className="text-xs bg-ink text-white rounded-lg px-2 py-0.5">{activeFilters} مفعّل · on</span>}
+          <span aria-hidden="true" className="ms-auto transition-transform group-open:rotate-180">▾</span>
+        </summary>
+      <fieldset className="border-0 border-t border-mist m-0 p-3 flex flex-wrap gap-3 items-end">
+        <legend className="sr-only">تصفية · Filter</legend>
         <div className="flex flex-col gap-1">
           <span className="text-xs text-graphite">العمر (سنوات) · Age (years)</span>
           <div className="flex items-center gap-1">
@@ -383,6 +391,7 @@ export default function PatientTracking() {
           الوقت = وقت إكمال CTAS (أو الوصول) · Time = CTAS completed (or arrival). A time window like 22:00–06:00 crosses midnight.
         </span>
       </fieldset>
+      </details>
 
       {isError && (
         <p role="alert" className="bg-white border-2 border-ink rounded-xl px-4 py-3 text-[15px]">
@@ -445,11 +454,11 @@ export default function PatientTracking() {
           <p className="text-graphite text-sm">
             {physician
               ? 'No completed assessments waiting for physician validation.'
-              : 'No patients waiting for CTAS. Start with a visual triage.'}
+              : 'No patients waiting for CTAS. Start a new patient on the CTAS page.'}
           </p>
           {!physician && canWork && (
             <button type="button" onClick={() => navigate('/triage', { state: { fresh: Date.now() } })} className="h-12 px-5 rounded-xl bg-ink text-white font-medium">
-              بدء الفرز البصري
+              مريض جديد · New patient
             </button>
           )}
         </div>

@@ -149,8 +149,12 @@ check(journey.json.age === 40 && !('patientNameEn' in journey.json) && !('phone'
   'journey keeps the age but stores no name or phone (PDPL)', journey.text.slice(0, 200));
 const journeyId = journey.json.id;
 
+// Visual triage is admin only: a nurse is refused; the admin records it.
+const nurseVt = await call(`/journeys/${journeyId}/visual-triage`, { token: nurse, method: 'POST', body: { sectionA: {}, respiratorySymptoms: {}, monkeypoxRisk: 'none', age: 40 } });
+check(nurseVt.status === 403, 'a nurse cannot record a visual triage (admin only, 403)', `got ${nurseVt.status}`);
+const vtAdmin = await login('admin@triagepulse.local');
 const vt = await call(`/journeys/${journeyId}/visual-triage`, {
-  token: nurse,
+  token: vtAdmin,
   method: 'POST',
   body: {
     sectionA: { breathing: 'green', consciousness: 'green', bleeding: 'green', skin: 'green', mobility: 'green' },

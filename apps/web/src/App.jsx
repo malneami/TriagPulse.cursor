@@ -87,7 +87,7 @@ const AuthenticatedApp = () => {
     <Routes>
       <Route element={<Layout><Outlet /></Layout>}>
         <Route path="/" element={<HomeRedirect />} />
-        <Route path="/visual-triage" element={<Guarded permission="perform_triage"><VisualTriage /></Guarded>} />
+        <Route path="/visual-triage" element={<Guarded permission="visual_triage"><VisualTriage /></Guarded>} />
         <Route path="/triage" element={<Guarded permission="perform_triage"><TriageRoute /></Guarded>} />
         <Route path="/tracking" element={<Guarded permission="view_tracking"><PatientTracking /></Guarded>} />
         <Route path="/outcomes" element={<Guarded permission="review_outcome"><OutcomeReview /></Guarded>} />

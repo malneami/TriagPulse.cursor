@@ -93,7 +93,8 @@ export class JourneysController {
   }
 
   @Post(':id/visual-triage')
-  @RequirePermission('save_triage')
+  // Visual triage is admin only.
+  @RequirePermission('visual_triage')
   visualTriage(
     @Param('id') id: string,
     @Body() dto: VisualTriageDto,
