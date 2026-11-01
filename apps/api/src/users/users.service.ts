@@ -9,7 +9,7 @@ import { SessionsService } from '../auth/sessions.service';
 type Actor = { id: string; role: string; full_name?: string; email?: string };
 
 const PUBLIC = {
-  id: true, email: true, fullName: true, role: true, active: true, mustChangePassword: true,
+  id: true, email: true, fullName: true, role: true, active: true, outcomeReviewer: true, mustChangePassword: true,
   lockedUntil: true, lastLoginAt: true, createdAt: true,
 } as const;
 
@@ -27,17 +27,21 @@ export class UsersService {
     if (problem) throw new BadRequestException(problem);
   }
 
-  async create(data: { email: string; fullName: string; role: UserRole; password: string }, actor: Actor) {
+  async create(data: { email: string; fullName: string; role: UserRole; password: string; outcomeReviewer?: boolean }, actor: Actor) {
     const email = data.email.trim().toLowerCase();
     const fullName = data.fullName.trim();
     if (!fullName) throw new BadRequestException('Enter the full name.');
     this.checkPassword(data.password, email);
     if (await this.prisma.user.findUnique({ where: { email } })) throw new ConflictException('An account with this e-mail already exists.');
     const user = await this.prisma.user.create({
-      data: { email, fullName, role: data.role, passwordHash: await bcrypt.hash(data.password, 10), mustChangePassword: true },
+      data: {
+        email, fullName, role: data.role, passwordHash: await bcrypt.hash(data.password, 10), mustChangePassword: true,
+        // Outcome reviewer is a physician-only switch.
+        outcomeReviewer: data.role === 'physician' && data.outcomeReviewer === true,
+      },
       select: PUBLIC,
     });
-    await this.audit.log('User', user.id, 'user_created', actor, { role: user.role });
+    await this.audit.log('User', user.id, 'user_created', actor, { role: user.role, outcomeReviewer: user.outcomeReviewer });
     return user;
   }
 
@@ -50,16 +54,24 @@ export class UsersService {
     if (others === 0) throw new ForbiddenException('At least one active admin must remain.');
   }
 
-  async update(id: string, data: { fullName?: string; role?: UserRole; active?: boolean }, actor: Actor) {
+  async update(id: string, data: { fullName?: string; role?: UserRole; active?: boolean; outcomeReviewer?: boolean }, actor: Actor) {
     const target = await this.prisma.user.findUnique({ where: { id } });
     if (!target) throw new NotFoundException('Account not found');
     await this.guardAdmins(target, data, actor);
+    // Outcome reviewer is a physician-only switch: turned off when the role is no longer physician.
+    const nextRole = data.role ?? target.role;
+    let outcomeReviewer: boolean | undefined;
+    if (nextRole !== 'physician') outcomeReviewer = target.outcomeReviewer ? false : undefined;
+    else if (data.outcomeReviewer !== undefined) {
+      outcomeReviewer = data.outcomeReviewer;
+    }
     const user = await this.prisma.user.update({
       where: { id },
       data: {
         ...(data.fullName !== undefined ? { fullName: data.fullName.trim() || target.fullName } : {}),
         ...(data.role ? { role: data.role } : {}),
         ...(data.active !== undefined ? { active: data.active } : {}),
+        ...(outcomeReviewer !== undefined ? { outcomeReviewer } : {}),
       },
       select: PUBLIC,
     });
@@ -67,6 +79,7 @@ export class UsersService {
     if (data.role && data.role !== target.role) changes.role = { from: target.role, to: data.role };
     if (data.active !== undefined && data.active !== target.active) changes.active = data.active;
     if (data.fullName !== undefined && data.fullName.trim() !== target.fullName) changes.name = true;
+    if (outcomeReviewer !== undefined && outcomeReviewer !== target.outcomeReviewer) changes.outcomeReviewer = outcomeReviewer;
     // Deactivation signs the person out of every device at once (review H3).
     if (data.active === false && target.active) changes.sessionsEnded = await this.sessions.revokeAllForUser(id, 'deactivated');
     await this.audit.log('User', id, data.active === false ? 'user_deactivated' : data.active === true && !target.active ? 'user_reactivated' : 'user_updated', actor, changes);

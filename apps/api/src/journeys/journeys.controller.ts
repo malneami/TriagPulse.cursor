@@ -19,6 +19,8 @@ class CreateJourneyDto {
   @IsOptional() @IsString() @MaxLength(40) encounterNo?: string;
   /** Last 3 digits of the patient file number — for the public tracking code only. */
   @IsOptional() @IsString() @Matches(/^\d{3}$/) mrnSuffix?: string;
+  /** Age read from the slip, whole months (0–1560). */
+  @IsOptional() @IsInt() @Min(0) @Max(1560) ageMonths?: number;
 }
 
 class VisualTriageDto {
@@ -36,6 +38,8 @@ class VisualTriageDto {
 class LinkEncounterDto {
   @IsOptional() @IsString() @MaxLength(40) encounterNo?: string;
   @IsOptional() @IsString() @Matches(/^\d{3}$/) mrnSuffix?: string;
+  /** Age read from the slip, whole months (0–1560). */
+  @IsOptional() @IsInt() @Min(0) @Max(1560) ageMonths?: number;
 }
 
 class ReviewCtasDto {

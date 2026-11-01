@@ -352,7 +352,8 @@ export class OutcomesService {
 
   async listPhysicians() {
     return this.prisma.user.findMany({
-      where: { role: UserRole.physician, active: true },
+      // Only physicians the admin marked as outcome reviewers (Staff → Edit).
+      where: { role: UserRole.physician, active: true, outcomeReviewer: true },
       select: { id: true, fullName: true },
       orderBy: { fullName: 'asc' },
     });
@@ -366,6 +367,9 @@ export class OutcomesService {
     const physician = await this.prisma.user.findUnique({ where: { id: physicianId } });
     if (!physician || !physician.active || physician.role !== UserRole.physician) {
       throw new BadRequestException('Select an active physician.');
+    }
+    if (!physician.outcomeReviewer) {
+      throw new BadRequestException('This physician is not an outcome reviewer. Turn it on in Staff → Edit.');
     }
     if (journey.triageRecords[0]?.createdById === physician.id) {
       throw new BadRequestException('The person who triaged this case cannot record its outcome.');
@@ -401,6 +405,9 @@ export class OutcomesService {
     const physician = await this.prisma.user.findUnique({ where: { id: physicianId } });
     if (!physician || !physician.active || physician.role !== UserRole.physician) {
       throw new BadRequestException('Select an active physician.');
+    }
+    if (!physician.outcomeReviewer) {
+      throw new BadRequestException('This physician is not an outcome reviewer. Turn it on in Staff → Edit.');
     }
     const journeys = await this.prisma.patientJourney.findMany({
       where: { id: { in: ids } },

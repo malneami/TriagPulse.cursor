@@ -199,6 +199,7 @@ function mapJourney(j) {
     encounter_no: j.encounterNo,
     encounter_linked_at: j.encounterLinkedAt,
     mrn_suffix: j.mrnSuffix,
+    his_age_months: j.hisAgeMonths ?? null,
     rules_recommended_ctas: j.rulesRecommendedCtas,
     ai_recommended_ctas: j.aiRecommendedCtas,
     wait_mins: j.wait_mins,

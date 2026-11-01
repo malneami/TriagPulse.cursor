@@ -10,11 +10,15 @@ class CreateUserDto {
   @IsString() @MaxLength(120) fullName: string;
   @IsEnum(UserRole) role: UserRole;
   @IsString() @MaxLength(128) password: string;
+  /** Physicians only: may be assigned outcome reviews. */
+  @IsOptional() @IsBoolean() outcomeReviewer?: boolean;
 }
 class UpdateUserDto {
   @IsOptional() @IsString() @MaxLength(120) fullName?: string;
   @IsOptional() @IsEnum(UserRole) role?: UserRole;
   @IsOptional() @IsBoolean() active?: boolean;
+  /** Physicians only: may be assigned outcome reviews. */
+  @IsOptional() @IsBoolean() outcomeReviewer?: boolean;
 }
 class ResetPasswordDto {
   @IsString() @MaxLength(128) password: string;

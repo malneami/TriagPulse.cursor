@@ -78,14 +78,14 @@ function PasswordField({ value, onChange }) {
 
 function StaffDialog({ open, onOpenChange, editing, onSaved }) {
   const isNew = !editing;
-  const [form, setForm] = useState({ email: '', fullName: '', role: 'nurse', password: '' });
+  const [form, setForm] = useState({ email: '', fullName: '', role: 'nurse', password: '', outcomeReviewer: false });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const key = open ? (editing?.id || 'new') : null;
   const [loadedKey, setLoadedKey] = useState(null);
   if (key && key !== loadedKey) {
     setLoadedKey(key);
-    setForm(editing ? { email: editing.email, fullName: editing.fullName, role: editing.role, password: '' } : { email: '', fullName: '', role: 'nurse', password: tempPassword() });
+    setForm(editing ? { email: editing.email, fullName: editing.fullName, role: editing.role, password: '', outcomeReviewer: !!editing.outcomeReviewer } : { email: '', fullName: '', role: 'nurse', password: tempPassword(), outcomeReviewer: false });
     setError('');
   }
   if (!open && loadedKey) setLoadedKey(null);
@@ -95,8 +95,9 @@ function StaffDialog({ open, onOpenChange, editing, onSaved }) {
     setSaving(true);
     setError('');
     try {
-      if (isNew) await api.users.create(form);
-      else await api.users.update(editing.id, { fullName: form.fullName, role: form.role });
+      const outcomeReviewer = form.role === 'physician' && !!form.outcomeReviewer;
+      if (isNew) await api.users.create({ ...form, outcomeReviewer });
+      else await api.users.update(editing.id, { fullName: form.fullName, role: form.role, outcomeReviewer });
       toast.success(isNew ? `أُضيف ${form.fullName} / Staff added` : 'تم الحفظ / Saved');
       onSaved();
       onOpenChange(false);
@@ -140,6 +141,20 @@ function StaffDialog({ open, onOpenChange, editing, onSaved }) {
             ))}
           </div>
         </fieldset>
+        {form.role === 'physician' && (
+          <label className="flex items-start gap-3 border border-mist rounded-xl px-3 py-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!form.outcomeReviewer}
+              onChange={(e) => setForm((f) => ({ ...f, outcomeReviewer: e.target.checked }))}
+              className="mt-1 h-5 w-5"
+            />
+            <span className="flex flex-col text-sm">
+              <span className="font-medium">مراجع النتائج · Outcome reviewer</span>
+              <span className="text-graphite">يظهر في قائمة التعيين بصفحة مراجعة النتيجة · Appears in the assign list on Outcome review</span>
+            </span>
+          </label>
+        )}
         {isNew && <PasswordField value={form.password} onChange={set('password')} />}
         {error && <p role="alert" className="m-0 text-sm font-semibold border-2 border-ink rounded-lg px-3 py-2">{error}</p>}
         <button
@@ -278,6 +293,9 @@ export default function StaffAdmin() {
                 <span dir="ltr" className="text-sm text-graphite text-start">{u.email}</span>
               </div>
               <span className="text-sm border border-mist rounded-lg px-2 py-1">{ROLE_LABELS[u.role] || u.role}</span>
+              {u.role === 'physician' && u.outcomeReviewer && (
+                <span className="text-sm bg-ink text-white rounded-lg px-2 py-1">مراجع النتائج · Outcome reviewer</span>
+              )}
               <span className={`text-sm rounded-lg px-2 py-1 ${st.strong ? 'bg-ink text-white' : 'text-graphite'}`}>{st.ar} · {st.en}</span>
               <span className="text-xs text-graphite">آخر دخول · Last sign-in: <span dir="ltr">{fmt(u.lastLoginAt)}</span></span>
               <div className="flex gap-1.5 ms-auto">

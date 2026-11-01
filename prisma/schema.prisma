@@ -102,6 +102,8 @@ model User {
   lockedUntil  DateTime? @map("locked_until")
   /// Deactivated staff cannot sign in; their records and history stay.
   active       Boolean  @default(true)
+  /// Physician the admin has marked as an outcome reviewer: only these appear in the outcome assign list.
+  outcomeReviewer Boolean @default(false) @map("outcome_reviewer")
   /// Set when an admin creates the account or resets the password: change it at next sign-in.
   mustChangePassword Boolean @default(false) @map("must_change_password")
   lastLoginAt  DateTime? @map("last_login_at")
@@ -137,6 +139,8 @@ model PatientJourney {
   /// Last 3 digits of the file number only — for the public tracking code (T017-255).
   mrnSuffix        String?  @map("mrn_suffix") @db.VarChar(3)
   age              Int?
+  /// Age read from the HIS slip at link time, in whole months (date of birth is never stored).
+  hisAgeMonths     Int?     @map("his_age_months")
   gender           Gender?
   arrivalTime      DateTime @default(now()) @map("arrival_time")
   modeOfArrival    String?  @map("mode_of_arrival")
