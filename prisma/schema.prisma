@@ -463,7 +463,7 @@ model AuthSession {
   @@map("auth_sessions")
 }
 
-/// Staff sign-up request from the join link. No password; the admin approves (creates the account) or rejects.
+/// Staff sign-up request from the join link. The person sets their own password; the admin approves (creates the account) or rejects.
 model StaffRequest {
   id            String             @id @default(uuid())
   fullName      String             @map("full_name") @db.VarChar(120)
@@ -472,6 +472,8 @@ model StaffRequest {
   jobTitleOther String?            @map("job_title_other") @db.VarChar(60)
   branch        String             @db.VarChar(30)
   branchOther   String?            @map("branch_other") @db.VarChar(60)
+  /// Password the person chose at sign-up (bcrypt hash). Works only after approval; cleared on approve or reject.
+  passwordHash  String?            @map("password_hash")
   status        StaffRequestStatus @default(pending)
   createdAt     DateTime           @default(now()) @map("created_at")
   decidedAt     DateTime?          @map("decided_at")

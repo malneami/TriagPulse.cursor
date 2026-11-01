@@ -8,7 +8,7 @@ ALTER TABLE "users"
   ADD COLUMN "branch" VARCHAR(30),
   ADD COLUMN "branch_other" VARCHAR(60);
 
--- Staff sign-up requests (join link). No passwords are collected.
+-- Staff sign-up requests (join link). The person's own password is kept hashed until approval.
 CREATE TYPE "StaffRequestStatus" AS ENUM ('pending', 'approved', 'rejected');
 CREATE TABLE "staff_requests" (
   "id" TEXT NOT NULL,
@@ -18,6 +18,7 @@ CREATE TABLE "staff_requests" (
   "job_title_other" VARCHAR(60),
   "branch" VARCHAR(30) NOT NULL,
   "branch_other" VARCHAR(60),
+  "password_hash" TEXT,
   "status" "StaffRequestStatus" NOT NULL DEFAULT 'pending',
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "decided_at" TIMESTAMP(3),

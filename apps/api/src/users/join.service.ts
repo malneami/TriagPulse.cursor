@@ -5,11 +5,12 @@ import { BRANCHES, JOB_TITLES } from '@triagepulse/clinical';
 import { PrismaService } from '../prisma/prisma.module';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from './users.service';
+import { passwordProblem } from '../auth/password-policy';
 
 type Actor = { id: string; role: string; full_name?: string; email?: string };
 
 export type JoinBody = {
-  code: string; fullName: string; email: string;
+  code: string; fullName: string; email: string; password: string;
   jobTitle: string; jobTitleOther?: string; branch: string; branchOther?: string;
 };
 
@@ -21,8 +22,9 @@ const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 
 /**
  * Staff sign-up through the join link. Public, but closed unless an admin turned it on and set
- * a pilot code. Collects name, e-mail, job title and branch only (no password). The admin approves
- * (creates the account with a temporary password and the access level they choose) or rejects.
+ * a pilot code. The person gives name, e-mail, job title, branch and their own password (kept
+ * hashed; nobody sees it). Nothing works until the admin approves: approval creates the account
+ * with that password and the access level the admin chooses. Reject deletes the password.
  */
 @Injectable()
 export class JoinService {
@@ -78,6 +80,8 @@ export class JoinService {
     if (!BRANCHES.some((b) => b.id === branch)) throw new BadRequestException('Choose your branch.');
     const branchOther = branch === 'other' ? String(body.branchOther || '').trim().slice(0, 60) : null;
     if (branch === 'other' && !branchOther) throw new BadRequestException('Write your branch.');
+    const pwProblem = passwordProblem(String(body.password || ''), email);
+    if (pwProblem) throw new BadRequestException(pwProblem);
 
     // Same answer whether or not the e-mail is already known (no account discovery).
     const [existingUser, existingPending, pending] = await Promise.all([
@@ -88,7 +92,7 @@ export class JoinService {
     if (!existingUser && !existingPending) {
       if (pending >= MAX_PENDING) throw this.tooMany();
       await this.prisma.staffRequest.create({
-        data: { fullName, email, jobTitle, jobTitleOther, branch, branchOther },
+        data: { fullName, email, jobTitle, jobTitleOther, branch, branchOther, passwordHash: await bcrypt.hash(String(body.password), 10) },
       });
     }
     return { ok: true };
@@ -125,6 +129,11 @@ export class JoinService {
     const st = ['pending', 'approved', 'rejected'].includes(status) ? status : 'pending';
     return this.prisma.staffRequest.findMany({
       where: { status: st as 'pending' | 'approved' | 'rejected' },
+      // Never send the password hash to the browser.
+      select: {
+        id: true, fullName: true, email: true, jobTitle: true, jobTitleOther: true, branch: true, branchOther: true,
+        status: true, createdAt: true, decidedAt: true,
+      },
       orderBy: { createdAt: st === 'pending' ? 'asc' : 'desc' },
       take: 300,
     });
@@ -137,15 +146,16 @@ export class JoinService {
     return r;
   }
 
-  async approve(id: string, data: { role: UserRole; password: string; outcomeReviewer?: boolean }, actor: Actor) {
+  async approve(id: string, data: { role: UserRole; outcomeReviewer?: boolean }, actor: Actor) {
     const r = await this.pendingRequest(id);
+    if (!r.passwordHash) throw new BadRequestException('This request has no password; ask the person to sign up again.');
     const user = await this.users.create({
-      email: r.email, fullName: r.fullName, role: data.role, password: data.password,
+      email: r.email, fullName: r.fullName, role: data.role, passwordHash: r.passwordHash,
       outcomeReviewer: data.outcomeReviewer,
       jobTitle: r.jobTitle, jobTitleOther: r.jobTitleOther, branch: r.branch, branchOther: r.branchOther,
     }, actor);
     await this.prisma.staffRequest.update({
-      where: { id }, data: { status: 'approved', decidedAt: new Date(), decidedById: actor.id, userId: user.id },
+      where: { id }, data: { status: 'approved', decidedAt: new Date(), decidedById: actor.id, userId: user.id, passwordHash: null },
     });
     await this.audit.log('StaffRequest', id, 'staff_request_approved', actor, { userId: user.id, role: data.role });
     return user;
@@ -153,7 +163,7 @@ export class JoinService {
 
   async reject(id: string, actor: Actor) {
     await this.pendingRequest(id);
-    await this.prisma.staffRequest.update({ where: { id }, data: { status: 'rejected', decidedAt: new Date(), decidedById: actor.id } });
+    await this.prisma.staffRequest.update({ where: { id }, data: { status: 'rejected', decidedAt: new Date(), decidedById: actor.id, passwordHash: null } });
     await this.audit.log('StaffRequest', id, 'staff_request_rejected', actor, {});
     return { ok: true };
   }

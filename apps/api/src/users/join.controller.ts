@@ -6,6 +6,7 @@ class JoinDto {
   @IsString() @MaxLength(20) code: string;
   @IsString() @MaxLength(120) fullName: string;
   @IsEmail() @MaxLength(120) email: string;
+  @IsString() @MaxLength(128) password: string;
   @IsString() @MaxLength(20) jobTitle: string;
   @IsOptional() @IsString() @MaxLength(60) jobTitleOther?: string;
   @IsString() @MaxLength(30) branch: string;

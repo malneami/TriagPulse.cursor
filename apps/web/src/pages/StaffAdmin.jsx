@@ -459,16 +459,15 @@ function ApproveDialog({ request, onOpenChange, onDone }) {
   const [forId, setForId] = useState(null);
   const [role, setRole] = useState('nurse');
   const [reviewer, setReviewer] = useState(false);
-  const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   if (request && request.id !== forId) {
-    setForId(request.id); setRole(suggestedRole(request.jobTitle)); setReviewer(false); setPassword(tempPassword()); setError('');
+    setForId(request.id); setRole(suggestedRole(request.jobTitle)); setReviewer(false); setError('');
   }
   const save = async () => {
     setSaving(true); setError('');
     try {
-      await api.users.approveRequest(request.id, { role, password, outcomeReviewer: role === 'physician' && reviewer });
+      await api.users.approveRequest(request.id, { role, outcomeReviewer: role === 'physician' && reviewer });
       toast.success(`أُنشئ حساب ${request.fullName} · Account created`);
       onDone?.(); onOpenChange(false);
     } catch (err) { setError(err?.message || 'Could not approve'); } finally { setSaving(false); }
@@ -499,9 +498,11 @@ function ApproveDialog({ request, onOpenChange, onDone }) {
             <span className="text-sm font-medium">مراجع النتائج · Outcome reviewer</span>
           </label>
         )}
-        <PasswordField value={password} onChange={setPassword} />
+        <p className="m-0 text-sm text-graphite">
+          سيدخل بكلمة المرور التي اختارها عند التسجيل. · They sign in with the password they chose at sign-up (you never see it).
+        </p>
         {error && <p role="alert" className="m-0 text-sm font-semibold border-2 border-ink rounded-lg px-3 py-2">{error}</p>}
-        <button type="button" disabled={saving || password.length < 10} onClick={save} className="h-12 rounded-xl bg-ink text-white font-medium flex items-center justify-center gap-2 disabled:opacity-40">
+        <button type="button" disabled={saving} onClick={save} className="h-12 rounded-xl bg-ink text-white font-medium flex items-center justify-center gap-2 disabled:opacity-40">
           <Check className="w-5 h-5" aria-hidden="true" /> {saving ? '…' : 'إنشاء الحساب · Create account'}
         </button>
       </DialogContent>

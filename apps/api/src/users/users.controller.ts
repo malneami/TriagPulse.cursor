@@ -23,7 +23,6 @@ class UpdateUserDto {
 }
 class ApproveRequestDto {
   @IsEnum(UserRole) role: UserRole;
-  @IsString() @MaxLength(128) password: string;
   @IsOptional() @IsBoolean() outcomeReviewer?: boolean;
 }
 class JoinSettingsDto {

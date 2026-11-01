@@ -513,7 +513,7 @@ check(hdr.headers.get('x-content-type-options') === 'nosniff', 'no MIME sniffing
 // ── Staff sign-up link (pilot code) and the Viewer access level ─────────────
 const joinClosed = await call('/join');
 check(joinClosed.status === 200 && joinClosed.json?.open === false, 'the sign-up link starts closed', joinClosed.text.slice(0, 120));
-const joinBody = (over = {}) => ({ code: 'E2E-PILOT', fullName: 'E2E Joiner', email: `join.${Date.now()}@example.com`, jobTitle: 'paramedic', branch: 'takhassusi', ...over });
+const joinBody = (over = {}) => ({ code: 'E2E-PILOT', fullName: 'E2E Joiner', email: `join.${Date.now()}@example.com`, jobTitle: 'paramedic', branch: 'takhassusi', password: 'MyOwnPass2468', ...over });
 const whileClosed = await call('/join', { method: 'POST', body: joinBody() });
 check(whileClosed.status === 403, 'a closed link refuses sign-ups (403)', `got ${whileClosed.status}`);
 const nurseJoinSet = await call('/users/join-settings', { token: nurse, method: 'PUT', body: { code: 'E2E-PILOT', enabled: true } });
@@ -532,14 +532,18 @@ check(otherNeedsText.status === 400, '"Other" job title needs the title written 
 const reqs = await call('/users/requests', { token: admin });
 const joinReqs = (reqs.json || []).filter((r) => r.email === joinEmail);
 check(reqs.status === 200 && joinReqs.length === 1 && joinReqs[0].jobTitle === 'paramedic' && joinReqs[0].branch === 'takhassusi', 'one pending request with job title and branch', reqs.text.slice(0, 200));
-const viewerPw = 'ViewPass2468ab';
-const approved = await call(`/users/requests/${joinReqs[0].id}/approve`, { token: admin, method: 'POST', body: { role: 'viewer', password: viewerPw } });
-check(approved.status === 201 && approved.json?.role === 'viewer' && approved.json?.jobTitle === 'paramedic' && approved.json?.mustChangePassword === true, 'approval creates a Viewer account with a temporary password', `status ${approved.status} ${approved.text.slice(0, 200)}`);
-const twice = await call(`/users/requests/${joinReqs[0].id}/approve`, { token: admin, method: 'POST', body: { role: 'viewer', password: viewerPw } });
+const weakPw = await call('/join', { method: 'POST', body: joinBody({ password: 'short1' }) });
+check(weakPw.status === 400, 'a weak password is refused at sign-up (400)', `got ${weakPw.status}`);
+check(!('passwordHash' in (joinReqs[0] || {})), 'the request list never includes the password');
+const beforeApproval = await call('/auth/login', { method: 'POST', body: { email: joinEmail, password: 'MyOwnPass2468' } });
+check(beforeApproval.status === 401, 'the password does not work before approval (401)', `got ${beforeApproval.status}`);
+const approved = await call(`/users/requests/${joinReqs[0].id}/approve`, { token: admin, method: 'POST', body: { role: 'viewer' } });
+check(approved.status === 201 && approved.json?.role === 'viewer' && approved.json?.jobTitle === 'paramedic' && approved.json?.mustChangePassword === false, 'approval creates a Viewer account with their own password (no forced change)', `status ${approved.status} ${approved.text.slice(0, 200)}`);
+const twice = await call(`/users/requests/${joinReqs[0].id}/approve`, { token: admin, method: 'POST', body: { role: 'viewer' } });
 check(twice.status === 409, 'a request cannot be approved twice (409)', `got ${twice.status}`);
-const vLogin = await call('/auth/login', { method: 'POST', body: { email: joinEmail, password: viewerPw } });
+const vLogin = await call('/auth/login', { method: 'POST', body: { email: joinEmail, password: 'MyOwnPass2468' } });
+check(vLogin.status === 201 && vLogin.json?.user?.must_change_password === false, 'after approval they sign in with the password they chose', `status ${vLogin.status}`);
 const vTok = vLogin.json?.access_token;
-await call('/auth/change-password', { token: vTok, method: 'POST', body: { currentPassword: viewerPw, newPassword: 'ViewPass1357cd' } });
 const vBoard = await call('/tracking/board', { token: vTok });
 check(vBoard.status === 200, 'a Viewer can see the tracking board', `got ${vBoard.status}`);
 const vEval = await call('/triage/evaluate', { token: vTok, method: 'POST', body: { patient: { chief_complaint: 'Back Pain', age: 30 } } });

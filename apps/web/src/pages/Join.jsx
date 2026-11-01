@@ -1,15 +1,26 @@
 import { useEffect, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { BRANCHES, JOB_TITLES } from '@triagepulse/clinical';
 import { api } from '@/api/client';
 
 /**
- * Public staff sign-up (join link). Name, e-mail, job title and branch only — no password.
- * Needs the pilot code from the TriagePulse admin. The admin approves and hands over a
- * temporary password in person.
+ * Public staff sign-up (join link). Name, e-mail, job title, branch and the person's own
+ * password (sent once, stored hashed). Needs the pilot code from the TriagePulse admin.
+ * The account works only after the admin approves it.
  */
+/** Same rule as the server: 10+ characters, letters and digits, not the e-mail name. */
+function passwordProblemOf(p, email) {
+  if (!p || p.length < 10 || p.length > 128) return 'length';
+  if (!/[A-Za-z]/.test(p) || !/\d/.test(p)) return 'mix';
+  const name = String(email || '').split('@')[0].toLowerCase();
+  if (name && p.toLowerCase().includes(name)) return 'email';
+  return null;
+}
+
 export default function Join() {
   const [open, setOpen] = useState(null);
-  const [form, setForm] = useState({ code: '', fullName: '', email: '', jobTitle: '', jobTitleOther: '', branch: '', branchOther: '' });
+  const [form, setForm] = useState({ code: '', fullName: '', email: '', jobTitle: '', jobTitleOther: '', branch: '', branchOther: '', password: '', confirm: '' });
+  const [show, setShow] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
@@ -19,7 +30,8 @@ export default function Join() {
   }, []);
 
   const set = (k) => (e) => { setForm((f) => ({ ...f, [k]: e.target.value })); setError(''); };
-  const ready = form.code.trim() && form.fullName.trim().length >= 3 && /\S+@\S+\.\S+/.test(form.email)
+  const pwProblem = passwordProblemOf(form.password, form.email);
+  const ready = !pwProblem && form.password === form.confirm && form.code.trim() && form.fullName.trim().length >= 3 && /\S+@\S+\.\S+/.test(form.email)
     && form.jobTitle && (form.jobTitle !== 'other' || form.jobTitleOther.trim())
     && form.branch && (form.branch !== 'other' || form.branchOther.trim());
 
@@ -37,7 +49,9 @@ export default function Join() {
         jobTitleOther: form.jobTitle === 'other' ? form.jobTitleOther.trim() : undefined,
         branch: form.branch,
         branchOther: form.branch === 'other' ? form.branchOther.trim() : undefined,
+        password: form.password,
       });
+      setForm((f) => ({ ...f, password: '', confirm: '' }));
       setDone(true);
     } catch (err) {
       setError(err?.message || 'Could not send');
@@ -68,8 +82,8 @@ export default function Join() {
           <div role="status" className="flex flex-col gap-2">
             <p className="m-0 text-lg font-semibold">✓ تم إرسال طلبك · Request sent</p>
             <p className="m-0 text-[15px]">
-              سيراجع المسؤول طلبك ويسلّمك كلمة مرور مؤقتة شخصياً. لا تشارك كلمة المرور مع أحد.
-              <span className="block text-graphite" dir="ltr">The admin will review it and give you a temporary password in person. Never share your password.</span>
+              بعد موافقة المسؤول، ادخل إلى triage-pulse.com ببريدك وكلمة المرور التي اخترتها. لا تشاركها مع أحد.
+              <span className="block text-graphite" dir="ltr">Once the admin approves, sign in at triage-pulse.com with your e-mail and the password you chose. Never share it.</span>
             </p>
           </div>
         )}
@@ -114,13 +128,30 @@ export default function Join() {
                 <input value={form.branchOther} onChange={set('branchOther')} maxLength={60} className={input} />
               </label>
             )}
+            <div className="flex flex-col gap-1">
+              <label htmlFor="join-pw" className="text-sm font-medium">كلمة المرور · Password</label>
+              <div className="flex gap-2">
+                <input id="join-pw" type={show ? 'text' : 'password'} value={form.password} onChange={set('password')} dir="ltr" autoComplete="new-password" maxLength={128} className={`${input} flex-1`} />
+                <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? 'Hide password' : 'Show password'} className="h-12 w-12 shrink-0 rounded-xl border border-mist flex items-center justify-center">
+                  {show ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
+                </button>
+              </div>
+              <span className={`text-xs ${form.password && pwProblem ? 'font-semibold text-ink' : 'text-graphite'}`}>
+                ١٠ أحرف على الأقل، حروف وأرقام، ولا تحتوي اسم البريد · At least 10 characters, letters and numbers, not your e-mail name
+              </span>
+            </div>
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              تأكيد كلمة المرور · Confirm password
+              <input type={show ? 'text' : 'password'} value={form.confirm} onChange={set('confirm')} dir="ltr" autoComplete="new-password" maxLength={128} className={input} />
+              {form.confirm && form.confirm !== form.password && <span className="text-xs font-semibold">غير متطابقة · Does not match</span>}
+            </label>
             {error && <p role="alert" className="m-0 text-sm font-semibold border-2 border-ink rounded-lg px-3 py-2">{error}</p>}
             <button type="submit" disabled={!ready || sending} className="h-12 rounded-xl bg-ink text-white font-semibold disabled:opacity-40">
               {sending ? '…' : 'إرسال الطلب · Send request'}
             </button>
             <p className="m-0 text-xs text-graphite">
-              لا نطلب كلمة مرور هنا. تُستخدم بياناتك لإنشاء حسابك فقط.
-              <span className="block" dir="ltr">No password is asked here. Your details are used only to create your account.</span>
+              كلمة المرور مشفّرة ولا يراها أحد، وتعمل فقط بعد موافقة المسؤول. تُستخدم بياناتك لإنشاء حسابك فقط.
+              <span className="block" dir="ltr">Your password is encrypted, seen by no one, and works only after the admin approves. Your details are used only to create your account.</span>
             </p>
           </form>
         )}
