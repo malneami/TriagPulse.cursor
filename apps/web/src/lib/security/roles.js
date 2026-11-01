@@ -39,6 +39,8 @@ export const PERMISSIONS = {
   save_triage: ['nurse', 'admin'],
   /** Tracking board and wall screen (read). Viewer has only this. */
   view_tracking: ['nurse', 'physician', 'admin', 'viewer'],
+  /** Visual triage (البصري): admin only. Everyone else starts on the CTAS page. */
+  visual_triage: ['admin'],
 };
 
 export function getUserRole(user) {

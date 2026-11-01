@@ -81,7 +81,7 @@ export default function CaseSummary({ summary: s, printable = false }) {
         <Section icon={Clock} ar="الأوقات" en="Times">
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="bg-paper rounded-xl py-2"><div className="text-xs text-graphite">الوصول · Arrival</div><div className="font-semibold tabular-nums" dir="ltr">{t(s.times.arrival)}</div></div>
-            <div className="bg-paper rounded-xl py-2"><div className="text-xs text-graphite">مدة الفرز · Triage</div><div className="font-semibold tabular-nums">{s.times.triageMin != null ? `${s.times.triageMin} د` : '—'}</div></div>
+            <div className="bg-paper rounded-xl py-2"><div className="text-xs text-graphite">مدة الفرز · Triage</div><div className="font-semibold tabular-nums">{s.times.triageSec != null ? `${Math.floor(s.times.triageSec / 60)} د ${s.times.triageSec % 60} ث` : s.times.triageMin != null ? `${s.times.triageMin} د` : '—'}</div></div>
             <div className="bg-paper rounded-xl py-2"><div className="text-xs text-graphite">من الوصول · Door→triage</div><div className="font-semibold tabular-nums">{s.times.doorToTriageMin != null ? `${s.times.doorToTriageMin} د` : '—'}</div></div>
           </div>
         </Section>

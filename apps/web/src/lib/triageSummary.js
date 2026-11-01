@@ -8,6 +8,12 @@ import { CTAS_CONFIG } from '@triagepulse/clinical';
 const has = (v) => !(v === '' || v == null);
 const num = (v) => (has(v) && Number.isFinite(Number(v)) ? Number(v) : null);
 
+function secondsBetween(a, b) {
+  if (!a || !b) return null;
+  const s = Math.round((new Date(b).getTime() - new Date(a).getTime()) / 1000);
+  return Number.isFinite(s) && s >= 0 ? s : null;
+}
+
 function minutesBetween(a, b) {
   if (!a || !b) return null;
   const m = Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000);
@@ -53,7 +59,9 @@ export function buildTriageSummary(r) {
     times: {
       arrival: p.arrival_time || null,
       completed: r.completedAt || null,
-      triageMin: minutesBetween(p.ctas_started_at, r.completedAt),
+      // Start = the triage clock (new patients have no ctas_started_at yet).
+      triageMin: minutesBetween(r.startedAt || p.ctas_started_at, r.completedAt),
+      triageSec: secondsBetween(r.startedAt || p.ctas_started_at, r.completedAt),
       doorToTriageMin: minutesBetween(p.arrival_time, r.completedAt),
     },
     complaint: {

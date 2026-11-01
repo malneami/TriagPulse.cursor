@@ -20,8 +20,7 @@ export default function PatientSelectorStrip({
   currentPid, onSwitch, journey = null,
   pendingEncounter = '', onPendingEncounter,
   pendingMrnSuffix = '', onPendingMrnSuffix,
-  onLinked,
-}) {
+  onLinked, onPendingAge }) {
   const [open, setOpen] = useState(false);
   const [patients, setPatients] = useState([]);
   const [encOpen, setEncOpen] = useState(false);
@@ -50,6 +49,8 @@ export default function PatientSelectorStrip({
     const no = typeof picked === 'string' ? picked : picked?.encounterNo;
     const suffix = typeof picked === 'object' ? picked?.mrnSuffix : undefined;
     if (suffix) onPendingMrnSuffix?.(suffix);
+    // Age read or typed in Link visit: fills the Age box when it is empty.
+    if (typeof picked === 'object' && picked?.ageMonths != null) onPendingAge?.(picked.ageMonths);
     if (no) {
       const found = await api.journeys.findByEncounter(no);
       if (found && found.patient_id !== currentPid) {
