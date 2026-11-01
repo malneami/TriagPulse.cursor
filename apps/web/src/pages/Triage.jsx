@@ -1,9 +1,11 @@
 // @ts-nocheck
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { draftKey, saveDraft, loadDraft, clearDraft, hasTriageWork } from '@/lib/triageDraft';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import { useAuth } from '@/lib/AuthContext';
+import { canAccess } from '@/lib/security/roles';
+import { PracticeModeBanner } from '@/components/triage/PracticeModeBanner';
 import { toast } from 'sonner';
 import { Plus, ShieldAlert } from 'lucide-react';
 import PatientSelectorStrip from '@/components/triage/PatientSelectorStrip';
@@ -103,6 +105,8 @@ const REQUIRED_FIELDS = CTAS_REQUIRED_FIELDS;
 export default function Triage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  // Only Nurse / PCT and admin save; others run the triage in practice mode.
+  const canSave = canAccess(user, 'save_triage');
   const [patient, setPatient] = useState(emptyPatient());
   const [ctasResult, setCtasResult] = useState(null);
   const [showNewPatientConfirm, setShowNewPatientConfirm] = useState(false);
@@ -182,11 +186,14 @@ export default function Triage() {
   // ── Draft autosave (review H6): a refresh, a screen error or the idle lock no longer
   // loses the triage in progress. Kept per nurse and patient in this tab only.
   const dKey = draftKey(user?.id, urlPid);
+  // "New patient": start empty, and drop any unsaved draft without a patient.
+  const freshStart = useLocation().state?.fresh;
   const [restoredDraft, setRestoredDraft] = useState(null);
   const draftCheckedRef = useRef(null);
   useEffect(() => {
     if (!user?.id || draftCheckedRef.current === dKey) return;
     draftCheckedRef.current = dKey;
+    if (freshStart && !urlPid) { clearDraft(dKey); return; }
     const d = loadDraft(dKey);
     if (!d || !hasTriageWork(d.patient, d.clarifyingAnswers)) return;
     setPatient((prev) => ({ ...prev, ...d.patient }));
@@ -197,7 +204,7 @@ export default function Triage() {
     manualEditedFieldsRef.current = new Set(d.manualEdited || []);
     sttLastDictatedRef.current = d.lastDictated || {};
     setRestoredDraft({ at: d.at });
-  }, [dKey, user?.id]);
+  }, [dKey, user?.id, freshStart, urlPid]);
 
   // Pre-populate patient demographics from the linked journey record
   useEffect(() => {
@@ -1514,6 +1521,10 @@ export default function Triage() {
 
   const finalize = async (decision) => {
     if (savingRef.current || savedRecord) return;
+    if (!canSave) {
+      toast.info('وضع التدريب — لم يُحفظ · Practice mode — not saved (Nurse / PCT or admin only)');
+      return;
+    }
     const validation = validateTriageReady(patient);
     if (!validation.ok) {
       toast.error(validation.errors[0] || 'أدخل الشكوى الرئيسية · Enter the chief complaint');
@@ -1544,7 +1555,7 @@ export default function Triage() {
 
   const startNewPatient = () => {
     const hasWork = !!(patient.chief_complaint || patient.transcription || urlPid);
-    if (done || !hasWork) navigate('/visual-triage');
+    if (done || !hasWork) navigate('/triage', { state: { fresh: Date.now() } });
     else setShowNewPatientConfirm(true);
   };
 
@@ -1607,6 +1618,7 @@ export default function Triage() {
 
   return (
     <div dir="rtl" className="flex flex-col gap-3">
+      {!canSave && <PracticeModeBanner />}
       {showNewPatientConfirm && (
         <NewPatientConfirm
           currentPid={urlPid}

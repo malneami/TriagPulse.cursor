@@ -19,7 +19,7 @@ export default function NewPatientConfirm({ currentPid, currentName, onCancel, o
       }
     }
     onLeave?.();
-    navigate('/visual-triage');
+    navigate('/triage', { state: { fresh: Date.now() } });
   };
 
   return (

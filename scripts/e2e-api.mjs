@@ -181,6 +181,16 @@ const evaluated = await call('/triage/evaluate', {
 });
 check(evaluated.status === 201 && evaluated.json?.ctas?.level, 'CTAS evaluate returns a level');
 
+// Physicians may run the triage and see CTAS (practice), but only Nurse / PCT and admin save.
+const physEval = await call('/triage/evaluate', { token: physician, method: 'POST', body: { patient: { chief_complaint: 'Back Pain', age: 34, hr: 78 } } });
+check(physEval.status === 201 && physEval.json?.ctas?.level, 'a physician can run CTAS (practice)', `got ${physEval.status}`);
+const physSave = await call('/triage/save', { token: physician, method: 'POST', body: { journeyId, triageRecord: { ctas_level: 4 } } });
+check(physSave.status === 403, 'a physician cannot save a triage (403)', `got ${physSave.status}`);
+const physCreate = await call('/journeys', { token: physician, method: 'POST', body: { age: 30 } });
+check(physCreate.status === 403, 'a physician cannot start a saved case (403)', `got ${physCreate.status}`);
+const physVisual = await call(`/journeys/${journeyId}/visual-triage`, { token: physician, method: 'POST', body: {} });
+check(physVisual.status === 403, 'a physician cannot save a visual triage (403)', `got ${physVisual.status}`);
+
 const saved = await call('/triage/save', {
   token: nurse,
   method: 'POST',

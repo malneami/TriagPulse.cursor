@@ -1,6 +1,9 @@
 // @ts-nocheck
 import { useCallback, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/lib/AuthContext';
+import { canAccess } from '@/lib/security/roles';
+import { PracticeModeBanner } from '@/components/triage/PracticeModeBanner';
 import { api } from '@/api/client';
 import { assignDestination } from '@triagepulse/clinical';
 import { Plus } from 'lucide-react';
@@ -34,6 +37,8 @@ function ageInCompletedYears(value) {
 
 export default function VisualTriage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canSave = canAccess(user, 'save_triage');
   const startRef = useRef(Date.now());
 
   const [patientAge, setPatientAge] = useState('');
@@ -96,6 +101,10 @@ export default function VisualTriage() {
   };
 
   const handleConfirm = async () => {
+    if (!canSave) {
+      toast.info('وضع التدريب — لم يُحفظ · Practice mode — not saved (Nurse / PCT or admin only)');
+      return;
+    }
     setSaving(true);
     try {
       const elapsedSec = Math.round((Date.now() - startRef.current) / 1000);
@@ -197,6 +206,7 @@ export default function VisualTriage() {
 
   return (
     <div dir="rtl" className="flex flex-col gap-4">
+      {!canSave && <PracticeModeBanner />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-ink">الفرز البصري</h1>

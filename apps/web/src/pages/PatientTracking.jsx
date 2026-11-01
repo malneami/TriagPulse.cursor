@@ -329,7 +329,7 @@ export default function PatientTracking() {
         {!physician && (
           <button
             type="button"
-            onClick={() => navigate('/visual-triage')}
+            onClick={() => navigate('/triage', { state: { fresh: Date.now() } })}
             className="h-12 px-4 rounded-xl bg-ink text-white flex items-center gap-2 text-[15px] font-medium"
           >
             <Plus className="w-5 h-5" aria-hidden="true" /> مريض جديد
@@ -444,7 +444,7 @@ export default function PatientTracking() {
               : 'No patients waiting for CTAS. Start with a visual triage.'}
           </p>
           {!physician && (
-            <button type="button" onClick={() => navigate('/visual-triage')} className="h-12 px-5 rounded-xl bg-ink text-white font-medium">
+            <button type="button" onClick={() => navigate('/triage', { state: { fresh: Date.now() } })} className="h-12 px-5 rounded-xl bg-ink text-white font-medium">
               بدء الفرز البصري
             </button>
           )}

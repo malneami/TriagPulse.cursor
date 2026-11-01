@@ -27,6 +27,12 @@ const LOOKS_RIGHT = (() => {
   try { return new RegExp(import.meta.env.VITE_ENCOUNTER_PATTERN || '^\\d{9,10}$'); } catch { return /^\d{9,10}$/; }
 })();
 
+/**
+ * Camera dialogs: full screen on a phone (header, scrolling body, Link button always
+ * visible at the bottom); a centred card on a tablet or desktop.
+ */
+const SHEET = 'flex flex-col gap-0 p-0 overflow-hidden w-full max-w-md h-[100dvh] max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl';
+
 /** Slip age boxes → whole months (null when empty or out of range). */
 export function slipAgeMonths(years, months) {
   if (String(years ?? '') === '' && String(months ?? '') === '') return null;
@@ -220,66 +226,65 @@ function Scanner({ onResult, onComplete }) {
     };
   }, [onResult, onComplete]);
 
+  const chips = [
+    { key: 'visit', ok: !!got.visit, ar: 'الزيارة', en: 'Visit', val: got.visit },
+    { key: 'pn', ok: !!got.patientNo, ar: 'رقم المريض', en: 'Patient No.', val: got.patientNo },
+    { key: 'age', ok: !!got.age, ar: 'العمر', en: 'Age', val: got.age ? got.age.label : '' },
+  ];
+  const hint = state !== 'scanning' ? ''
+    : ocr.phase === 'loading' ? `تحميل القارئ ${ocr.pct}% · Loading reader (first time only)`
+    : ocr.phase === 'failed' ? 'القارئ غير متاح — اكتب الأرقام · Reader unavailable — type the numbers'
+    : slow ? 'قرّب التذكرة وأضف إضاءة · Move closer, add light'
+    : 'ضع التذكرة كاملة داخل الإطار · Fit the whole slip in the frame';
+
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative rounded-xl overflow-hidden bg-ink aspect-[4/3]">
-        <video ref={videoRef} muted playsInline className="w-full h-full object-cover" aria-label="الكاميرا / Camera" />
+      <div className="relative rounded-2xl overflow-hidden bg-ink w-full aspect-[4/3] max-h-[42dvh] mx-auto">
+        <video ref={videoRef} muted playsInline className="absolute inset-0 w-full h-full object-cover" aria-label="الكاميرا / Camera" />
         {state === 'scanning' && (
-          <span aria-hidden="true" className="absolute inset-6 rounded-lg border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.25)]" />
+          <>
+            <span aria-hidden="true" className="absolute inset-x-[8%] inset-y-[10%] rounded-xl border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.3)]" />
+            <span aria-live="polite" className="absolute top-2 inset-x-2 text-center text-[13px] font-medium text-white drop-shadow">
+              {hint}
+            </span>
+          </>
         )}
         {state !== 'scanning' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white text-center p-4">
             {state === 'starting' ? <Camera className="w-8 h-8" aria-hidden="true" /> : <CameraOff className="w-8 h-8" aria-hidden="true" />}
             <span className="text-[15px]">
               {state === 'starting' && 'تشغيل الكاميرا… / Starting camera…'}
-              {state === 'blocked' && 'الكاميرا غير مسموح بها. اكتب الرقم أدناه. / Camera blocked — type the number below.'}
-              {state === 'unsupported' && 'لا توجد كاميرا متاحة. اكتب الرقم أدناه. / No camera — type the number below.'}
+              {state === 'blocked' && 'الكاميرا غير مسموح بها — اكتب الأرقام أدناه · Camera blocked — type below'}
+              {state === 'unsupported' && 'لا توجد كاميرا — اكتب الأرقام أدناه · No camera — type below'}
             </span>
           </div>
         )}
       </div>
       {state === 'scanning' && (
-        <p aria-live="polite" className="m-0 text-sm text-graphite">
-          {ocr.phase === 'loading' && `تحميل قارئ النص (أول مرة فقط) ${ocr.pct}% · Loading the text reader (first time only)`}
-          {ocr.phase === 'reading' && 'ضع رقم العملية أو القسيمة داخل الإطار · Fit Transaction / Voucher No. in the frame'}
-          {ocr.phase === 'failed' && 'تعذّر تشغيل قارئ النص — اكتب الرقم · Text reader unavailable — type the number'}
-        </p>
-      )}
-      {state === 'scanning' && (
-        <ul aria-live="polite" className="m-0 p-0 list-none flex flex-col gap-1 text-sm">
-          <li className={got.visit ? 'font-semibold text-ink' : 'text-graphite'}>
-            {got.visit ? '✓' : '…'} رقم الزيارة / القسيمة · Visit / voucher {got.visit && <span dir="ltr">{got.visit}</span>}
-          </li>
-          <li className={got.patientNo ? 'font-semibold text-ink' : 'text-graphite'}>
-            {got.patientNo ? '✓' : '…'} رقم المريض · Patient No. (MRN) {got.patientNo && <span dir="ltr">{got.patientNo}</span>}
-          </li>
-          <li className={got.age ? 'font-semibold text-ink' : 'text-graphite'}>
-            {got.age ? '✓' : '…'} العمر · Age {got.age && <span dir="ltr">{got.age.label}{got.age.source === 'dob' ? ' (from DOB)' : ''}</span>}
-          </li>
-          {(got.visit || got.patientNo || got.age) && !(got.visit && got.patientNo && got.age) && (
-            <li className="font-semibold text-ink">
-              الكاميرا تبقى مفتوحة حتى تُقرأ الثلاثة · Camera stays on until all three are read
+        <ul aria-live="polite" aria-label="ما تمت قراءته · Read so far" className="m-0 p-0 list-none grid grid-cols-3 gap-1.5">
+          {chips.map((c) => (
+            <li
+              key={c.key}
+              className={`min-h-12 rounded-xl px-2 py-1 flex flex-col items-center justify-center text-center leading-tight ${c.ok ? 'bg-ink text-white' : 'border border-dashed border-graphite/50 text-graphite'}`}
+            >
+              <span className="text-[12px]">{c.ok ? '✓ ' : ''}{c.ar} · {c.en}</span>
+              <span dir="ltr" className="text-[13px] font-semibold truncate max-w-full">{c.val || '…'}</span>
             </li>
-          )}
+          ))}
         </ul>
       )}
       {state === 'scanning' && got.visit && got.patientNo && !got.age && (
         <button
           type="button"
           onClick={() => onComplete?.({ ...got })}
-          className="h-10 rounded-xl border border-ink text-ink text-sm font-semibold"
+          className="h-11 rounded-xl border-2 border-ink text-ink text-sm font-semibold"
         >
-          إنهاء بدون العمر (غير مطبوع) · Finish without age (not printed)
+          إنهاء بدون العمر · Finish without age
         </button>
       )}
-      {note && <p className="m-0 text-sm text-ink">{note}</p>}
-      {slow && ocr.phase === 'reading' && (
-        <p className="m-0 text-sm font-semibold text-ink">
-          لم يُقرأ بعد: قرّب التذكرة وأضف إضاءة، أو اكتب الرقم · Not read yet: closer, more light, or type it
-        </p>
-      )}
-      <p className="m-0 text-xs text-graphite">
-        تُقرأ الصورة على الجهاز فقط ولا تُحفظ · The picture is read on this device only and is not saved.
+      {note && <p className="m-0 text-xs text-ink">{note}</p>}
+      <p className="m-0 text-[11px] text-graphite text-center">
+        تُقرأ الصورة على الجهاز فقط ولا تُحفظ · Read on this device only, never saved
       </p>
     </div>
   );
@@ -362,111 +367,121 @@ export function EncounterDialog({ journey, open, onOpenChange, onLinked, onPick,
     }
   };
 
+  const field = 'h-12 w-full border border-mist rounded-xl px-3 text-lg font-semibold tracking-wide bg-white';
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent dir="rtl" className="max-w-md">
-        <DialogTitle className="text-lg">ربط رقم الزيارة ورقم المريض / Link visit no. and Patient No.</DialogTitle>
-        <DialogDescription className="text-sm text-graphite">
-          وجّه الكاميرا إلى التذكرة لقراءة رقم العملية أو القسيمة ورقم المريض (Patient No.)، ثم تحقق منهما.
-          Point the camera at the slip to read the visit/voucher number and Patient No. (MRN), then check them.
-        </DialogDescription>
-        {scanning ? (
-          <>
-            <Scanner onResult={onResult} onComplete={onComplete} />
+      <DialogContent dir="rtl" className={SHEET} onOpenAutoFocus={(e) => e.preventDefault()}>
+        <div className="px-4 pt-4 pb-2 ps-12 border-b border-mist">
+          <DialogTitle className="text-lg leading-snug">ربط الزيارة · Link visit</DialogTitle>
+          <DialogDescription className="text-sm text-graphite m-0">
+            رقم الزيارة، رقم المريض والعمر · Visit no., Patient No. and age
+          </DialogDescription>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+          {scanning ? (
+            <>
+              <Scanner onResult={onResult} onComplete={onComplete} />
+              <button
+                type="button"
+                onClick={() => setScanning(false)}
+                className="h-11 rounded-xl border border-mist flex items-center justify-center gap-2 text-sm"
+              >
+                <CameraOff className="w-4 h-4" aria-hidden="true" /> إيقاف الكاميرا والكتابة يدوياً · Stop camera, type
+              </button>
+            </>
+          ) : (
             <button
               type="button"
-              onClick={() => setScanning(false)}
-              className="h-10 rounded-xl border border-mist flex items-center justify-center gap-2 text-sm"
+              onClick={() => { setScanning(true); setValue(''); }}
+              className="h-11 rounded-xl border border-mist flex items-center justify-center gap-2 text-sm"
             >
-              <CameraOff className="w-4 h-4" aria-hidden="true" /> إيقاف الكاميرا والكتابة يدوياً / Stop camera and type
+              <Camera className="w-4 h-4" aria-hidden="true" /> قراءة مرة أخرى · Read again
             </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => { setScanning(true); setValue(''); }}
-            className="h-11 rounded-xl border border-mist flex items-center justify-center gap-2 text-[15px]"
-          >
-            <Camera className="w-4 h-4" aria-hidden="true" /> قراءة مرة أخرى / Read again
-          </button>
-        )}
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">رقم الزيارة / القسيمة · Visit / voucher number</span>
-          <input
-            dir="ltr"
-            value={value}
-            onChange={(e) => { setValue(e.target.value); setError(''); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
-            inputMode="numeric"
-            autoCapitalize="characters"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={40}
-            placeholder="9–10 digits"
-            className="h-12 border border-mist rounded-xl px-3 text-lg font-semibold tracking-wide bg-white"
-          />
-        </label>
-        {value && !visitOk && (
-          <p className="text-sm font-semibold text-ink">{encounterProblem(value)}</p>
-        )}
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">رقم المريض · Patient No. (MRN)</span>
-          <input
-            dir="ltr"
-            value={patientNo}
-            onChange={(e) => { setPatientNo(cleanPatientNo(e.target.value)); setError(''); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
-            inputMode="numeric"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={7}
-            placeholder="1793255"
-            className="h-12 border border-mist rounded-xl px-3 text-lg font-semibold tracking-wide bg-white"
-          />
-          <span className="text-xs text-graphite">يُحفظ آخر ٣ فقط للتتبع · Only last 3 are kept for tracking</span>
-        </label>
-        <fieldset className="flex flex-col gap-1">
-          <legend className="text-sm font-medium">العمر في التذكرة · Age on the slip</legend>
-          <div className="flex gap-2" dir="ltr">
-            <label className="flex items-center gap-1 flex-1">
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">رقم الزيارة / القسيمة · Visit / voucher</span>
               <input
-                value={ageYears}
-                onChange={(e) => { setAgeYears(e.target.value.replace(/\D/g, '').slice(0, 3)); setAgeFromDob(false); }}
+                dir="ltr"
+                value={value}
+                onChange={(e) => { setValue(e.target.value); setError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
                 inputMode="numeric"
-                aria-label="Age years · سنوات"
-                placeholder="0"
-                className="h-12 w-full border border-mist rounded-xl px-3 text-lg font-semibold bg-white"
+                autoCapitalize="characters"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={40}
+                placeholder="9–10 digits"
+                className={field}
               />
-              <span className="text-sm">y · سنة</span>
+              {value && !visitOk && <span className="text-xs font-semibold text-ink">{encounterProblem(value)}</span>}
             </label>
-            <label className="flex items-center gap-1 flex-1">
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">رقم المريض · Patient No. (MRN)</span>
               <input
-                value={ageMonthsPart}
-                onChange={(e) => { setAgeMonthsPart(e.target.value.replace(/\D/g, '').slice(0, 2)); setAgeFromDob(false); }}
+                dir="ltr"
+                value={patientNo}
+                onChange={(e) => { setPatientNo(cleanPatientNo(e.target.value)); setError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
                 inputMode="numeric"
-                aria-label="Age months · أشهر"
-                placeholder="0"
-                className="h-12 w-full border border-mist rounded-xl px-3 text-lg font-semibold bg-white"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={7}
+                placeholder="7 digits"
+                className={field}
               />
-              <span className="text-sm">m · شهر</span>
+              <span className="text-xs text-graphite">يُحفظ آخر ٣ فقط · Only last 3 kept</span>
             </label>
           </div>
-          {ageFromDob && <span className="text-xs text-graphite">محسوب من تاريخ الميلاد (لا يُحفظ التاريخ) · Worked out from the date of birth (the date is not kept)</span>}
-          {ageMismatch && (
-            <span role="alert" className="text-sm font-semibold text-ink border-2 border-ink rounded-lg px-3 py-2">
-              العمر في التذكرة ({ageLabel(ageMonths)}) يختلف عن عمر الفرز ({triageAge} y) — تأكد من المريض · Slip age differs from the triage age — check the patient
-            </span>
-          )}
-        </fieldset>
-        {error && <p role="alert" className="text-sm font-semibold text-ink border-2 border-ink rounded-lg px-3 py-2">{error}</p>}
-        <button
-          type="button"
-          disabled={!canSave || saving}
-          onClick={save}
-          className="h-12 rounded-xl bg-ink text-white font-medium flex items-center justify-center gap-2 disabled:opacity-40"
-        >
-          <Check className="w-5 h-5" aria-hidden="true" /> {saving ? '…' : 'ربط / Link'}
-        </button>
+
+          <fieldset className="flex flex-col gap-1 m-0 p-0 border-0">
+            <legend className="text-sm font-medium mb-1">العمر في التذكرة · Age on the slip</legend>
+            <div className="grid grid-cols-2 gap-3" dir="ltr">
+              <label className="flex items-center gap-2">
+                <input
+                  value={ageYears}
+                  onChange={(e) => { setAgeYears(e.target.value.replace(/\D/g, '').slice(0, 3)); setAgeFromDob(false); }}
+                  inputMode="numeric"
+                  aria-label="Age years · سنوات"
+                  placeholder="0"
+                  className={field}
+                />
+                <span className="text-sm shrink-0">y · سنة</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  value={ageMonthsPart}
+                  onChange={(e) => { setAgeMonthsPart(e.target.value.replace(/\D/g, '').slice(0, 2)); setAgeFromDob(false); }}
+                  inputMode="numeric"
+                  aria-label="Age months · أشهر"
+                  placeholder="0"
+                  className={field}
+                />
+                <span className="text-sm shrink-0">m · شهر</span>
+              </label>
+            </div>
+            {ageFromDob && <span className="text-xs text-graphite">محسوب من تاريخ الميلاد (لا يُحفظ التاريخ) · From the date of birth (date not kept)</span>}
+            {ageMismatch && (
+              <span role="alert" className="text-sm font-semibold text-ink border-2 border-ink rounded-lg px-3 py-2">
+                العمر في التذكرة ({ageLabel(ageMonths)}) يختلف عن عمر الفرز ({triageAge} y) — تأكد من المريض · Slip age differs from triage age — check the patient
+              </span>
+            )}
+          </fieldset>
+        </div>
+
+        <div className="px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-mist bg-white flex flex-col gap-2">
+          {error && <p role="alert" className="m-0 text-sm font-semibold text-ink border-2 border-ink rounded-lg px-3 py-2">{error}</p>}
+          <button
+            type="button"
+            disabled={!canSave || saving}
+            onClick={save}
+            className="h-12 w-full rounded-xl bg-ink text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-40"
+          >
+            <Check className="w-5 h-5" aria-hidden="true" /> {saving ? '…' : 'ربط · Link'}
+          </button>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -545,19 +560,25 @@ export function EncounterField({ value, onChange, onMrnSuffix, onAge, disabled =
       </div>
       {bad && <span role="alert" className="text-sm font-semibold text-ink">{encounterProblem(value)}</span>}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent dir="rtl" className="max-w-md">
-          <DialogTitle className="text-lg">قراءة التذكرة / Read the slip</DialogTitle>
-          <DialogDescription className="text-sm text-graphite">
-            وجّه الكاميرا إلى تذكرة الزيارة أو قسيمة المتابعة · Point the camera at the visit ticket or follow-up voucher.
-          </DialogDescription>
-          {open && <Scanner onResult={onResult} onComplete={onComplete} />}
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="h-10 rounded-xl border border-mist flex items-center justify-center gap-2 text-sm"
-          >
-            <CameraOff className="w-4 h-4" aria-hidden="true" /> إيقاف الكاميرا / Stop camera
-          </button>
+        <DialogContent dir="rtl" className={SHEET} onOpenAutoFocus={(e) => e.preventDefault()}>
+          <div className="px-4 pt-4 pb-2 ps-12 border-b border-mist">
+            <DialogTitle className="text-lg leading-snug">قراءة التذكرة · Read the slip</DialogTitle>
+            <DialogDescription className="text-sm text-graphite m-0">
+              تذكرة الزيارة أو قسيمة المتابعة · Visit ticket or follow-up voucher
+            </DialogDescription>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+            {open && <Scanner onResult={onResult} onComplete={onComplete} />}
+          </div>
+          <div className="px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-mist bg-white">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="h-12 w-full rounded-xl border border-mist flex items-center justify-center gap-2 text-[15px]"
+            >
+              <CameraOff className="w-4 h-4" aria-hidden="true" /> إيقاف الكاميرا · Stop camera
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
