@@ -240,7 +240,7 @@ function evaluateStep0({ vitals, flags, appearance, isPediatric = false, age = n
   };
 }
 
-function evaluateComplaintSpecific({ complaint, selectedModifier, answers, pathway }) {
+function evaluateComplaintSpecific({ complaint, selectedModifier, answers, pathway, spo2 = null }) {
   const applied = [];
   const candidates = [];
 
@@ -260,7 +260,13 @@ function evaluateComplaintSpecific({ complaint, selectedModifier, answers, pathw
   }
 
   // Pathway heuristic baseline (pre-selection) — complaint default, not final without modifiers
-  const baseline = complaint?.default_ctas ?? 4;
+  // Paediatric asthma: stable (SpO2 >= 95%, improved after bronchodilator, no distress) → CTAS 4 (approved 2026-11-09).
+  const asthmaPathway = /asthma|wheez/i.test(String(pathway || ''));
+  const asthmaStable = asthmaPathway
+    && isYes(answers.asthma_improved_after_bronchodilator)
+    && spo2 != null && spo2 >= 95
+    && !isYes(answers.asthma_distress);
+  const baseline = asthmaStable ? 4 : (complaint?.default_ctas ?? 4);
   pushCandidate(candidates, {
     level: baseline,
     rule_id: 'step2_complaint_baseline',
@@ -603,6 +609,39 @@ function collectCtasChangingGaps({ normalized, sirs, hemo, feverResult, isPediat
 /**
  * Main deterministic CTAS evaluation.
  */
+
+// ── Burn size / critical site (approved 2026-11-09) ──
+// Size by Lund-Browder: small < 5% BSA, moderate 5–10%, large > 10%.
+// Critical site: hands, feet, face, perineum, major joints, circumferential.
+const BURN_CRITICAL_SITE_RE = /hand|feet|foot|face|perine|genital|groin|joint|knee|hip|shoulder|elbow|circumferential|يد|اليد|قدم|وجه|الوجه|مفصل|محيط/i;
+function burnSizeCategory(value) {
+  const v = String(value ?? '').trim().toLowerCase();
+  if (/^(small|صغير)$/.test(v)) return 'small';
+  if (/^(moderate|متوسط)$/.test(v)) return 'moderate';
+  if (/^(large|كبير)$/.test(v)) return 'large';
+  return null;
+}
+function evaluateBurnCandidates({ pathway, answers = {}, text = '', pain = null }) {
+  const candidates = [];
+  const isBurn = pathway === 'burn'
+    || (/\b(burns?|scald(?:ed|s)?)\b/i.test(text) && !/burning\s+(?:urin|on urination|micturition|sensation)/i.test(text))
+    || /حروق|حرق(?!ة)/.test(text);
+  if (!isBurn) return { candidates };
+  const size = burnSizeCategory(answers.burn_size);
+  const site = isYes(answers.burn_critical_site) || BURN_CRITICAL_SITE_RE.test(text);
+  if (site) candidates.push({ level: 2, rule_id: 'burn_critical_site', label_en: 'Burn to critical site (hands, feet, face, perineum, major joint or circumferential) → CTAS 2', label_ar: 'حرق في موقع حرج → CTAS 2' });
+  if (size === 'large') candidates.push({ level: 2, rule_id: 'burn_large', label_en: 'Large burn (> 10% BSA) → CTAS 2', label_ar: 'حرق كبير (> 10%) → CTAS 2' });
+  else if (size === 'moderate') candidates.push({ level: 3, rule_id: 'burn_moderate', label_en: 'Moderate burn (5–10% BSA) → CTAS 3', label_ar: 'حرق متوسط (5–10%) → CTAS 3' });
+  else if (size === 'small' && (pain == null || pain < 5)) candidates.push({ level: 4, rule_id: 'burn_small_controlled', label_en: 'Small burn (< 5% BSA), pain below 5/10 → CTAS 4', label_ar: 'حرق صغير (< 5%)، الألم أقل من 5/10 → CTAS 4' });
+  if (pain != null && pain >= 5) candidates.push({ level: 3, rule_id: 'burn_pain_5', label_en: `Burn with pain ${pain}/10 at triage (≥ 5) → CTAS 3`, label_ar: `حرق مع ألم ${pain}/10 (≥ 5) → CTAS 3` });
+  return { candidates };
+}
+function evaluateFebrileSeizureHistory({ hasFever, answers = {} }) {
+  const yes = isYes(answers.febrile_seizure_history);
+  if (!hasFever || !yes) return { candidates: [] };
+  return { candidates: [{ level: 3, rule_id: 'fever_seizure_history', label_en: 'Fever with prior febrile seizure → CTAS 3 (any age, any appearance)', label_ar: 'حمى مع تاريخ تشنج حموي → CTAS 3' }] };
+}
+
 export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' } = {}) {
   if (!patient) return null;
 
@@ -727,6 +766,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
       selectedModifier,
       answers,
       pathway,
+      spo2: normalized.vitals.spo2 ?? null,
     });
   }
 
@@ -820,6 +860,10 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
   // CTAS 2025 pregnancy / postpartum modifiers (approved 2026-10-30).
   const pregnancy = evaluatePregnancy({ patient, answers, text: `${tx} ${patient.chief_complaint || ''}` });
   for (const c of pregnancy.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
+  const burnMod = evaluateBurnCandidates({ pathway, answers, text: `${tx} ${patient.chief_complaint || ''}`, pain: normalized.vitals.pain ?? patient.vitals?.pain_score ?? patient.pain_score ?? null });
+  for (const c of burnMod.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
+  const seizureHx = evaluateFebrileSeizureHistory({ hasFever, answers });
+  for (const c of seizureHx.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
 
   for (const a of lib.applied || []) {
     if (a.ctas_effect != null) {

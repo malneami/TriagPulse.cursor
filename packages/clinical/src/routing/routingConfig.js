@@ -3,7 +3,7 @@
  *
  * Two layers:
  *  1. CTAS core (international, the same for every facility, not editable):
- *     - CTAS 1–2 and life-threat findings go to the department's resuscitation zone;
+ *     - CTAS 1 and life-threat findings go to the department's resuscitation zone (CTAS 2 is routed by the center rules);
  *     - respiratory isolation from visual triage holds the patient in the isolation zone;
  *     - a zone is never chosen for a CTAS level it does not accept.
  *  2. Center configuration (edited by the admin, versioned):
@@ -38,7 +38,7 @@ export const DEFAULT_ROUTING_CONFIG = {
       name_ar: 'طوارئ الأطفال',
       name_en: 'Paediatric ED',
       age_min: 0,
-      age_max: 14, // exclusive: under 14 years
+      age_max: 18, // exclusive: under 18 years (decision 2026-11-08)
       zones: [
         { code: 'PEDIATRIC_RESUS', kind: 'resus', name_ar: 'إنعاش الأطفال', name_en: 'Pediatric Resuscitation', color: '#E24B4A', default_levels: [1, 2], accepts_levels: ALL_LEVELS, closed_hours: [], overflow_to: null, active: true },
         { code: 'PEDIATRIC_OBSERVATION', kind: 'observation', name_ar: 'ملاحظة الأطفال', name_en: 'Pediatric Observation', color: '#0F6E56', default_levels: [3], accepts_levels: ALL_LEVELS, closed_hours: [], overflow_to: null, active: true },
@@ -47,6 +47,14 @@ export const DEFAULT_ROUTING_CONFIG = {
         { code: 'RESPIRATORY', kind: 'respiratory', name_ar: 'المنطقة التنفسية', name_en: 'Respiratory Area', color: '#9F4EBB', default_levels: [], accepts_levels: [3, 4, 5], closed_hours: [], overflow_to: null, active: true },
       ],
       rules: [
+        { id: 'ped_fever_seizure_obs', active: true, override_level_check: true, name_ar: 'حمى مع تاريخ تشنج حموي', name_en: 'Fever with prior febrile seizure', when: { levels: [3], keywords: ['fever', 'temperature', 'seizure', 'fit', 'تشنج'], answers: [{ field: 'febrile_seizure_history', value: 'نعم' }] }, zone: 'PEDIATRIC_OBSERVATION', reason_ar: 'حمى مع تاريخ تشنج حموي → الملاحظة (CTAS 3)', reason_en: 'Fever with prior febrile seizure → Observation (CTAS 3, any age)' },
+        { id: 'ped_fever_well_clinic_infant', active: true, override_level_check: true, name_ar: 'حمى مع مظهر جيد (12-36 شهر، مناعة ومصدر مؤكد)', name_en: 'Fever, looks well, 12-36 months, immunised and clear source', when: { levels: [3], age_min: 0.25, age_max: 3, keywords: ['fever', 'temperature'], answers: [{ field: 'looks_unwell', value: 'لا' }, { field: 'immunisations_up_to_date', value: 'نعم' }, { field: 'fever_clear_source', value: 'نعم' }] }, zone: 'PEDIATRIC_CLINIC', reason_ar: 'حمى مع مظهر جيد، مناعة ومصدر مؤكد → العيادة (CTAS 3)', reason_en: 'Fever, looks well, immunised with clear source, under 3 years → Clinic (CTAS 3)' },
+        { id: 'ped_fever_well_clinic', active: true, override_level_check: true, name_ar: 'حمى مع مظهر جيد (3 سنوات فأكثر)', name_en: 'Fever, looks well, 3 years and over', when: { levels: [3], age_min: 3, keywords: ['fever', 'temperature'], answers: [{ field: 'looks_unwell', value: 'لا' }] }, zone: 'PEDIATRIC_CLINIC', reason_ar: 'حمى مع مظهر جيد → العيادة (التصنيف يبقى CTAS 3)', reason_en: 'Fever, looks well, 3 years and over → Clinic (CTAS level stays 3)' },
+        { id: 'ped_allergy_obs', active: true, name_ar: 'تحسس حاد', name_en: 'Acute allergic reaction', when: { levels: [4, 5], keywords: ['allerg', 'hives', 'lip swelling', 'swollen lips', 'anaphyl'] }, zone: 'PEDIATRIC_OBSERVATION', reason_ar: 'تحسس حاد → الملاحظة', reason_en: 'Acute allergic reaction → Observation (decision 2026-11-08)' },
+        { id: 'ped_ctas2_infant_fever_obs', active: true, name_ar: 'رضيع بحمى', name_en: 'Febrile infant under 3 months', when: { levels: [2], age_max: 0.25, keywords: ['fever', 'temperature', 'حمى', 'حرارة'] }, zone: 'PEDIATRIC_OBSERVATION', reason_ar: 'CTAS 2 رضيع بحمى دون 3 أشهر → الملاحظة', reason_en: 'CTAS 2 febrile infant under 3 months → Observation' },
+        { id: 'ped_ctas2_resp_obs', active: true, name_ar: 'ضيق تنفس/صفير', name_en: 'Wheeze / asthma', when: { levels: [2], keywords: ['wheez', 'asthma', 'difficulty breathing', 'صفير', 'ربو'] }, zone: 'PEDIATRIC_OBSERVATION', reason_ar: 'CTAS 2 صفير/ربو → الملاحظة', reason_en: 'CTAS 2 wheeze / asthma → Observation' },
+        { id: 'burn_fast_track', active: true, name_ar: 'حرق صغير غير حرج (CTAS 4)', name_en: 'Small non-critical burn (CTAS 4)', when: { levels: [4], keywords: ['burn', 'scald', 'حرق', 'حروق'] }, zone: 'PEDS_FAST_TRACK', reason_ar: 'حرق CTAS 4 → المسار السريع', reason_en: 'Small burn CTAS 4 → Fast Track' },
+        { id: 'burn_observation', active: true, name_ar: 'حرق CTAS 3', name_en: 'Burn CTAS 3', when: { levels: [3], keywords: ['burn', 'scald', 'حرق', 'حروق'] }, zone: 'PEDIATRIC_OBSERVATION', reason_ar: 'حرق CTAS 3 → الملاحظة', reason_en: 'Burn CTAS 3 → Observation' },
         { id: 'ped_wound', active: true, name_ar: 'جرح', name_en: 'Wound', when: { levels: [4, 5], complaints: ['laceration', 'puncture', 'abrasion'], keywords: ['wound', 'laceration', 'cut', 'جرح', 'جروح', 'تمزق'] }, zone: 'PEDIATRIC_OBSERVATION', reason_ar: 'دليل توجيه الأطفال: جرح → الملاحظة', reason_en: 'Routing guide: wound → Observation' },
         { id: 'ped_bleeding', active: true, name_ar: 'نزيف', name_en: 'Bleeding', when: { levels: [4, 5], complaints: ['epistaxis', 'vaginal_bleed', 'vaginal_bleeding', 'blood_in_stools', 'active_bleeding', 'gi_bleed'], keywords: ['bleed', 'bleeding', 'nosebleed', 'نزيف', 'ينزف', 'رعاف'] }, zone: 'PEDIATRIC_OBSERVATION', reason_ar: 'دليل توجيه الأطفال: نزيف → الملاحظة', reason_en: 'Routing guide: bleeding → Observation' },
         { id: 'ped_procedure', active: true, name_ar: 'يحتاج إجراء', name_en: 'Needs a procedure', when: { answers: [{ field: 'minor_procedure', value: 'yes' }] }, zone: 'PEDIATRIC_OBSERVATION', reason_ar: 'كل الإجراءات في الملاحظة', reason_en: 'All procedures in Observation' },
@@ -58,7 +66,7 @@ export const DEFAULT_ROUTING_CONFIG = {
       code: 'ADULT',
       name_ar: 'طوارئ البالغين',
       name_en: 'Adult ED',
-      age_min: 14,
+      age_min: 18,
       age_max: null,
       zones: [
         { code: 'RESUSCITATION', kind: 'resus', name_ar: 'منطقة الإنعاش', name_en: 'Resuscitation Area', color: '#E24B4A', default_levels: [1, 2], accepts_levels: ALL_LEVELS, closed_hours: [], overflow_to: null, active: true },
@@ -232,7 +240,8 @@ export function resolveDirection({
   // ── Core (international) ──
   const lifeThreat = [...(directionApplied || []), ...(applied || [])]
     .some((a) => a?.destination_hint === 'RESUSCITATION' || a?.destination_hint === 'PEDIATRIC_RESUS');
-  if (resus && (lvl <= 2 || lifeThreat)) {
+  const resusMaxLevel = dept.code === 'PED' ? 1 : 2; // paediatric CTAS 2 is routed by the center rules (1 = resus only)
+  if (resus && (lvl <= resusMaxLevel || lifeThreat)) {
     return zoneView(dept, resus, lifeThreat && lvl > 2 ? { from_direction_rule: true, reason_ar: 'علامة خطر → الإنعاش', reason_en: 'Life-threat finding → Resuscitation' } : {});
   }
   const visualCode = typeof visualDestination === 'string' ? visualDestination
@@ -248,7 +257,7 @@ export function resolveDirection({
     if (rule.active === false || !ruleMatches(rule, ctx)) continue;
     const target = zones.find((z) => z.code === rule.zone);
     // Core: never send a patient to a zone that does not take this CTAS level.
-    if (!target || !accepts(target)) continue;
+    if (!target || (!accepts(target) && !rule.override_level_check)) continue;
     const { zone, hops } = applyAvailability(dept, target, lvl, mins);
     return zoneView(dept, zone, {
       from_routing_rule: { id: rule.id, name_ar: rule.name_ar, name_en: rule.name_en },
@@ -344,7 +353,7 @@ export function validateRoutingConfig(config) {
       if (empty) add('القاعدة بدون شروط ستنطبق على كل المرضى', 'A rule with no conditions would match every patient', rw);
       if (wh.time && (minutesOf(wh.time.from) == null || minutesOf(wh.time.to) == null)) add('وقت القاعدة يجب أن يكون بصيغة HH:MM', 'Rule time must be HH:MM', rw);
       const target = zones.find((z) => z.code === r.zone);
-      if (target && wh.levels?.length && wh.levels.every((l) => !(target.accepts_levels || []).includes(l))) {
+      if (target && !r.override_level_check && wh.levels?.length && wh.levels.every((l) => !(target.accepts_levels || []).includes(l))) {
         add('المنطقة لا تستقبل أي مستوى من مستويات القاعدة', 'The zone takes none of the rule\'s CTAS levels', rw);
       }
     }
