@@ -1,0 +1,414 @@
+[
+ {
+  "id": "P01",
+  "desc": "Dog bite to hand, 6 y, well",
+  "age": 6,
+  "complaint": "dog bite on hand",
+  "vitals": {
+   "hr": 100,
+   "bp_systolic": 100,
+   "bp_diastolic": 60,
+   "spo2": 99,
+   "rr": 22,
+   "temperature": 36.8,
+   "gcs": 15,
+   "pain_score": 3
+  },
+  "exp_ctas": [
+   4,
+   5
+  ],
+  "exp_zone": "PEDS_FAST_TRACK"
+ },
+ {
+  "id": "P02",
+  "desc": "Small partial-thickness burn forearm, 4 y, well",
+  "age": 4,
+  "complaint": "burn on forearm, small area",
+  "vitals": {
+   "hr": 105,
+   "bp_systolic": 95,
+   "bp_diastolic": 55,
+   "spo2": 99,
+   "rr": 24,
+   "temperature": 36.9,
+   "gcs": 15,
+   "pain_score": 4
+  },
+  "exp_ctas": [
+   4,
+   5
+  ],
+  "exp_zone": "PEDS_FAST_TRACK"
+ },
+ {
+  "id": "P03",
+  "desc": "Fever 38.6, infant 2 months",
+  "age": 0.17,
+  "complaint": "fever",
+  "vitals": {
+   "hr": 150,
+   "bp_systolic": 90,
+   "bp_diastolic": 55,
+   "spo2": 99,
+   "rr": 40,
+   "temperature": 38.6,
+   "gcs": 15,
+   "pain_score": 0
+  },
+  "exp_ctas": [
+   2,
+   3
+  ],
+  "exp_zone": "PEDIATRIC_OBSERVATION"
+ },
+ {
+  "id": "P04",
+  "desc": "Fever 38.8, 3 y, looks well",
+  "age": 3,
+  "complaint": "fever",
+  "vitals": {
+   "hr": 125,
+   "bp_systolic": 95,
+   "bp_diastolic": 60,
+   "spo2": 99,
+   "rr": 26,
+   "temperature": 38.8,
+   "gcs": 15,
+   "pain_score": 1
+  },
+  "exp_ctas": [
+   4
+  ],
+  "exp_zone": "PEDIATRIC_CLINIC"
+ },
+ {
+  "id": "P05",
+  "desc": "Non-cardiac chest pain, 10 y, 2 days, well",
+  "age": 10,
+  "complaint": "chest pain after coughing, started 2 days ago",
+  "vitals": {
+   "hr": 90,
+   "bp_systolic": 105,
+   "bp_diastolic": 65,
+   "spo2": 99,
+   "rr": 20,
+   "temperature": 36.9,
+   "gcs": 15,
+   "pain_score": 3
+  },
+  "exp_ctas": [
+   4,
+   5
+  ],
+  "exp_zone": "PEDS_FAST_TRACK"
+ },
+ {
+  "id": "P06",
+  "desc": "Chest pain with palpitations and exertional onset, 12 y",
+  "age": 12,
+  "complaint": "chest pain and palpitations started during exercise this morning",
+  "vitals": {
+   "hr": 160,
+   "bp_systolic": 110,
+   "bp_diastolic": 70,
+   "spo2": 98,
+   "rr": 24,
+   "temperature": 36.8,
+   "gcs": 15,
+   "pain_score": 6
+  },
+  "exp_ctas": [
+   2,
+   3
+  ],
+  "exp_zone": "PEDIATRIC_OBSERVATION"
+ },
+ {
+  "id": "P07",
+  "desc": "Medication overdose (ingested unknown tablets), 5 y, GCS 15",
+  "age": 5,
+  "complaint": "swallowed tablets, possible overdose",
+  "vitals": {
+   "hr": 120,
+   "bp_systolic": 95,
+   "bp_diastolic": 55,
+   "spo2": 99,
+   "rr": 24,
+   "temperature": 36.9,
+   "gcs": 15,
+   "pain_score": 0
+  },
+  "exp_ctas": [
+   2,
+   3
+  ],
+  "exp_zone": "PEDIATRIC_OBSERVATION"
+ },
+ {
+  "id": "P08",
+  "desc": "Coin aspiration with coughing and stridor, 3 y",
+  "age": 3,
+  "complaint": "choking, coughing, noisy breathing after swallowing a coin",
+  "vitals": {
+   "hr": 150,
+   "bp_systolic": 95,
+   "bp_diastolic": 60,
+   "spo2": 92,
+   "rr": 44,
+   "temperature": 36.8,
+   "gcs": 15,
+   "pain_score": 0
+  },
+  "exp_ctas": [
+   1,
+   2
+  ],
+  "exp_zone": "PEDIATRIC_RESUS"
+ },
+ {
+  "id": "P09",
+  "desc": "URTI cough and runny nose, 7 y, well",
+  "age": 7,
+  "complaint": "cough and runny nose for 3 days",
+  "vitals": {
+   "hr": 95,
+   "bp_systolic": 100,
+   "bp_diastolic": 60,
+   "spo2": 99,
+   "rr": 22,
+   "temperature": 37.4,
+   "gcs": 15,
+   "pain_score": 1
+  },
+  "exp_ctas": [
+   4,
+   5
+  ],
+  "exp_zone": "PEDIATRIC_CLINIC"
+ },
+ {
+  "id": "P10",
+  "desc": "Diabetic child with URTI symptoms, 9 y, stable",
+  "age": 9,
+  "complaint": "type 1 diabetic, sore throat and cough",
+  "vitals": {
+   "hr": 100,
+   "bp_systolic": 105,
+   "bp_diastolic": 60,
+   "spo2": 99,
+   "rr": 22,
+   "temperature": 37.6,
+   "gcs": 15,
+   "pain_score": 2
+  },
+  "exp_ctas": [
+   4
+  ],
+  "exp_zone": "PEDIATRIC_CLINIC"
+ },
+ {
+  "id": "P11",
+  "desc": "Suture removal, 8 y, healed wound",
+  "age": 8,
+  "complaint": "removal of sutures from forehead laceration",
+  "vitals": {
+   "hr": 88,
+   "bp_systolic": 100,
+   "bp_diastolic": 60,
+   "spo2": 99,
+   "rr": 20,
+   "temperature": 36.8,
+   "gcs": 15,
+   "pain_score": 0
+  },
+  "exp_ctas": [
+   5
+  ],
+  "exp_zone": "PEDS_FAST_TRACK"
+ },
+ {
+  "id": "P12",
+  "desc": "Dressing change, 6 y, well",
+  "age": 6,
+  "complaint": "dressing change to a healing wound on knee",
+  "vitals": {
+   "hr": 90,
+   "bp_systolic": 100,
+   "bp_diastolic": 60,
+   "spo2": 99,
+   "rr": 20,
+   "temperature": 36.8,
+   "gcs": 15,
+   "pain_score": 1
+  },
+  "exp_ctas": [
+   5
+  ],
+  "exp_zone": "PEDS_FAST_TRACK"
+ },
+ {
+  "id": "P13",
+  "desc": "Scalp laceration, 5 y, no LOC, well",
+  "age": 5,
+  "complaint": "fell and cut scalp, bleeding stopped",
+  "vitals": {
+   "hr": 95,
+   "bp_systolic": 100,
+   "bp_diastolic": 60,
+   "spo2": 99,
+   "rr": 22,
+   "temperature": 36.8,
+   "gcs": 15,
+   "pain_score": 3
+  },
+  "exp_ctas": [
+   4,
+   5
+  ],
+  "exp_zone": "PEDS_FAST_TRACK"
+ },
+ {
+  "id": "P14",
+  "desc": "Urinary retention, 6 y",
+  "age": 6,
+  "complaint": "cannot pass urine for 12 hours, lower abdominal pain",
+  "vitals": {
+   "hr": 110,
+   "bp_systolic": 100,
+   "bp_diastolic": 60,
+   "spo2": 99,
+   "rr": 22,
+   "temperature": 37.2,
+   "gcs": 15,
+   "pain_score": 5
+  },
+  "exp_ctas": [
+   3
+  ],
+  "exp_zone": "PEDIATRIC_OBSERVATION"
+ },
+ {
+  "id": "P15",
+  "desc": "Periorbital cellulitis, 4 y",
+  "age": 4,
+  "complaint": "swollen red eyelid and fever",
+  "vitals": {
+   "hr": 130,
+   "bp_systolic": 95,
+   "bp_diastolic": 55,
+   "spo2": 99,
+   "rr": 26,
+   "temperature": 38.5,
+   "gcs": 15,
+   "pain_score": 3
+  },
+  "exp_ctas": [
+   3
+  ],
+  "exp_zone": "PEDIATRIC_OBSERVATION"
+ },
+ {
+  "id": "P16",
+  "desc": "Asthma attack, SpO2 91%, RR 40, wheeze, 6 y",
+  "age": 6,
+  "complaint": "wheezing and difficulty breathing",
+  "vitals": {
+   "hr": 135,
+   "bp_systolic": 100,
+   "bp_diastolic": 60,
+   "spo2": 91,
+   "rr": 40,
+   "temperature": 36.9,
+   "gcs": 15,
+   "pain_score": 0
+  },
+  "exp_ctas": [
+   2,
+   3
+  ],
+  "exp_zone": "RESPIRATORY"
+ },
+ {
+  "id": "P17",
+  "desc": "Head injury with GCS 14, 4 y",
+  "age": 4,
+  "complaint": "fell from bed, hit head, drowsy",
+  "vitals": {
+   "hr": 110,
+   "bp_systolic": 95,
+   "bp_diastolic": 55,
+   "spo2": 99,
+   "rr": 24,
+   "temperature": 36.8,
+   "gcs": 14,
+   "pain_score": 3
+  },
+  "exp_ctas": [
+   2,
+   3
+  ],
+  "exp_zone": "PEDIATRIC_OBSERVATION"
+ },
+ {
+  "id": "P18",
+  "desc": "Active seizure, 2 y",
+  "age": 2,
+  "complaint": "convulsions for 10 minutes",
+  "vitals": {
+   "hr": 160,
+   "bp_systolic": 95,
+   "bp_diastolic": 55,
+   "spo2": 90,
+   "rr": 30,
+   "temperature": 39.2,
+   "gcs": 8,
+   "pain_score": 0
+  },
+  "exp_ctas": [
+   1
+  ],
+  "exp_zone": "PEDIATRIC_RESUS"
+ },
+ {
+  "id": "P19",
+  "desc": "Mild abdominal pain, 8 y, eating normally",
+  "age": 8,
+  "complaint": "stomach ache since morning, mild, ate lunch",
+  "vitals": {
+   "hr": 90,
+   "bp_systolic": 100,
+   "bp_diastolic": 60,
+   "spo2": 99,
+   "rr": 20,
+   "temperature": 36.9,
+   "gcs": 15,
+   "pain_score": 3
+  },
+  "exp_ctas": [
+   4,
+   5
+  ],
+  "exp_zone": "PEDIATRIC_CLINIC"
+ },
+ {
+  "id": "P20",
+  "desc": "Vomiting and dehydration signs, 2 y",
+  "age": 2,
+  "complaint": "vomiting for 1 day, dry mouth, few wet nappies",
+  "vitals": {
+   "hr": 150,
+   "bp_systolic": 90,
+   "bp_diastolic": 50,
+   "spo2": 99,
+   "rr": 32,
+   "temperature": 38.1,
+   "gcs": 15,
+   "pain_score": 2
+  },
+  "exp_ctas": [
+   3
+  ],
+  "exp_zone": "PEDIATRIC_OBSERVATION"
+ }
+]
