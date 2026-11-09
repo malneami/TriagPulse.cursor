@@ -101,7 +101,7 @@ const EXTRA_SYNONYMS = {
   rash: ['rash', 'طفح', 'طفح جلدي'],
   allergic_reaction: ['allergic', 'allergy', 'anaphylaxis', 'حساسية', 'تفاعل تحسسي'],
   wheezing: ['wheeze', 'wheezing', 'صفير'],
-  burn: ['burn', 'burns', 'حروق'],
+  burn: ['burn', 'burns', 'scald', 'scalds', 'scalded', 'حروق', 'حرق', 'حروق'],
   laceration: ['laceration', 'cut', 'wound', 'جرح', 'تمزق'],
   epistaxis: ['epistaxis', 'nosebleed', 'nose bleed', 'رعاف', 'نزيف أنف'],
   confusion: ['confusion', 'confused', 'disoriented', 'ارتباك', 'تشوش'],
