@@ -19,6 +19,69 @@
 
 /** @type {BankQuestion[]} */
 export const CLARIFYING_QUESTION_BANK = [
+  // ── Burn: size (Lund-Browder) and critical site (approved 2026-11-09) ──
+  {
+    id: 'burn_size',
+    field: 'burn_size',
+    levels: [2, 3, 4, 5],
+    pathways: ['burn', 'skin_burn'],
+    text_ar: 'ما نسبة مساحة الحرق من سطح الجسم (Lund-Browder)؟',
+    text_en: 'What is the burn size (% body surface area, Lund-Browder)?',
+    answer_type: 'options',
+    options: [
+      { value: 'small', label_ar: 'صغير (< 5%)', label_en: 'Small (< 5%)' },
+      { value: 'moderate', label_ar: 'متوسط (5–10%)', label_en: 'Moderate (5–10%)' },
+      { value: 'large', label_ar: 'كبير (> 10%)', label_en: 'Large (> 10%)' },
+    ],
+    clinical_relevance: 'Burn size thresholds for children',
+    root: true,
+  },
+  {
+    id: 'burn_critical_site',
+    field: 'burn_critical_site',
+    levels: [2, 3, 4, 5],
+    pathways: ['burn', 'skin_burn'],
+    text_ar: 'هل الحرق في موقع حرج (اليد، القدم، الوجه، الأعضاء التناسلية، مفصل كبير، أو يحيط بالطرف)؟',
+    text_en: 'Is the burn at a critical site (hand, foot, face, perineum, major joint, or circumferential)?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes' },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+    ],
+    clinical_relevance: 'Critical site burns are CTAS 2',
+    root: true,
+  },
+  // ── Asthma: stable response after bronchodilator (approved 2026-11-09) ──
+  {
+    id: 'asthma_improved_after_bronchodilator',
+    field: 'asthma_improved_after_bronchodilator',
+    levels: [3, 4],
+    pathways: ['asthma', 'wheezing'],
+    text_ar: 'هل تحسن الطفل بعد الموسّع للشعب (سالبيوتامول)؟',
+    text_en: 'Did the child improve after bronchodilator (salbutamol)?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes' },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+    ],
+    clinical_relevance: 'Stable paediatric asthma with SpO2 >= 95% → CTAS 4',
+  },
+  // ── Fever: prior febrile seizure (approved 2026-11-09) ──
+  {
+    id: 'febrile_seizure_history',
+    field: 'febrile_seizure_history',
+    levels: [3, 4],
+    pathways: ['fever', 'fever_unspecified'],
+    text_ar: 'هل سبق للطفل نوبة تشنج حموي؟',
+    text_en: 'Has the child had a prior febrile seizure?',
+    answer_type: 'yes_no',
+    options: [
+      { value: 'نعم', label_ar: 'نعم', label_en: 'Yes', ctas_hint: 3 },
+      { value: 'لا', label_ar: 'لا', label_en: 'No' },
+      { value: 'غير معروف', label_ar: 'غير معروف', label_en: 'Unknown' },
+    ],
+    clinical_relevance: 'Prior febrile seizure with fever → CTAS 3 (any age)',
+  },
   // ── Chest pain (cardiac / non-cardiac) ────────────────────────────────────
   {
     id: 'cp_radiation',

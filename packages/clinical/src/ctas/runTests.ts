@@ -23,6 +23,7 @@ import { runBackgroundDiseaseTests } from './runBackgroundDiseaseTests.js';
 import { runPainTests } from './runPainTests.js';
 import { runPregnancyTests } from './runPregnancyTests.js';
 import { runRoutingTests } from './runRoutingTests.js';
+import { runCtas3DecisionTests } from './runCtas3DecisionTests.js';
 import { runFeedbackTests } from '../feedback/runFeedbackTests.js';
 import { runPrivacyTests } from '../privacy/runPrivacyTests.js';
 import { runSttTests } from '../stt/runSttTests.js';
@@ -832,7 +833,15 @@ for (const testCase of CTAS_TEST_CASES) {
   assert(dest({ level: 4, age: 40 }) === 'FM_IM', 'DEST-04', 'adult CTAS 4 → FM_IM');
   assert(dest({ level: 5, age: 40 }) === 'FM_IM', 'DEST-05', 'adult CTAS 5 → FM_IM');
 
-  assert(dest({ level: 2, age: 8 }) === 'PEDIATRIC_RESUS', 'DEST-06', 'age 8 CTAS 2 → PEDIATRIC_RESUS');
+  assert(dest({ level: 2, age: 8 }) === 'PEDIATRIC_RESUS', 'DEST-06', 'age 8 CTAS 2 (no exception) → PEDIATRIC_RESUS (default)');
+  assert(dest({ level: 2, age: 8, complaints: [{ key: null, text: 'palpitations during exercise, chest pain' }] }) === 'PEDIATRIC_RESUS', 'DEST-06b',
+    'child CTAS 2 with palpitations → PEDIATRIC_RESUS (decision 2026-11-08)');
+  assert(dest({ level: 2, age: 8, complaints: [{ key: null, text: 'choking, stridor after swallowing a coin' }] }) === 'PEDIATRIC_RESUS', 'DEST-06c',
+    'child CTAS 2 with airway obstruction → PEDIATRIC_RESUS');
+  assert(dest({ level: 2, age: 0.17, complaints: [{ key: null, text: 'fever 38.6 infant' }] }) === 'PEDIATRIC_OBSERVATION', 'DEST-06d',
+    'infant CTAS 2 fever → PEDIATRIC_OBSERVATION (decision 2026-11-08)');
+  assert(dest({ level: 2, age: 6, complaints: [{ key: null, text: 'wheezing and difficulty breathing' }] }) === 'PEDIATRIC_OBSERVATION', 'DEST-06e',
+    'child CTAS 2 asthma with low SpO2 → PEDIATRIC_OBSERVATION (decision 2026-11-08)');
   assert(dest({ level: 3, age: 8 }) === 'PEDIATRIC_OBSERVATION', 'DEST-07', 'age 8 CTAS 3 → PEDIATRIC_OBSERVATION');
   assert(
     dest({ level: 4, age: 8, answers: { minor_procedure: 'نعم' } }) === 'PEDIATRIC_OBSERVATION',
@@ -1013,6 +1022,7 @@ runBackgroundDiseaseTests(assert);
 runPainTests(assert);
 runPregnancyTests(assert);
 runRoutingTests(assert);
+runCtas3DecisionTests(assert);
 runFeedbackTests(assert);
 runPrivacyTests(assert);
 
