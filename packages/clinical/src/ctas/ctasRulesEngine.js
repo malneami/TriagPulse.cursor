@@ -240,7 +240,7 @@ function evaluateStep0({ vitals, flags, appearance, isPediatric = false, age = n
   };
 }
 
-function evaluateComplaintSpecific({ complaint, selectedModifier, answers, pathway, spo2 = null }) {
+function evaluateComplaintSpecific({ complaint, selectedModifier, answers, pathway, spo2 = null, text = '', age = null }) {
   const applied = [];
   const candidates = [];
 
@@ -266,7 +266,14 @@ function evaluateComplaintSpecific({ complaint, selectedModifier, answers, pathw
     && isYes(answers.asthma_improved_after_bronchodilator)
     && spo2 != null && spo2 >= 95
     && !isYes(answers.asthma_distress);
-  const baseline = asthmaStable ? 4 : (complaint?.default_ctas ?? 4);
+  // Paediatric (under 18) non-cardiac chest pain → CTAS 3, Observation (approved 2026-11-11).
+  const paedChestNonCardiac = Number.isFinite(Number(age)) && Number(age) < 18
+    && (pathway === 'chest_pain_non_cardiac'
+      || ((pathway === 'chest_pain_cardiac' || pathway === 'chest_pain')
+        && /non[- ]?cardiac|after cough|musculoskeletal|reproducible|chest wall|جدار الصدر|غير قلبي|عضلي/i.test(text)
+        && !/palpitat|exert|syncop|radiat|sweat|diaphores|خفقان|إغماء|عرق/i.test(text)))
+    && !isYes(answers.radiation);
+  const baseline = asthmaStable ? 4 : paedChestNonCardiac ? 3 : (complaint?.default_ctas ?? 4);
   pushCandidate(candidates, {
     level: baseline,
     rule_id: 'step2_complaint_baseline',
@@ -282,7 +289,7 @@ function evaluateComplaintSpecific({ complaint, selectedModifier, answers, pathw
   });
 
   // Limited pathway cues when modifier not yet selected
-  if (pathway === 'chest_pain_cardiac' || pathway === 'chest_pain') {
+  if ((pathway === 'chest_pain_cardiac' || pathway === 'chest_pain') && !paedChestNonCardiac) {
     pushCandidate(candidates, { level: 2, rule_id: 'step2_chest_cardiac', label_en: 'Cardiac chest pain features → CTAS 2', label_ar: 'ألم صدري قلبي → CTAS 2' });
   }
   if (isYes(answers.radiation)) {
@@ -767,6 +774,8 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
       answers,
       pathway,
       spo2: normalized.vitals.spo2 ?? null,
+      text: tx,
+      age: patient.age,
     });
   }
 
@@ -864,6 +873,17 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
   for (const c of burnMod.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
   const seizureHx = evaluateFebrileSeizureHistory({ hasFever, answers });
   for (const c of seizureHx.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
+  // Paediatric allergic reaction (lip swelling, hives), no breathing difficulty → CTAS 3 (approved 2026-11-11).
+  const allergyChild = Number(patient.age) < 18
+    && /lip swell|swollen lip|hives|urticaria|allerg|anaphyl|تورم.*الشفة|شرى|حساسية/i.test(`${tx} ${patient.chief_complaint || ''}`)
+    && !/wheez|stridor|airway|(?<!no )(?:difficult\w* breath|breathing difficult)|صفير|ضيق.*تنفس|صعوبة.*تنفس/i.test(`${tx} ${patient.chief_complaint || ''}`);
+  // Paediatric dog or animal bite → CTAS 4 (approved 2026-11-11, P01).
+  if (Number(patient.age) < 18 && /\bbite[sd]?\b|bitten|عضة|عضّة/i.test(`${tx} ${patient.chief_complaint || ''}`)) pushCandidate(primaryCandidates, { level: 4, rule_id: 'paed_bite_ctas4', label_en: 'Paediatric bite → CTAS 4', label_ar: 'عضة عند طفل → CTAS 4', source: 'complaint_specific' });
+  if (allergyChild) pushCandidate(primaryCandidates, { level: 3, rule_id: 'paed_allergy_ctas3', label_en: 'Paediatric allergic reaction, no breathing difficulty → CTAS 3', label_ar: 'تفاعل تحسسي عند طفل بدون ضيق تنفس → CTAS 3', source: 'complaint_specific' });
+  // Dehydration with signs (not mild / tolerating fluids) → CTAS 3 (approved 2026-11-11).
+  const dehydrationSigns = /dehydrat|جفاف/i.test(`${tx} ${patient.chief_complaint || ''}`)
+    && !/tolerat|تحمل/i.test(`${tx} ${patient.chief_complaint || ''}`);
+  if (dehydrationSigns) pushCandidate(primaryCandidates, { level: 3, rule_id: 'dehydration_signs_ctas3', label_en: 'Dehydration signs → CTAS 3', label_ar: 'علامات جفاف → CTAS 3', source: 'complaint_specific' });
 
   for (const a of lib.applied || []) {
     if (a.ctas_effect != null) {
