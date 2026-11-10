@@ -864,6 +864,10 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
   for (const c of burnMod.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
   const seizureHx = evaluateFebrileSeizureHistory({ hasFever, answers });
   for (const c of seizureHx.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
+  // Dehydration with signs (not mild / tolerating fluids) → CTAS 3 (approved 2026-11-11).
+  const dehydrationSigns = /dehydrat|جفاف/i.test(`${tx} ${patient.chief_complaint || ''}`)
+    && !/mild|tolerat|خفيف|تحمل/i.test(`${tx} ${patient.chief_complaint || ''}`);
+  if (dehydrationSigns) pushCandidate(primaryCandidates, { level: 3, rule_id: 'dehydration_signs_ctas3', label_en: 'Dehydration signs → CTAS 3', label_ar: 'علامات جفاف → CTAS 3', source: 'complaint_specific' });
 
   for (const a of lib.applied || []) {
     if (a.ctas_effect != null) {
