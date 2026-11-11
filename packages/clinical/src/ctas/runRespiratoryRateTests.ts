@@ -28,7 +28,7 @@ export function runRespiratoryRateTests(assert: Assert) {
     'RR-04', '8 months, RR 40 → no level, no alert');
 
   // From 1 year: ED centiles
-  assert(lvl({ age: '1.5', rr: '38', spo2: '93' }) === 3, 'RR-05', '18 months, RR 38, SpO₂ 93 → CTAS 3');
+  assert(lvl({ age: '1.5', rr: '38', spo2: '93' }) === 2, 'RR-05', '18 months, RR 38, SpO₂ 93, cough → CTAS 2 Observation (approved 2026-11-11)');
   assert(lvl({ age: '1.5', rr: '41' }) === 2 && rrAlert({ age: '1.5', rr: '41' }), 'RR-06', '18 months, RR 41 (above the 99th, 40) → CTAS 2 + alert');
   assert(lvl({ age: '4', rr: '30' }) === 3, 'RR-07', '4 y, RR 30 (above the 95th, 28) → CTAS 3');
   assert(lvl({ age: '7', rr: '30', temperature: '39.5', chief_complaint: 'Fever' }, WELL) === 3, 'RR-08',

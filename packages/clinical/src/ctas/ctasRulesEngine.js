@@ -649,6 +649,26 @@ function evaluateFebrileSeizureHistory({ hasFever, answers = {} }) {
   return { candidates: [{ level: 3, rule_id: 'fever_seizure_history', label_en: 'Fever with prior febrile seizure → CTAS 3 (any age, any appearance)', label_ar: 'حمى مع تاريخ تشنج حموي → CTAS 3' }] };
 }
 
+// Respiratory presentations other than wheeze (cough, breathing difficulty, fever with breathing change)
+// with SpO2 90–94% in a child under 18 → CTAS 2, Observation (approved 2026-11-11).
+// Infant under 3 months with lethargy, abnormal movements, vomiting or abdominal distension → CTAS 2, Observation (approved 2026-11-11).
+const RESP_PRESENTATION_RE = /cough|wheez|asthma|breath|dyspn|stridor|صفير|ربو|سعال|كحة|تنفس|نهجان/i;
+const FEVER_RE = /fever|temperature|حمى|حرارة/i;
+const INFANT_CRITICAL_RE = /letharg\w*|sleepy|drows\w*|unrespons\w*|floppy|limp|abnormal (?:movement|movements)|jerk\w*|twitch\w*|convuls\w*|seizure\w*|vomit\w*|emesis|distend\w*|خمول|خامل|نعاس|نعسان|قيء|تقيؤ|انتفاخ البطن|تشنج|حركة غير طبيعية|ارتخاء|مرتخي/i;
+function evaluateCriticalRespAndInfant({ age, text = '', spo2 = null }) {
+  const candidates = [];
+  const a = Number(age);
+  const hasAge = age != null && age !== '' && Number.isFinite(a);
+  if (hasAge && a < 18 && spo2 != null && spo2 >= 90 && spo2 < 95) {
+    const resp = RESP_PRESENTATION_RE.test(text) || (FEVER_RE.test(text) && /breath|تنفس|نهجان/i.test(text));
+    if (resp) candidates.push({ level: 2, rule_id: 'paed_resp_spo2_90_94_obs', label_en: `Paediatric respiratory presentation with SpO₂ ${spo2}% (90–94) → CTAS 2, Observation`, label_ar: `عرض تنفسي عند طفل مع SpO₂ ${spo2}% (90–94) → CTAS 2، الملاحظة` });
+  }
+  if (hasAge && a < 0.25 && INFANT_CRITICAL_RE.test(text)) {
+    candidates.push({ level: 2, rule_id: 'infant_u3m_critical_obs', label_en: 'Infant under 3 months with critical presentation (lethargy, abnormal movement, vomiting or abdominal distension) → CTAS 2, Observation', label_ar: 'رضيع دون 3 أشهر مع عرض حرج → CTAS 2، الملاحظة' });
+  }
+  return { candidates };
+}
+
 export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' } = {}) {
   if (!patient) return null;
 
@@ -884,6 +904,8 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
   const dehydrationSigns = /dehydrat|جفاف/i.test(`${tx} ${patient.chief_complaint || ''}`)
     && !/tolerat|تحمل/i.test(`${tx} ${patient.chief_complaint || ''}`);
   if (dehydrationSigns) pushCandidate(primaryCandidates, { level: 3, rule_id: 'dehydration_signs_ctas3', label_en: 'Dehydration signs → CTAS 3', label_ar: 'علامات جفاف → CTAS 3', source: 'complaint_specific' });
+  const critRespInfant = evaluateCriticalRespAndInfant({ age: patient.age, text: `${tx} ${patient.chief_complaint || ''}`, spo2: normalized.vitals.spo2 ?? patient.spo2 ?? null });
+  for (const c of critRespInfant.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
 
   for (const a of lib.applied || []) {
     if (a.ctas_effect != null) {
