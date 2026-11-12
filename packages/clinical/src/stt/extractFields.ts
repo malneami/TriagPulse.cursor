@@ -1,6 +1,6 @@
 import { mapClinicalCodes } from './coding';
 import { matchComplaint } from '../ctas/resolveChiefComplaint';
-import { buildCaseDetails } from '../ctas/caseDetails';
+import { buildCaseDetails, plainComplaintLabel } from '../ctas/caseDetails';
 import { STT_FIELD_DEFINITIONS, STT_REQUIRED_KEYS } from './vocabulary';
 import { conservativeTranscriptCleanup, detectTranscriptLanguage, segmentTranscriptByLanguage } from './vocabulary';
 import type {
@@ -1183,7 +1183,7 @@ export function extractComplaintMentions(transcript: string): ComplaintMention[]
   for (const clause of positiveClauses(text).split(/\.\s+/)) {
     const hit = parseChiefComplaint(clause);
     if (!hit) continue;
-    const label = matchComplaint(hit.value)?.complaint?.label_en || hit.value.trim().toLowerCase();
+    const label = plainComplaintLabel(hit.value)?.label_en || matchComplaint(hit.value)?.complaint?.label_en || hit.value.trim().toLowerCase();
     const existing = mentions.find((m) => m.complaint === label);
     if (existing) {
       existing.count += 1;

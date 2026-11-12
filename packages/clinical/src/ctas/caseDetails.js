@@ -206,16 +206,42 @@ export function extractMedications(transcript, listed = []) {
 }
 
 /** Every presenting complaint, in order of first mention. */
+/**
+ * Plain bilingual labels for the common complaints the STT list shows. The category
+ * labels (e.g. "URTI Complaints") made a cough read as a respiratory category.
+ */
+const PLAIN_COMPLAINTS = [
+  { re: /حمى|سخون|حرارة|fever|febrile|pyrexia/i, en: 'Fever', ar: 'حمى' },
+  { re: /سعال|كحة|\bcough/i, en: 'Cough', ar: 'سعال' },
+  { re: /ألم صدر|chest pain/i, en: 'Chest pain', ar: 'ألم صدر' },
+  { re: /صداع|headache/i, en: 'Headache', ar: 'صداع' },
+  { re: /ضيق تنفس|shortness of breath|dyspn/i, en: 'Shortness of breath', ar: 'ضيق تنفس' },
+  { re: /قيء|تقيؤ|vomit/i, en: 'Vomiting', ar: 'قيء' },
+  { re: /إسهال|اسهال|diarrh/i, en: 'Diarrhoea', ar: 'إسهال' },
+  { re: /ألم بطن|abdominal pain/i, en: 'Abdominal pain', ar: 'ألم بطن' },
+  { re: /ألم حلق|sore throat/i, en: 'Sore throat', ar: 'ألم حلق' },
+];
+
+/** Plain label for a complaint term, or null when no common complaint matches. */
+export function plainComplaintLabel(term) {
+  const hit = PLAIN_COMPLAINTS.find((p) => p.re.test(String(term || '')));
+  return hit ? { label_en: hit.en, label_ar: hit.ar } : null;
+}
+
 export function extractComplaints(transcript) {
-  return findComplaintMentions(transcript).map((m) => ({
+  return findComplaintMentions(transcript).map((m) => {
+    const plain = plainComplaintLabel(m.term);
+    return {
     key: m.complaintKey,
     text: m.term,
-    label_en: m.label_en,
-    label_ar: m.label_ar,
+    label_en: plain ? plain.label_en : m.label_en,
+    label_ar: plain ? plain.label_ar : m.label_ar,
     default_ctas: m.default_ctas,
     evidence: m.clause.slice(0, 120),
     source: 'rules',
-  }));
+    mention_count: m.mention_count || 1,
+    };
+  });
 }
 
 /**
@@ -289,10 +315,23 @@ export function buildCaseDetails(transcript, { medications = [], llm = null } = 
   const text = String(transcript || '');
   const fromLlm = llm ? normalizeLlmCaseDetails(llm, text) : { complaints: [], conditions: [], medications: [], rejected: 0 };
 
+  const ruleComplaints = extractComplaints(text);
   const complaints = mergeBy(
-    [...extractComplaints(text), ...fromLlm.complaints],
+    [...ruleComplaints, ...fromLlm.complaints],
     (c) => c.key || normalizeForEvidence(c.text),
   );
+  // How many times each complaint is said across the whole conversation (rules and LLM).
+  const countBy = (list) => list.reduce((acc, c) => {
+    const k = c.key || normalizeForEvidence(c.text);
+    if (k) acc[k] = (acc[k] || 0) + (c.mention_count || 1);
+    return acc;
+  }, {});
+  const ruleCounts = countBy(ruleComplaints);
+  const llmCounts = countBy(fromLlm.complaints);
+  for (const c of complaints) {
+    const k = c.key || normalizeForEvidence(c.text);
+    c.mention_count = Math.max(ruleCounts[k] || 0, llmCounts[k] || 0, 1);
+  }
 
   const condMap = new Map();
   for (const c of [...extractConditions(text), ...fromLlm.conditions]) {
