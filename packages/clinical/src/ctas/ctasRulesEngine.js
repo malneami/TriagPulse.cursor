@@ -315,6 +315,11 @@ function evaluateRespiratoryPrimary({ vitals, flags, norms, chronicity, baseline
       pushCandidate(candidates, { level: vsBase.level, rule_id: vsBase.rule_id, label_en: vsBase.label_en, label_ar: vsBase.label_ar });
     }
     applied.push({ label_en: vsBase.label_en, label_ar: vsBase.label_ar, result: vsBase.level != null ? `CTAS ${vsBase.level} min` : 'usual_baseline', evidence: { baselineSpo2, drop: vsBase.drop } });
+    // Usual-level SpO₂ at or below 85%: the presentation is never less urgent than CTAS 3 (approved 2026-11-12).
+    if (vitals.spo2 != null && vitals.spo2 <= 85 && vsBase.level == null) {
+      pushCandidate(candidates, { level: 3, rule_id: 'resp_spo2_le85_usual_floor3', label_en: `SpO₂ ${vitals.spo2}% at usual level → CTAS 3 floor`, label_ar: `SpO₂ ${vitals.spo2}% عند المعتاد → حد أدنى CTAS 3` });
+      applied.push({ label_en: `SpO₂ ${vitals.spo2}% at usual level — floor CTAS 3`, label_ar: `SpO₂ ${vitals.spo2}% عند المعتاد — حد أدنى CTAS 3`, result: 'CTAS 3 min' });
+    }
   } else if (vitals.spo2 != null) {
     const gate = hypoxiaShouldApply({
       spo2: vitals.spo2,
