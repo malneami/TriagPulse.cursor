@@ -9,7 +9,7 @@
 import { CTAS_CONFIG } from './ctasDatabase.js';
 import { matchComplaint, resolveChiefComplaint } from './resolveChiefComplaint.js';
 import { applyModifierLibraryEffects } from './modifierLibrary.js';
-import { resolveCtasHintsFromAnswers } from './clarifyingQuestionBank.js';
+import { resolveCtasHintsFromAnswers, BASELINE_SPO2_QUESTION } from './clarifyingQuestionBank.js';
 import { getAgeGroup, isPediatricAgeGroup, getNorms } from './ageNorms.js';
 import { normalizeClinicalFacts, isYes, answerText } from './factNormalizer.js';
 import { evaluateSirsCriteria, evaluateAdultFeverModifier } from './rules/adultFeverRules.js';
@@ -590,8 +590,12 @@ function evaluatePediatricFeverBands({ vitals, ageGroup, age, appearance, flags,
   return { candidates, applied };
 }
 
-function collectCtasChangingGaps({ normalized, sirs, hemo, feverResult, isPediatric, hasFever, rrA }) {
+function collectCtasChangingGaps({ normalized, sirs, hemo, feverResult, isPediatric, hasFever, rrA, baselineSpo2 = null }) {
   const gaps = [];
+  // SpO₂ ≤ 85% with no usual value → usual SpO₂ asked; CTAS 1 stays provisional until answered (approved 2026-11-12).
+  if (normalized.vitals.spo2 != null && normalized.vitals.spo2 <= 85 && baselineSpo2 == null) {
+    gaps.push({ field: 'baseline_spo2', reason_en: BASELINE_SPO2_QUESTION.reason_en, reason_ar: BASELINE_SPO2_QUESTION.reason_ar });
+  }
   if (rrA?.needs_recount) {
     gaps.push({ field: 'rr_recount', reason_en: RR_RECOUNT_QUESTION.reason_en, reason_ar: RR_RECOUNT_QUESTION.reason_ar });
   }
@@ -983,6 +987,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     isPediatric,
     hasFever,
     rrA: resp.respiratory_rate,
+    baselineSpo2,
   });
   if (step1Incomplete) {
     missing.unshift({

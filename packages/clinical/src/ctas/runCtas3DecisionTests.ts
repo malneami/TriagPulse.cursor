@@ -5,6 +5,8 @@
  */
 import { computeLiveCTAS } from './vitalRanges.js';
 import { resolveDirection } from '../routing/routingConfig.js';
+import { evaluateCtasRules } from './ctasRulesEngine.js';
+import { BASELINE_SPO2_QUESTION } from './clarifyingQuestionBank.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -17,6 +19,15 @@ const NOON_UTC = new Date(Date.UTC(2026, 10, 9, 9, 0));
 const resolve = resolveDirection as (opts: any) => any;
 
 export function runCtas3DecisionTests(assert: Assert) {
+  // Usual-SpO₂ question (approved 2026-11-12): SpO₂ ≤ 85 with no usual value → CTAS 1 and a numeric question;
+  // a confirmed usual value within 3 of the reading lowers the category.
+  const evalRaw = evaluateCtasRules as (o: any) => any;
+  const base = { age: 4, chief_complaint: 'cough for 3 days', ...STABLE, spo2: 85 };
+  const noBase = evalRaw({ patient: base, answers: {}, transcript: '' });
+  assert(noBase.level === 1 && (noBase.missing_ctas_changing || []).some((g: any) => g.field === 'baseline_spo2'), 'DEC-26', 'SpO₂ 85, usual unknown → CTAS 1 and usual-SpO₂ question');
+  const withBase = evalRaw({ patient: base, answers: { baseline_spo2: 85 }, transcript: '' });
+  assert(withBase.level === 5, 'DEC-27', 'SpO₂ 85, usual 85 confirmed, cough → not CTAS 1 (5, no complaint baseline)', `${withBase.level}`);
+  assert(BASELINE_SPO2_QUESTION.answer_type === 'number' && BASELINE_SPO2_QUESTION.min === 60 && BASELINE_SPO2_QUESTION.max === 100, 'DEC-28', 'baseline question is numeric 60–100');
   const cases: Array<{
     id: string; name: string;
     patient: Record<string, unknown>; answers: Record<string, unknown>;

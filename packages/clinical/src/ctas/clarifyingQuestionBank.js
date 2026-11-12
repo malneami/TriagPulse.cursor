@@ -563,6 +563,17 @@ function matchesLevelAndPathway(q, level, pathway) {
   return q.pathways.some((p) => normalizePathwayFamily(p) === family);
 }
 
+/** Numeric usual SpO₂ (when well). Asked when SpO₂ ≤ 85% and no usual value is known (approved 2026-11-12). */
+export const BASELINE_SPO2_QUESTION = {
+  id: 'baseline_spo2', field: 'baseline_spo2',
+  text_ar: 'ما هو مستوى الأكسجين المعتاد للمريض (SpO₂) عندما يكون بحالة جيدة؟',
+  text_en: 'What is the patient’s usual SpO₂ (%) when well?',
+  answer_type: 'number', min: 60, max: 100, unit: '%',
+  question_category: 'ctas_modifier',
+  reason_en: 'SpO₂ ≤ 85% with no known usual value → CTAS 1 until the usual level is entered; a usual level near the reading lowers the category.',
+  reason_ar: 'SpO₂ ≤ 85% دون معرفة المعتاد → CTAS 1 حتى يُدخل المعتاد؛ المعتاد القريب من القراءة يخفض التصنيف.',
+};
+
 /** Convert bank question to ClarifyingQuestions UI shape. */
 export function toUiQuestion(q) {
   if (!q) return null;
@@ -574,6 +585,7 @@ export function toUiQuestion(q) {
     text_en: q.text_en,
     answer_type,
     answer_options: (q.options || []).map((o) => o.value),
+    ...(answer_type === 'number' ? { min: q.min, max: q.max, unit: q.unit } : {}),
     clinical_relevance: q.clinical_relevance || '',
     source: 'bank',
   };
