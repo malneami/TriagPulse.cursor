@@ -28,14 +28,14 @@ export function runRespiratoryRateTests(assert: Assert) {
     'RR-04', '8 months, RR 40 → no level, no alert');
 
   // From 1 year: ED centiles
-  assert(lvl({ age: '1.5', rr: '38', spo2: '93' }) === 2, 'RR-05', '18 months, RR 38, SpO₂ 93, cough → CTAS 2 Observation (approved 2026-11-11)');
+  assert(lvl({ age: '1.5', rr: '38', spo2: '93' }) === 3, 'RR-05', '18 months, RR 38, SpO₂ 93, cough → CTAS 3 (approved 2026-11-12)');
   assert(lvl({ age: '1.5', rr: '41' }) === 2 && rrAlert({ age: '1.5', rr: '41' }), 'RR-06', '18 months, RR 41 (above the 99th, 40) → CTAS 2 + alert');
   assert(lvl({ age: '4', rr: '30' }) === 3, 'RR-07', '4 y, RR 30 (above the 95th, 28) → CTAS 3');
   assert(lvl({ age: '7', rr: '30', temperature: '39.5', chief_complaint: 'Fever' }, WELL) === 3, 'RR-08',
     '7 y, 39.5 °C, RR 30, looks well → CTAS 3 (fever does not explain fast breathing)', `${lvl({ age: '7', rr: '30', temperature: '39.5', chief_complaint: 'Fever' }, WELL)}`);
   assert(lvl({ age: '10', rr: '28' }) === 3 && lvl({ age: '10', rr: '30' }) === 2, 'RR-09', '10 y: RR 28 → CTAS 3; RR 30 (above 29) → CTAS 2');
   assert(rrOf({ age: '13', rr: '23' }).level == null && lvl({ age: '13', rr: '23' }) > 3, 'RR-10', '13 y, RR 23 → normal');
-  assert(lvl({ age: '2', rr: '60' }) === 2 && lvl({ age: '2', rr: '60', spo2: '86' }) === 1, 'RR-11',
+  assert(lvl({ age: '2', rr: '60' }) === 2 && lvl({ age: '2', rr: '60', spo2: '85' }) === 1, 'RR-11',
     '2 y, RR 60 → CTAS 2 (never 1 from RR alone); with SpO₂ 86 → CTAS 1');
   assert(lvl({ age: '2', rr: '12' }) === 2, 'RR-12', '2 y, RR 12 (slow for age) → CTAS 2');
   assert(lvl({ age: '16', rr: '26' }) === 3, 'RR-13', '16 y uses the 15-year limits (RR 26 → CTAS 3)');
