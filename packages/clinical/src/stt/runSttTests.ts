@@ -1,3 +1,4 @@
+import { runComplaintMentionTests } from './complaintMentionTests';
 /**
  * STT code-switching (Arabic/English) regression tests.
  * Same hand-rolled style as ctas/runTests.ts — no test framework.
@@ -32,6 +33,7 @@ const LATIN = /[A-Za-z]/;
 export function runSttTests(
   assert: (cond: boolean, id: string, name: string, detail?: string) => void,
 ): void {
+  runComplaintMentionTests(assert);
   // ── R5: Arabic must not be shattered into single characters ────────────────
   {
     const segments = segmentTranscriptByLanguage('المريض عنده chest pain');

@@ -1164,3 +1164,33 @@ export function mergeLlmExtractIntoFields(
   }
   return out;
 }
+
+/**
+ * Every chief-complaint mention in the whole transcript, counted (STT complaint list).
+ * Recomputed from the full transcript each time, so re-running it never double-counts.
+ * The first mention stays the primary complaint; repeats raise the count; new complaints
+ * are added even after the first one.
+ */
+export interface ComplaintMention {
+  complaint: string;
+  count: number;
+  spans: string[];
+}
+
+export function extractComplaintMentions(transcript: string): ComplaintMention[] {
+  const text = relaxSttPunctuation(conservativeTranscriptCleanup(transcript || ''));
+  const mentions: ComplaintMention[] = [];
+  for (const clause of positiveClauses(text).split(/\.\s+/)) {
+    const hit = parseChiefComplaint(clause);
+    if (!hit) continue;
+    const label = matchComplaint(hit.value)?.complaint?.label_en || hit.value.trim().toLowerCase();
+    const existing = mentions.find((m) => m.complaint === label);
+    if (existing) {
+      existing.count += 1;
+      existing.spans.push(hit.span);
+    } else {
+      mentions.push({ complaint: label, count: 1, spans: [hit.span] });
+    }
+  }
+  return mentions;
+}
