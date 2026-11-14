@@ -38,6 +38,21 @@ interface SessionState {
   caseDetailsAt: number;
 }
 
+/** Union of complaints across extractions, keyed by complaint; keeps the higher mention count. */
+export function mergeComplaintsAccumulated(previous: any[] | undefined, next: any[] | undefined): any[] {
+  const out = new Map<string, any>();
+  const keyOf = (c: any) => String(c?.key ?? c?.complaintKey ?? c?.label_en ?? c?.text ?? '').trim().toLowerCase();
+  for (const c of [...(previous || []), ...(next || [])]) {
+    const k = keyOf(c);
+    if (!k) continue;
+    const prev = out.get(k);
+    if (!prev) { out.set(k, { ...c }); continue; }
+    const mentions = Math.max(Number(prev.mention_count) || 1, Number(c?.mention_count) || 1);
+    out.set(k, { ...prev, ...c, mention_count: mentions });
+  }
+  return [...out.values()];
+}
+
 type LlmCaseDetails = Pick<LlmCtasExtractResult, 'complaints' | 'conditions' | 'medications'>;
 
 function ctasFieldsFromPatientUpdates(updates: Record<string, unknown>) {
@@ -162,7 +177,9 @@ export class SttService {
       if (llmResult) {
         session.fields = mergeLlmExtractIntoFields(session.fields, llmResult, session.transcript);
         session.llmCaseDetails = {
-          complaints: llmResult.complaints,
+          // Complaints accumulate for the whole session: a complaint heard earlier is kept even
+          // when a later extraction leaves it out (it was being dropped from the boxes).
+          complaints: mergeComplaintsAccumulated(session.llmCaseDetails?.complaints, llmResult.complaints),
           conditions: llmResult.conditions,
           medications: llmResult.medications,
         };

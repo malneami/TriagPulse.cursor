@@ -1177,12 +1177,26 @@ export interface ComplaintMention {
   spans: string[];
 }
 
+// Eye injury phrasing (English and Arabic) maps to one complaint, not a generic trauma label.
+const EYE_INJURY_CLAUSE_RE = /\b(eye|eyes|ocular)\s+(trauma|injury|injured|hit|pain)\b|\b(trauma|injury|hit|injured)\s+(to\s+|in\s+|of\s+|on\s+)?(the\s+|my\s+|his\s+|her\s+)?(right\s+|left\s+)?eye\b|إصابة\s*(في|فى|ب)?\s*العين|ضربة\s*(في|فى)?\s*العين/i;
+// Filler words are never complaints, even when a clause ends right after "complaint".
+const NOT_A_COMPLAINT = new Set(['also', 'the', 'a', 'an', 't', 'and', 'with', 'of', 'is', 'was', 'it', 'this', 'that', 'complaint', 'complaints', 'more', 'too']);
+
 export function extractComplaintMentions(transcript: string): ComplaintMention[] {
   const text = relaxSttPunctuation(conservativeTranscriptCleanup(transcript || ''));
   const mentions: ComplaintMention[] = [];
-  for (const clause of positiveClauses(text).split(/\.\s+/)) {
+  // Split sentences again at commas and joining words, so "عنده حمى ويشتكي من سعال" gives two complaints.
+  const pieces = positiveClauses(text).split(/\.\s+/).flatMap((c) => c.split(/[,،;]|\s+(?:and|also|plus|with)\s+|\s+و(?=(?:يشتكي|يعاني|عنده|عندها|لديه|وعنده|ويشتكي|ويعاني))/i));
+  for (const clause of pieces) {
+    if (EYE_INJURY_CLAUSE_RE.test(clause)) {
+      const span = clause.match(EYE_INJURY_CLAUSE_RE)?.[0] || clause;
+      const eye = mentions.find((m) => m.complaint === 'Eye injury');
+      if (eye) { eye.count += 1; eye.spans.push(span); } else mentions.push({ complaint: 'Eye injury', count: 1, spans: [span] });
+      continue;
+    }
     const hit = parseChiefComplaint(clause);
     if (!hit) continue;
+    if (NOT_A_COMPLAINT.has(hit.value.trim().toLowerCase()) || hit.value.trim().length < 3) continue;
     const label = plainComplaintLabel(hit.value)?.label_en || matchComplaint(hit.value)?.complaint?.label_en || hit.value.trim().toLowerCase();
     const existing = mentions.find((m) => m.complaint === label);
     if (existing) {

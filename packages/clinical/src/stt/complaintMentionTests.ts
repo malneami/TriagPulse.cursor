@@ -18,6 +18,15 @@ export function runComplaintMentionTests(assert: Assert): void {
   assert(ar === 'Fever×2, Cough×1', 'CM-06', 'Arabic repeats and cross-language labels', `got "${ar}"`);
   const first = extractComplaintMentions('patient complains of fever. patient complains of cough')[0];
   assert(first?.complaint === 'Fever', 'CM-04', 'first mention is the primary complaint', `got ${first?.complaint}`);
+  // CM-07: screenshot case (2026-11-14). Fever was dropped from the boxes; eye trauma was labelled as multisystem trauma.
+  const shot = summary('Complaint eye trauma. Pain score 5. Pain score 3. Blood pressure 110 over 70. Complaint also. Fever. The complaint. Eye trauma and fever. Penetrating');
+  assert(shot === 'Eye injury×2, Fever×2', 'CM-07', 'screenshot transcript keeps fever and eye injury', `got "${shot}"`);
+  // CM-08: two Arabic complaints in one sentence, joined by a conjunction.
+  const joined = summary('المريض عنده حمى ويشتكي من سعال');
+  assert(joined.includes('Fever×1') && joined.includes('Cough×1'), 'CM-08', 'Arabic joined complaints both captured', `got "${joined}"`);
+  // CM-09: filler words are not complaints.
+  const filler = summary('patient complains of fever. also. the complaint.');
+  assert(!/also|the|complaint/i.test(filler), 'CM-09', 'filler words are not complaints', `got "${filler}"`);
   // Re-running on the same transcript must not double-count (the pipeline re-reads the full text).
   const once = summary('patient complains of fever. again patient complains of fever');
   const twice = summary('patient complains of fever. again patient complains of fever');
