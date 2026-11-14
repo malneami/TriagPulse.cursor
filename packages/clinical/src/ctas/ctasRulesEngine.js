@@ -9,7 +9,7 @@
 import { CTAS_CONFIG } from './ctasDatabase.js';
 import { matchComplaint, resolveChiefComplaint } from './resolveChiefComplaint.js';
 import { applyModifierLibraryEffects } from './modifierLibrary.js';
-import { resolveCtasHintsFromAnswers } from './clarifyingQuestionBank.js';
+import { resolveCtasHintsFromAnswers, BASELINE_SPO2_QUESTION } from './clarifyingQuestionBank.js';
 import { getAgeGroup, isPediatricAgeGroup, getNorms } from './ageNorms.js';
 import { normalizeClinicalFacts, isYes, answerText } from './factNormalizer.js';
 import { evaluateSirsCriteria, evaluateAdultFeverModifier } from './rules/adultFeverRules.js';
@@ -192,10 +192,10 @@ function evaluateStep0({ vitals, flags, appearance, isPediatric = false, age = n
   }
   // SpO₂ floors applied in evaluateRespiratoryPrimary with chronicity gate;
   // Step 0 only forces critical <88 (never suppressed).
-  if (vitals.spo2 != null && vitals.spo2 < 88 && !vitals._spo2_vs_baseline) {
+  if (vitals.spo2 != null && vitals.spo2 < 88 && !vitals._spo2_vs_baseline && !(vitals._paed && vitals.spo2 > 85)) {
     alerts.push({ ar: `SpO₂ ${vitals.spo2}% حرج`, en: `SpO₂ ${vitals.spo2}% critical` });
     pushCandidate(candidates, { level: 1, rule_id: 'step0_hypoxia', label_en: `SpO₂ ${vitals.spo2}% → CTAS 1`, label_ar: `SpO₂ ${vitals.spo2}% → CTAS 1` });
-  } else if (vitals.spo2 != null && vitals.spo2 < 90 && !vitals._suppress_spo2_floor && !vitals._spo2_vs_baseline) {
+  } else if (vitals.spo2 != null && vitals.spo2 < 90 && !vitals._paed && !vitals._suppress_spo2_floor && !vitals._spo2_vs_baseline) {
     pushCandidate(candidates, { level: 1, rule_id: 'step0_breathing', label_en: `Breathing compromised SpO₂ ${vitals.spo2}%`, label_ar: 'تنفس مضطرب' });
   }
   // CTAS level-of-consciousness modifier (approved 2026-10-17): GCS 3–9 → 1, 10–13 → 2.
@@ -315,6 +315,11 @@ function evaluateRespiratoryPrimary({ vitals, flags, norms, chronicity, baseline
       pushCandidate(candidates, { level: vsBase.level, rule_id: vsBase.rule_id, label_en: vsBase.label_en, label_ar: vsBase.label_ar });
     }
     applied.push({ label_en: vsBase.label_en, label_ar: vsBase.label_ar, result: vsBase.level != null ? `CTAS ${vsBase.level} min` : 'usual_baseline', evidence: { baselineSpo2, drop: vsBase.drop } });
+    // Usual-level SpO₂ at or below 85%: the presentation is never less urgent than CTAS 3 (approved 2026-11-12).
+    if (vitals.spo2 != null && vitals.spo2 <= 85 && vsBase.level == null) {
+      pushCandidate(candidates, { level: 3, rule_id: 'resp_spo2_le85_usual_floor3', label_en: `SpO₂ ${vitals.spo2}% at usual level → CTAS 3 floor`, label_ar: `SpO₂ ${vitals.spo2}% عند المعتاد → حد أدنى CTAS 3` });
+      applied.push({ label_en: `SpO₂ ${vitals.spo2}% at usual level — floor CTAS 3`, label_ar: `SpO₂ ${vitals.spo2}% عند المعتاد — حد أدنى CTAS 3`, result: 'CTAS 3 min' });
+    }
   } else if (vitals.spo2 != null) {
     const gate = hypoxiaShouldApply({
       spo2: vitals.spo2,
@@ -329,6 +334,14 @@ function evaluateRespiratoryPrimary({ vitals, flags, norms, chronicity, baseline
         result: 'chronicity_gate',
         evidence: { baselineSpo2, chronicity: chronicity?.status, reason: gate.reason },
       });
+    } else if (vitals._paed) {
+      if (vitals.spo2 <= 85) {
+        pushCandidate(candidates, { level: 1, rule_id: 'resp_critical_hypoxia', label_en: `SpO₂ ${vitals.spo2}% critical hypoxia (paediatric ≤ 85)`, label_ar: 'نقص أكسجين حرج (طفل ≤ 85)' });
+        applied.push({ label_en: `SpO₂ ${vitals.spo2}% — paediatric critical hypoxia`, label_ar: `SpO₂ ${vitals.spo2}% — نقص حرج`, result: 'CTAS 1 override' });
+      } else if (vitals.spo2 < 90) {
+        pushCandidate(candidates, { level: 2, rule_id: 'paed_spo2_86_89_ctas2', label_en: `Paediatric SpO₂ ${vitals.spo2}% (86–89) high risk → CTAS 2`, label_ar: `SpO₂ ${vitals.spo2}% (86–89) خطر مرتفع → CTAS 2` });
+        applied.push({ label_en: `SpO₂ ${vitals.spo2}% — paediatric high risk`, label_ar: `SpO₂ ${vitals.spo2}% — خطر مرتفع`, result: 'CTAS 2 min' });
+      }
     } else if (vitals.spo2 < 88) {
       pushCandidate(candidates, { level: 1, rule_id: 'resp_critical_hypoxia', label_en: `SpO₂ ${vitals.spo2}% critical hypoxia`, label_ar: 'نقص أكسجين حرج' });
       applied.push({ label_en: `SpO₂ ${vitals.spo2}% — critical hypoxia`, label_ar: `SpO₂ ${vitals.spo2}% — نقص حرج`, result: 'CTAS 1 override' });
@@ -582,8 +595,12 @@ function evaluatePediatricFeverBands({ vitals, ageGroup, age, appearance, flags,
   return { candidates, applied };
 }
 
-function collectCtasChangingGaps({ normalized, sirs, hemo, feverResult, isPediatric, hasFever, rrA }) {
+function collectCtasChangingGaps({ normalized, sirs, hemo, feverResult, isPediatric, hasFever, rrA, baselineSpo2 = null }) {
   const gaps = [];
+  // SpO₂ ≤ 85% with no usual value → usual SpO₂ asked; CTAS 1 stays provisional until answered (approved 2026-11-12).
+  if (normalized.vitals.spo2 != null && normalized.vitals.spo2 <= 85 && baselineSpo2 == null) {
+    gaps.push({ field: 'baseline_spo2', reason_en: BASELINE_SPO2_QUESTION.reason_en, reason_ar: BASELINE_SPO2_QUESTION.reason_ar });
+  }
   if (rrA?.needs_recount) {
     gaps.push({ field: 'rr_recount', reason_en: RR_RECOUNT_QUESTION.reason_en, reason_ar: RR_RECOUNT_QUESTION.reason_ar });
   }
@@ -649,6 +666,25 @@ function evaluateFebrileSeizureHistory({ hasFever, answers = {} }) {
   return { candidates: [{ level: 3, rule_id: 'fever_seizure_history', label_en: 'Fever with prior febrile seizure → CTAS 3 (any age, any appearance)', label_ar: 'حمى مع تاريخ تشنج حموي → CTAS 3' }] };
 }
 
+// Respiratory presentations (cough, breathing difficulty, fever with breathing change) with SpO2 90–93% in a child under 18 → CTAS 3 (approved 2026-11-12).
+// Infant under 3 months with lethargy, abnormal movements, vomiting or abdominal distension → CTAS 2, Observation (approved 2026-11-11).
+const RESP_PRESENTATION_RE = /cough|wheez|asthma|breath|dyspn|stridor|صفير|ربو|سعال|كحة|تنفس|نهجان/i;
+const FEVER_RE = /fever|temperature|حمى|حرارة/i;
+const INFANT_CRITICAL_RE = /letharg\w*|sleepy|drows\w*|unrespons\w*|floppy|limp|abnormal (?:movement|movements)|jerk\w*|twitch\w*|convuls\w*|seizure\w*|vomit\w*|emesis|distend\w*|خمول|خامل|نعاس|نعسان|قيء|تقيؤ|انتفاخ البطن|تشنج|حركة غير طبيعية|ارتخاء|مرتخي/i;
+function evaluateCriticalRespAndInfant({ age, text = '', spo2 = null }) {
+  const candidates = [];
+  const a = Number(age);
+  const hasAge = age != null && age !== '' && Number.isFinite(a);
+  if (hasAge && a < 18 && spo2 != null && spo2 >= 90 && spo2 < 94) {
+    const resp = RESP_PRESENTATION_RE.test(text) || (FEVER_RE.test(text) && /breath|تنفس|نهجان/i.test(text));
+    if (resp) candidates.push({ level: 3, rule_id: 'paed_resp_spo2_90_93_ctas3', label_en: `Paediatric respiratory presentation with SpO₂ ${spo2}% (90–93) → CTAS 3`, label_ar: `عرض تنفسي عند طفل مع SpO₂ ${spo2}% (90–93) → CTAS 3` });
+  }
+  if (hasAge && a < 0.25 && INFANT_CRITICAL_RE.test(text)) {
+    candidates.push({ level: 2, rule_id: 'infant_u3m_critical_obs', label_en: 'Infant under 3 months with critical presentation (lethargy, abnormal movement, vomiting or abdominal distension) → CTAS 2, Observation', label_ar: 'رضيع دون 3 أشهر مع عرض حرج → CTAS 2، الملاحظة' });
+  }
+  return { candidates };
+}
+
 export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' } = {}) {
   if (!patient) return null;
 
@@ -702,6 +738,8 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
   if (vsBaseline) {
     normalized.vitals._spo2_vs_baseline = vsBaseline;
   }
+  // Paediatric SpO2 bands (approved 2026-11-12): ≤85 CTAS 1; 86–89 CTAS 2; 90–93 CTAS 3 only with a respiratory presentation; 94–95 no change.
+  normalized.vitals._paed = patient.age != null && patient.age !== '' && Number(patient.age) < 18;
   const spo2Gate = hypoxiaShouldApply({
     spo2: normalized.vitals.spo2,
     chronicity,
@@ -884,6 +922,8 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
   const dehydrationSigns = /dehydrat|جفاف/i.test(`${tx} ${patient.chief_complaint || ''}`)
     && !/tolerat|تحمل/i.test(`${tx} ${patient.chief_complaint || ''}`);
   if (dehydrationSigns) pushCandidate(primaryCandidates, { level: 3, rule_id: 'dehydration_signs_ctas3', label_en: 'Dehydration signs → CTAS 3', label_ar: 'علامات جفاف → CTAS 3', source: 'complaint_specific' });
+  const critRespInfant = evaluateCriticalRespAndInfant({ age: patient.age, text: `${tx} ${patient.chief_complaint || ''}`, spo2: normalized.vitals.spo2 ?? patient.spo2 ?? null });
+  for (const c of critRespInfant.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
 
   for (const a of lib.applied || []) {
     if (a.ctas_effect != null) {
@@ -952,6 +992,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     isPediatric,
     hasFever,
     rrA: resp.respiratory_rate,
+    baselineSpo2,
   });
   if (step1Incomplete) {
     missing.unshift({

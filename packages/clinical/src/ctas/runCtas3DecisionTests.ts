@@ -5,6 +5,8 @@
  */
 import { computeLiveCTAS } from './vitalRanges.js';
 import { resolveDirection } from '../routing/routingConfig.js';
+import { evaluateCtasRules } from './ctasRulesEngine.js';
+import { BASELINE_SPO2_QUESTION } from './clarifyingQuestionBank.js';
 
 type Assert = (cond: boolean, id: string, name: string, detail?: string) => void;
 
@@ -17,6 +19,15 @@ const NOON_UTC = new Date(Date.UTC(2026, 10, 9, 9, 0));
 const resolve = resolveDirection as (opts: any) => any;
 
 export function runCtas3DecisionTests(assert: Assert) {
+  // Usual-SpO₂ question (approved 2026-11-12): SpO₂ ≤ 85 with no usual value → CTAS 1 and a numeric question;
+  // a confirmed usual value within 3 of the reading lowers the category.
+  const evalRaw = evaluateCtasRules as (o: any) => any;
+  const base = { age: 4, chief_complaint: 'cough for 3 days', ...STABLE, spo2: 85 };
+  const noBase = evalRaw({ patient: base, answers: {}, transcript: '' });
+  assert(noBase.level === 1 && (noBase.missing_ctas_changing || []).some((g: any) => g.field === 'baseline_spo2'), 'DEC-26', 'SpO₂ 85, usual unknown → CTAS 1 and usual-SpO₂ question');
+  const withBase = evalRaw({ patient: base, answers: { baseline_spo2: 85 }, transcript: '' });
+  assert(withBase.level === 3, 'DEC-27', 'SpO₂ 85, usual 85 confirmed, cough → CTAS 3 (never 4 or 5)', `${withBase.level}`);
+  assert(BASELINE_SPO2_QUESTION.answer_type === 'number' && BASELINE_SPO2_QUESTION.min === 60 && BASELINE_SPO2_QUESTION.max === 100, 'DEC-28', 'baseline question is numeric 60–100');
   const cases: Array<{
     id: string; name: string;
     patient: Record<string, unknown>; answers: Record<string, unknown>;
@@ -70,6 +81,39 @@ export function runCtas3DecisionTests(assert: Assert) {
     { id: 'DEC-10', name: 'asthma not improved after salbutamol → stays CTAS 3',
       patient: { age: 8, chief_complaint: 'asthma, wheezing improved after inhaler', ...STABLE, rr: 24, spo2: 97 },
       answers: {}, level: 3, zone: 'PEDIATRIC_OBSERVATION' },
+    { id: 'DEC-17', name: 'child 4 y, cough, SpO2 92% → CTAS 3 (90–93 warning with respiratory presentation)',
+      patient: { age: 4, chief_complaint: 'cough for 3 days', ...STABLE, spo2: 92 },
+      answers: {}, level: 3 },
+    { id: 'DEC-18', name: 'child 4 y, cough, SpO2 88% → CTAS 2 (86–89 high risk)',
+      patient: { age: 4, chief_complaint: 'cough for 3 days', ...STABLE, spo2: 88 },
+      answers: {}, level: 2 },
+    { id: 'DEC-18b', name: 'child 4 y, SpO2 84% → CTAS 1 (≤ 85)',
+      patient: { age: 4, chief_complaint: 'cough for 3 days', ...STABLE, spo2: 84 },
+      answers: {}, level: 1 },
+    { id: 'DEC-18c', name: 'child 4 y, SpO2 92% no respiratory presentation → no SpO2 rule (level 5)',
+      patient: { age: 4, chief_complaint: 'rash on the arm', ...STABLE, spo2: 92 },
+      answers: {}, level: 5 },
+    { id: 'DEC-19', name: 'child 4 y, cough, SpO2 97% → not CTAS 2 from this rule',
+      patient: { age: 4, chief_complaint: 'cough for 3 days', ...STABLE, spo2: 97 },
+      answers: {}, level: 5 },
+    { id: 'DEC-20', name: 'infant 2 months, lethargic, fever 39 (C2-07) → CTAS 2 Observation',
+      patient: { age: 0.17, chief_complaint: 'fever, very sleepy, not feeding', ...STABLE, temperature: 39.0 },
+      answers: { looks_unwell: 'نعم' }, level: 2, zone: 'PEDIATRIC_OBSERVATION', rule: 'ped_ctas2_infant_fever_obs' },
+    { id: 'DEC-21', name: 'infant 2 months, lethargic, no fever → CTAS 2 Observation',
+      patient: { age: 0.17, chief_complaint: 'very sleepy, lethargic since this morning', ...STABLE },
+      answers: {}, level: 2, zone: 'PEDIATRIC_OBSERVATION', rule: 'infant_u3m_critical_obs' },
+    { id: 'DEC-22', name: 'infant 2 months, vomiting alone → CTAS 2 Observation',
+      patient: { age: 0.17, chief_complaint: 'repeated vomiting', ...STABLE },
+      answers: {}, level: 2, zone: 'PEDIATRIC_OBSERVATION', rule: 'infant_u3m_critical_obs' },
+    { id: 'DEC-23', name: 'infant 2 months, abdominal distension → CTAS 2 Observation',
+      patient: { age: 0.2, chief_complaint: 'abdominal distension and vomiting', ...STABLE },
+      answers: {}, level: 2, zone: 'PEDIATRIC_OBSERVATION', rule: 'infant_u3m_critical_obs' },
+    { id: 'DEC-24', name: 'infant 2 months, abnormal movements → CTAS 2 Observation',
+      patient: { age: 0.15, chief_complaint: 'abnormal movements of the arms', ...STABLE },
+      answers: {}, level: 2, zone: 'PEDIATRIC_OBSERVATION', rule: 'infant_u3m_critical_obs' },
+    { id: 'DEC-25', name: 'child 5 y, lethargic, no fever → not infant rule (level unchanged)',
+      patient: { age: 5, chief_complaint: 'lethargic since this morning', ...STABLE },
+      answers: {}, level: 5 },
   ];
 
   for (const c of cases) {
