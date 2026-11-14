@@ -8,11 +8,11 @@ const AuthContext = createContext(null);
 
 /**
  * Idle auto-lock for shared ED workstations (review E6).
- * After IDLE_LOCK_MIN minutes with no keyboard, pointer, touch or scroll
+ * After IDLE_LOCK_MIN minutes (default 60) with no keyboard, pointer, touch or scroll
  * activity the session ends; a warning appears one minute before.
  * Override with VITE_IDLE_LOCK_MIN (minutes); 0 disables it.
  */
-const IDLE_LOCK_MIN = Number(import.meta.env.VITE_IDLE_LOCK_MIN ?? 15);
+const IDLE_LOCK_MIN = Number(import.meta.env.VITE_IDLE_LOCK_MIN ?? 60);
 const IDLE_WARN_BEFORE_MS = 60 * 1000;
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll'];
 export const LOGOUT_REASON_KEY = 'triagepulse_logout_reason';

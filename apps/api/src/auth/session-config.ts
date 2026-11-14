@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 /**
  * Session lifetimes (review H3). All can be overridden in the environment.
  *   JWT_EXPIRES_IN           access token lifetime            default 10m
- *   SESSION_IDLE_MIN         renewal must happen within this  default 30 (server-side idle limit)
+ *   SESSION_IDLE_MIN         renewal must happen within this  default 60 (server-side idle limit)
  *   SESSION_MAX_HOURS        hard limit for one sign-in       default 12 (one shift)
  *   REFRESH_REUSE_GRACE_SEC  two tabs renewing at once        default 30
  */
@@ -25,7 +25,7 @@ export interface SessionSettings {
 
 export function sessionSettingsFrom(config: ConfigService): SessionSettings {
   return {
-    idleMs: positive(config.get('SESSION_IDLE_MIN'), 30) * 60_000,
+    idleMs: positive(config.get('SESSION_IDLE_MIN'), 60) * 60_000,
     maxMs: positive(config.get('SESSION_MAX_HOURS'), 12) * 3_600_000,
     reuseGraceMs: positive(config.get('REFRESH_REUSE_GRACE_SEC'), 30) * 1000,
     // Secure cookies need HTTPS; local development and CI run on plain http://localhost.
