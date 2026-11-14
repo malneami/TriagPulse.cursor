@@ -25,6 +25,7 @@ import { runPregnancyTests } from './runPregnancyTests.js';
 import { runRoutingTests } from './runRoutingTests.js';
 import { runCtas3DecisionTests } from './runCtas3DecisionTests.js';
 import { runPaediatricEyeDirectionTests } from './paediatricEyeDirectionTests.js';
+import { runPaediatricEyeRuleTests } from './paediatricEyeRuleTests.js';
 import { runFeedbackTests } from '../feedback/runFeedbackTests.js';
 import { runPrivacyTests } from '../privacy/runPrivacyTests.js';
 import { runSttTests } from '../stt/runSttTests.js';
@@ -1025,6 +1026,7 @@ runPregnancyTests(assert);
 runRoutingTests(assert);
 runCtas3DecisionTests(assert);
 runPaediatricEyeDirectionTests(assert);
+runPaediatricEyeRuleTests(assert);
 runFeedbackTests(assert);
 runPrivacyTests(assert);
 
