@@ -243,6 +243,18 @@ export function resolveDirection({
   const accepts = (z) => (z.accepts_levels || []).includes(lvl);
   const resus = zones.find((z) => z.kind === 'resus');
 
+  // ── Paediatric eye direction (reviewed, PR #39/#40): zone from the eye rule, level unchanged ──
+  const eyeHint = (directionApplied || []).find((h) => h?.paed_eye_zone && zones.some((z) => z.code === h.destination_hint));
+  if (eyeHint) {
+    const target = zones.find((z) => z.code === eyeHint.destination_hint);
+    const { zone, hops } = applyAvailability(dept, target, lvl, mins);
+    return zoneView(dept, zone, {
+      from_direction_rule: { id: eyeHint.rule_id },
+      reason_ar: eyeHint.label_ar, reason_en: eyeHint.label_en,
+      overflow: hops.length ? hops : undefined,
+    });
+  }
+
   // ── Core (international) ──
   const lifeThreat = [...(directionApplied || []), ...(applied || [])]
     .some((a) => a?.destination_hint === 'RESUSCITATION' || a?.destination_hint === 'PEDIATRIC_RESUS');
@@ -255,18 +267,6 @@ export function resolveDirection({
   if (visualCode === 'RESPIRATORY') {
     const iso = zones.find((z) => z.kind === 'respiratory');
     if (iso) return zoneView(dept, iso, { from_isolation_hold: true });
-  }
-
-  // ── Paediatric eye direction (reviewed, PR #39/#40): zone from the eye rule, level unchanged ──
-  const eyeHint = (directionApplied || []).find((h) => h?.paed_eye_zone && zones.some((z) => z.code === h.destination_hint));
-  if (eyeHint) {
-    const target = zones.find((z) => z.code === eyeHint.destination_hint);
-    const { zone, hops } = applyAvailability(dept, target, lvl, mins);
-    return zoneView(dept, zone, {
-      from_direction_rule: { id: eyeHint.rule_id },
-      reason_ar: eyeHint.label_ar, reason_en: eyeHint.label_en,
-      overflow: hops.length ? hops : undefined,
-    });
   }
 
   // ── Center rules, in order ──
