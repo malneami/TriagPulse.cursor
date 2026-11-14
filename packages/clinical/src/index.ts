@@ -1,5 +1,5 @@
 export { computeLiveCTAS, interpretHR, interpretSBP, interpretSpO2, interpretRR, interpretTemp, interpretGCS } from './ctas/vitalRanges.js';
-export { evaluateCtasRules } from './ctas/ctasRulesEngine.js';
+export { evaluateCtasRules, paedEyeDestination } from './ctas/ctasRulesEngine.js';
 export { normalizeClinicalFacts } from './ctas/factNormalizer.js';
 export { evaluateSirsCriteria, evaluateAdultFeverModifier, ADULT_FEVER_RULES_META } from './ctas/rules/adultFeverRules.js';
 export { evaluateHemodynamicModifier, HEMODYNAMIC_RULES_META } from './ctas/rules/hemodynamicRules.js';

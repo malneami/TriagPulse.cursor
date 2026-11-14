@@ -64,6 +64,10 @@ export function deriveAssessment({
   }
 
   const pediatric = isPediatricAge(patient.age);
+  const eyeText = [patient.chief_complaint, ...(complaints || []).map((c) => c?.text || c?.label_en || '')].filter(Boolean).join(' ');
+  const eyeHint = clinical.paedEyeDestination
+    ? clinical.paedEyeDestination({ age: patient.age, text: eyeText, pain: patient.pain_score ?? patient.vitals?.pain_score ?? null, temperature: patient.temperature ?? patient.vitals?.temperature ?? null })
+    : null;
   const direction = level != null
     ? clinical.resolveCtasDestination({
         level,
@@ -71,7 +75,11 @@ export function deriveAssessment({
         answers,
         visualDestination: visualTriage,
         applied: modifierEvaluation?.applied_modifiers || [],
-        directionApplied: modifierEvaluation?.direction_applied || [],
+        directionApplied: [
+          ...(modifierEvaluation?.direction_applied || []),
+          // Paediatric eye presentations: reviewed zone (level unchanged). PR #39/#40.
+          ...(eyeHint ? [{ ...eyeHint, paed_eye_zone: true, destination_hint: eyeHint.zone }] : []),
+        ],
         // Every complaint heard (not only the primary one) counts for the routing guide.
         complaints: complaints?.length
           ? complaints

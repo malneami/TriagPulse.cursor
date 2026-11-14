@@ -257,6 +257,18 @@ export function resolveDirection({
     if (iso) return zoneView(dept, iso, { from_isolation_hold: true });
   }
 
+  // ── Paediatric eye direction (reviewed, PR #39/#40): zone from the eye rule, level unchanged ──
+  const eyeHint = (directionApplied || []).find((h) => h?.paed_eye_zone && zones.some((z) => z.code === h.destination_hint));
+  if (eyeHint) {
+    const target = zones.find((z) => z.code === eyeHint.destination_hint);
+    const { zone, hops } = applyAvailability(dept, target, lvl, mins);
+    return zoneView(dept, zone, {
+      from_direction_rule: { id: eyeHint.rule_id },
+      reason_ar: eyeHint.label_ar, reason_en: eyeHint.label_en,
+      overflow: hops.length ? hops : undefined,
+    });
+  }
+
   // ── Center rules, in order ──
   const ctx = { level: lvl, age: toNum(age), answers, complaints: complaints || [], minutes: mins };
   for (const rule of dept.rules || []) {
