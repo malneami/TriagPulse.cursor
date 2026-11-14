@@ -639,6 +639,18 @@ const EYE_TRAUMA_RE = /injur|hit|struck|blunt|trauma|ball|punch|إصابة|اص�
 const EYE_FB_RE = /foreign body|something in (?:my|his|her|the|your)? ?eye|شيء في (?:العين|عيني)|جسم غريب/i;
 const EYE_FEATURES_RE = /proptos|painful (?:eye )?movement|pain on (?:moving|movement)|moving the eye|pain (?:when|on) (?:moving|movement)|red and (?:hot|swollen)|vision|cellulit|ألم عند تحريك|تحريك العين|بروز/i;
 export const PAED_EYE_ZONE = { PEDIATRIC_RESUS: 'PEDIATRIC_RESUS', PEDIATRIC_OBSERVATION: 'PEDIATRIC_OBSERVATION', PEDIATRIC_CLINIC: 'PEDIATRIC_CLINIC', PEDS_FAST_TRACK: 'PEDS_FAST_TRACK' };
+/**
+ * Destination zone for a paediatric eye presentation (reviewed direction, PR #39/#40).
+ * Returns the most urgent matching eye candidate's zone, or null when no eye rule applies.
+ * The engine level is unchanged (e.g. PE-05 stays CTAS 3 from the fever rule); only the zone comes from here.
+ */
+export function paedEyeDestination({ age, text = '', pain = null, temperature = null } = {}) {
+  const { candidates } = evaluatePaedEyeCandidates({ age, text, pain, temperature });
+  if (!candidates.length) return null;
+  const best = candidates.reduce((a, b) => (b.level < a.level ? b : a));
+  return { zone: best.zone, level: best.level, rule_id: best.rule_id, label_en: best.label_en, label_ar: best.label_ar };
+}
+
 function evaluatePaedEyeCandidates({ age, text = '', pain = null, temperature = null }) {
   const candidates = [];
   const a = Number(age);
