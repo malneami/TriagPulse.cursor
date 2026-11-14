@@ -66,7 +66,7 @@ export function deriveAssessment({
   const pediatric = isPediatricAge(patient.age);
   const eyeText = [patient.chief_complaint, ...(complaints || []).map((c) => c?.text || c?.label_en || '')].filter(Boolean).join(' ');
   const eyeHint = clinical.paedEyeDestination
-    ? clinical.paedEyeDestination({ age: patient.age, text: eyeText, pain: patient.pain_score ?? patient.vitals?.pain_score ?? null, temperature: patient.temperature ?? patient.vitals?.temperature ?? null })
+    ? clinical.paedEyeDestination({ age: patient.age, level: engineLevel, text: eyeText, pain: patient.pain_score ?? patient.vitals?.pain_score ?? null, temperature: patient.temperature ?? patient.vitals?.temperature ?? null })
     : null;
   const direction = level != null
     ? clinical.resolveCtasDestination({

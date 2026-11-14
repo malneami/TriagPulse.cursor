@@ -661,10 +661,14 @@ export const PAED_EYE_ZONE = { PEDIATRIC_RESUS: 'PEDIATRIC_RESUS', PEDIATRIC_OBS
  * Returns the most urgent matching eye candidate's zone, or null when no eye rule applies.
  * The engine level is unchanged (e.g. PE-05 stays CTAS 3 from the fever rule); only the zone comes from here.
  */
-export function paedEyeDestination({ age, text = '', pain = null, temperature = null } = {}) {
+export function paedEyeDestination({ age, text = '', pain = null, temperature = null, level = null } = {}) {
   const { candidates } = evaluatePaedEyeCandidates({ age, text, pain, temperature });
   if (!candidates.length) return null;
-  const best = candidates.reduce((a, b) => (b.level < a.level ? b : a));
+  // With the engine's final level, use only an eye candidate at that same level, so the zone
+  // always comes from the finding that set the level (never from a different finding).
+  const pool = level != null ? candidates.filter((c) => c.level === Number(level)) : candidates;
+  if (!pool.length) return null;
+  const best = pool.reduce((a, b) => (b.level < a.level ? b : a));
   return { zone: best.zone, level: best.level, rule_id: best.rule_id, label_en: best.label_en, label_ar: best.label_ar };
 }
 
