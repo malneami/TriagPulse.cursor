@@ -53,11 +53,10 @@ export default function ResultBoxes({ ctas, direction, critical = false }) {
         </p>
         <p className="text-sm text-ink truncate flex items-center gap-1">
           <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-          {direction?.destination_ar ? `${direction.destination_ar} · ${direction.destination_en}` : 'التوجيه بانتظار التقييم · Direction pending'}
+          {direction?.destination_ar && level != null
+            ? `CTAS ${level} · ${direction.destination_ar} · ${direction.destination_en}`
+            : 'التوجيه بانتظار التقييم · Direction pending'}
         </p>
-        {ctas?.drivenBy && (
-          <p className="text-xs text-graphite truncate">حسب: {ctas.drivenBy.ar} · set by {ctas.drivenBy.en}</p>
-        )}
       </div>
     </div>
   );
