@@ -628,6 +628,60 @@ function burnSizeCategory(value) {
   if (/^(large|كبير)$/.test(v)) return 'large';
   return null;
 }
+// Paediatric eye rules (clinician direction, PR #39). Each returns the rule id, CTAS and destination zone.
+// Referral-only destinations (ophthalmology) are noted in the label, not as zones.
+const EYE_RE = /\beyes?\b|eyelid|periorbital|orbit|cornea|عين|العين|عيون|جفن|حول العين/i;
+const EYE_CHRONIC_RE = /chronic|gradual|months?|weeks?|for a long|مزمن|تدريج|شهور|أسابيع/i;
+const EYE_SUDDEN_RE = /sudden|abrupt|suddenly|فجأ|مفاجئ/i;
+const EYE_VISION_RE = /vision|can'?t see|cannot see|blurr|loss of sight|see less|لا (?:أرى|ارى)|رؤية|بصر|ضبابي/i;
+const EYE_PENETRATING_RE = /penetrat|metal|sharp|stick|nail|open globe|نافذ|حاد/i;
+const EYE_TRAUMA_RE = /injur|hit|struck|blunt|trauma|ball|punch|إصابة|اصابة|ضرب|ضربة/i;
+const EYE_FB_RE = /foreign body|something in (?:my|his|her|the|your)? ?eye|شيء في (?:العين|عيني)|جسم غريب/i;
+const EYE_FEATURES_RE = /proptos|painful (?:eye )?movement|pain on (?:moving|movement)|moving the eye|pain (?:when|on) (?:moving|movement)|red and (?:hot|swollen)|vision|cellulit|ألم عند تحريك|تحريك العين|بروز/i;
+export const PAED_EYE_ZONE = { PEDIATRIC_RESUS: 'PEDIATRIC_RESUS', PEDIATRIC_OBSERVATION: 'PEDIATRIC_OBSERVATION', PEDIATRIC_CLINIC: 'PEDIATRIC_CLINIC', PEDS_FAST_TRACK: 'PEDS_FAST_TRACK' };
+/**
+ * Destination zone for a paediatric eye presentation (reviewed direction, PR #39/#40).
+ * Returns the most urgent matching eye candidate's zone, or null when no eye rule applies.
+ * The engine level is unchanged (e.g. PE-05 stays CTAS 3 from the fever rule); only the zone comes from here.
+ */
+export function paedEyeDestination({ age, text = '', pain = null, temperature = null } = {}) {
+  const { candidates } = evaluatePaedEyeCandidates({ age, text, pain, temperature });
+  if (!candidates.length) return null;
+  const best = candidates.reduce((a, b) => (b.level < a.level ? b : a));
+  return { zone: best.zone, level: best.level, rule_id: best.rule_id, label_en: best.label_en, label_ar: best.label_ar };
+}
+
+function evaluatePaedEyeCandidates({ age, text = '', pain = null, temperature = null }) {
+  const candidates = [];
+  const a = Number(age);
+  const eyeOrVisionTerm = EYE_RE.test(text) || /double vision|diplopia|see double|vision|blurr|رؤية|بصر|ضبابي|ازدواج/i.test(text);
+  if (age == null || age === '' || !Number.isFinite(a) || a >= 18 || !eyeOrVisionTerm) return { candidates };
+  const fever = (temperature != null && temperature >= 38) || /fever|febrile|حمى|حرارة/i.test(text);
+  const chronic = EYE_CHRONIC_RE.test(text);
+  const add = (level, rule_id, zone, label) => candidates.push({ level, rule_id, zone, label_en: label, label_ar: label });
+  if (/chemical|alkali|acid|bleach|كيميائ|مادة/i.test(text)) add(2, 'paed_eye_chemical', PAED_EYE_ZONE.PEDIATRIC_RESUS, 'Chemical eye injury → CTAS 2, Resus (irrigate; urgent ophthalmology)');
+  else if (EYE_PENETRATING_RE.test(text) && EYE_TRAUMA_RE.test(text)) add(2, 'paed_eye_penetrating', PAED_EYE_ZONE.PEDIATRIC_OBSERVATION, 'Penetrating eye injury → CTAS 2, Observation (urgent ophthalmology)');
+  else if (EYE_FB_RE.test(text) && EYE_PENETRATING_RE.test(text)) add(2, 'paed_eye_fb_penetrating', PAED_EYE_ZONE.PEDIATRIC_OBSERVATION, 'Penetrating foreign body → CTAS 2, Observation (ophthalmology same day)');
+  else if (EYE_FB_RE.test(text)) add(4, 'paed_eye_fb_mild', PAED_EYE_ZONE.PEDS_FAST_TRACK, 'Foreign body in eye, mild pain → CTAS 4, Fast Track');
+  else if (EYE_TRAUMA_RE.test(text) && EYE_VISION_RE.test(text) && !chronic) add(2, 'paed_eye_blunt_visual_loss', PAED_EYE_ZONE.PEDIATRIC_OBSERVATION, 'Blunt eye trauma with visual loss → CTAS 2, Observation');
+  else if (EYE_TRAUMA_RE.test(text)) add(4, 'paed_eye_trauma_mild', PAED_EYE_ZONE.PEDS_FAST_TRACK, 'Eye trauma, mild pain → CTAS 4, Fast Track');
+  if (/periorbital|around (?:the|his|her|my)?\s*(?:\w+\s+)?eye|حول العين|تورم.*العين|swelling.*eye/i.test(text) && fever) {
+    if (EYE_FEATURES_RE.test(text)) add(2, 'paed_periorbital_cellulitis', PAED_EYE_ZONE.PEDIATRIC_OBSERVATION, 'Periorbital swelling with fever and cellulitis features → CTAS 2, Observation (IV antibiotics; imaging if orbital)');
+    else add(4, 'paed_periorbital_fever', PAED_EYE_ZONE.PEDIATRIC_CLINIC, 'Periorbital swelling with fever, no cellulitis features → CTAS 4, Clinic');
+  }
+  if (EYE_SUDDEN_RE.test(text) && EYE_VISION_RE.test(text) && !EYE_TRAUMA_RE.test(text) && !EYE_FB_RE.test(text)) add(2, 'paed_eye_sudden_vision', PAED_EYE_ZONE.PEDIATRIC_OBSERVATION, 'Sudden change in vision → CTAS 2, Observation (ophthalmology same day)');
+  if (/double vision|diplopia|see double|رؤية مزدوجة|ازدواج/i.test(text)) add(chronic ? 4 : 3, chronic ? 'paed_eye_diplopia_chronic' : 'paed_eye_diplopia_acute', chronic ? PAED_EYE_ZONE.PEDIATRIC_CLINIC : PAED_EYE_ZONE.PEDIATRIC_OBSERVATION, chronic ? 'Chronic diplopia → CTAS 4, Clinic' : 'Acute diplopia → CTAS 3, Observation');
+  if (/photophob|light hurts|حساسية.*الضوء/i.test(text)) add(4, 'paed_eye_photophobia', PAED_EYE_ZONE.PEDIATRIC_CLINIC, 'Photophobia → CTAS 4, Clinic');
+  if (/red eye|red eyes|conjunctiv|عين حمراء|احمرار/i.test(text) && !EYE_TRAUMA_RE.test(text)) {
+    if (chronic) add(5, 'paed_eye_red_chronic', PAED_EYE_ZONE.PEDIATRIC_CLINIC, 'Chronic red eye → CTAS 5, Clinic');
+    else add(4, 'paed_eye_red_acute', PAED_EYE_ZONE.PEDIATRIC_CLINIC, 'Acute red eye → CTAS 4, Clinic');
+  }
+  if (EYE_VISION_RE.test(text) && chronic && !EYE_SUDDEN_RE.test(text)) add(4, 'paed_eye_vision_chronic', PAED_EYE_ZONE.PEDIATRIC_CLINIC, 'Chronic or gradual change in vision → CTAS 4, Clinic (ophthalmology clinic)');
+  if (/eye pain|pain in (?:the|my|his|her) eye|ألم.*العين/i.test(text) && chronic && !EYE_TRAUMA_RE.test(text)) add(5, 'paed_eye_pain_chronic', PAED_EYE_ZONE.PEDIATRIC_CLINIC, 'Chronic eye pain → CTAS 5, Clinic');
+  if (/headache/i.test(text) && EYE_VISION_RE.test(text)) add(2, 'paed_headache_visual', PAED_EYE_ZONE.PEDIATRIC_OBSERVATION, 'Headache with visual disturbance → CTAS 2, Observation');
+  return { candidates };
+}
+
 function evaluateBurnCandidates({ pathway, answers = {}, text = '', pain = null }) {
   const candidates = [];
   const isBurn = pathway === 'burn'
@@ -869,6 +923,8 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
   // CTAS 2025 pregnancy / postpartum modifiers (approved 2026-10-30).
   const pregnancy = evaluatePregnancy({ patient, answers, text: `${tx} ${patient.chief_complaint || ''}` });
   for (const c of pregnancy.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
+  const eyeMod = evaluatePaedEyeCandidates({ age: patient.age, text: `${tx} ${patient.chief_complaint || ''}`, pain: normalized.vitals.pain ?? patient.pain_score ?? null, temperature: normalized.vitals.temperature ?? patient.temperature ?? null });
+  for (const c of eyeMod.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
   const burnMod = evaluateBurnCandidates({ pathway, answers, text: `${tx} ${patient.chief_complaint || ''}`, pain: normalized.vitals.pain ?? patient.vitals?.pain_score ?? patient.pain_score ?? null });
   for (const c of burnMod.candidates) pushCandidate(primaryCandidates, { ...c, source: 'complaint_specific' });
   const seizureHx = evaluateFebrileSeizureHistory({ hasFever, answers });

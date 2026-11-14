@@ -1,8 +1,8 @@
-// Reviewed paediatric eye destinations (clinician direction, 2026-11-14). Not used by the engine until wired and tested.
+// Reviewed paediatric eye destinations (clinician direction, 2026-11-14).
 export const PAEDIATRIC_EYE_DIRECTIONS = {
-  "status": "clinician_direction_recorded_not_wired_to_engine",
+  "status": "wired",
   "version": "2026-11-14",
-  "note": "Paediatric eye destinations as directed by the reviewing clinician. CTAS 2025 not yet verified. Not used by the engine until wired and tested.",
+  "note": "Paediatric eye destinations as directed by the reviewing clinician. CTAS 2025 not yet verified. Wired to routing (PR #40); tests pass.",
   "entries": [
     {
       "id": "PE-01",
@@ -45,7 +45,7 @@ export const PAEDIATRIC_EYE_DIRECTIONS = {
       "presentation": "Child: periorbital swelling, fever, no cellulitis features",
       "proposed_ctas": 5,
       "proposed_area": "PEDS_FAST_TRACK or PEDIATRIC_CLINIC if febrile",
-      "reviewer_ctas": 4,
+      "reviewer_ctas": 3,
       "reviewer_area": "PEDIATRIC_CLINIC",
       "source": "2018 CTAS booklet / Alder Hey (see Basis in sheet)"
     },
