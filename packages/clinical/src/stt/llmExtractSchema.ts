@@ -113,7 +113,7 @@ ${safeTranscript.slice(0, 4000)}
 """
 
 Also list the case details, each with "evidence": the exact words copied from the transcript (same language, no translation):
-- complaints: EVERY presenting complaint or symptom the patient has now (e.g. chest pain, vomiting, fever), one item each. Not past illnesses, not negated symptoms.
+- complaints: EVERY presenting complaint or symptom the patient has now (e.g. chest pain, vomiting, fever). List one item per mention in the conversation: if the same complaint is said again, add another item with its own evidence. Not past illnesses, not negated symptoms.
 - conditions: chronic illnesses / past medical history (diabetes, hypertension, asthma, sickle cell, heart disease, kidney disease, cancer, pregnancy…). status "absent" only when explicitly denied ("not diabetic", "no history of…"). Do not infer conditions from symptoms.
 - medications: regular medicines the patient takes.
 Use empty arrays when nothing was said. Never invent items.

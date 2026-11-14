@@ -487,6 +487,7 @@ export function findComplaintMentions(text) {
     .filter(Boolean);
   const out = [];
   const seen = new Set();
+  const mentionCounts = new Map();
   for (const clause of clauses) {
     if (HISTORY_CUE.test(` ${clause} `)) continue;
     // Terms present in this clause, longest first; a term inside a longer hit is skipped.
@@ -520,6 +521,8 @@ export function findComplaintMentions(text) {
       if (!cur || scored > cur.scored) byTerm.set(`${h.at}:${h.term}`, { ...h, scored });
     }
     for (const h of [...byTerm.values()].sort((a, b) => a.at - b.at)) {
+      // Every mention counts, including repeats of a complaint already listed.
+      mentionCounts.set(h.entry.complaintKey, (mentionCounts.get(h.entry.complaintKey) || 0) + 1);
       if (seen.has(h.entry.complaintKey)) continue;
       seen.add(h.entry.complaintKey);
       out.push({
@@ -533,6 +536,7 @@ export function findComplaintMentions(text) {
       });
     }
   }
+  for (const item of out) item.mention_count = mentionCounts.get(item.complaintKey) || 1;
   // An allergic reaction happening NOW is a complaint, not history: "allergic reaction",
   // hives / urticaria, anaphylaxis, or a rash / swelling soon after a food, medicine,
   // injection or sting (approved 2026-10-16). "Allergic to penicillin" stays history.

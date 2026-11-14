@@ -33,6 +33,7 @@ export function ComplaintChips({ cc, onMakePrimary, onRemove }) {
                 className="min-h-[36px] ps-3 pe-2 flex items-center gap-2 text-sm font-semibold"
               >
                 <span>{c.label_ar}<span className={`font-normal ${primary ? 'text-white/80' : 'text-graphite'}`}> · {c.label_en}</span></span>
+                {c.mention_count > 1 && <span className={`text-[11px] font-semibold ${primary ? 'text-white/80' : 'text-graphite'}`} title="عدد مرات ذكرها / times mentioned">×{c.mention_count}</span>}
                 <LevelDot level={c.level} />
                 {primary && <span className="text-[11px] font-normal text-white/80">يحدد المستوى</span>}
               </button>
