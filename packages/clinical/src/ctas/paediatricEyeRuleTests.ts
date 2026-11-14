@@ -60,11 +60,11 @@ const ZONE_CASES: Array<[string, number, string, string, Record<string, unknown>
 
 export function runPaediatricEyeZoneTests(assert: Assert): void {
   for (const [id, age, complaint, zone, extra] of ZONE_CASES) {
-    const d = paedEyeDestination({ age, text: complaint, pain: (extra.pain_score as number) ?? null, temperature: (extra.temperature as number) ?? null });
+    const d = paedEyeDestination({ age, text: complaint, pain: (extra.pain_score as any) ?? null, temperature: (extra.temperature as any) ?? null } as any);
     assert(d?.zone === zone, `${id}-ZONE`, `paediatric eye zone: ${complaint}`, `expected ${zone}, got ${d?.zone ?? 'none'}`);
   }
   // Resolved direction: PE-05 keeps CTAS 3 but goes to Clinic via the eye hint.
-  const pe05 = paedEyeDestination({ age: 6, text: 'swelling around the right eye with fever', temperature: 38.8 });
+  const pe05 = paedEyeDestination({ age: 6, text: 'swelling around the right eye with fever', temperature: 38.8 } as any);
   const dir = resolveDirection({ level: 3, age: 6, complaints: [], directionApplied: [{ ...pe05, paed_eye_zone: true, destination_hint: pe05?.zone }] as any }) as any;
   assert(dir?.destination === 'PEDIATRIC_CLINIC', 'PE-05-DIR', 'PE-05 at CTAS 3 is directed to Clinic', `got ${dir?.destination}`);
 }
