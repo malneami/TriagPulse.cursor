@@ -21,7 +21,7 @@ export const CASE_DETAILS_VERSION = '1.0.0';
  */
 export const CONDITION_VOCAB = [
   { id: 'diabetes', en: 'Diabetes', ar: 'السكري', high_risk: true,
-    rx: /\bdiabet\w*|\bdm\b|\bt[12]dm\b|سكري|مرض\s*السكر|عنده\s*سكر|عندها\s*سكر/i },
+    rx: /\bdiabet\w*|\bdm\b|\bt[12]dm\b|سكري|مرض\s*السكر|عنده\s*سكر|عندها\s*سكر|(?<![\u0600-\u06FF])و(?=سكر)|و\s*(?:عنده|عندها)\s*سكر|(?<![\u0600-\u06FF])و(?:عنده|عندها)\s*سكر/i },
   { id: 'hypertension', en: 'Hypertension', ar: 'ارتفاع ضغط الدم', high_risk: false,
     rx: /hypertensi\w*|high blood pressure|\bhtn\b|ارتفاع\s*(?:في\s*)?ضغط\s*الدم|مريض\s*ضغط|مريضة\s*ضغط|عنده\s*ضغط|عندها\s*ضغط/i },
   { id: 'coronary_disease', en: 'Coronary disease / stent', ar: 'مرض الشرايين التاجية / دعامة', high_risk: true,
@@ -39,7 +39,7 @@ export const CONDITION_VOCAB = [
   { id: 'copd', en: 'COPD', ar: 'الانسداد الرئوي المزمن', high_risk: false,
     rx: /\bcopd\b|emphysema|chronic bronchitis|انسداد\s*رئوي\s*مزمن/i },
   { id: 'asthma', en: 'Asthma', ar: 'الربو', high_risk: false,
-    rx: /asthma\w*|(?<![\u0600-\u06FF])(?:ال)?ربو(?![\u0600-\u06FF])|حساسية\s*(?:ال)?صدر/i },
+    rx: /asthma\w*|(?<![\u0600-\u06FF])و?(?:ال)?ربو(?![\u0600-\u06FF])|حساسية\s*(?:ال)?صدر/i },
   { id: 'interstitial_lung', en: 'Interstitial lung disease / chronic lung disease', ar: 'مرض رئوي مزمن', high_risk: true,
     rx: /interstitial lung|pulmonary fibrosis|\bild\b|chronic lung disease|bronchopulmonary dysplasia|\bbpd\b|تليف\s*(?:ال)?رئ(?:ة|وي)|مرض\s*رئوي\s*مزمن/i },
   { id: 'home_oxygen', en: 'Home oxygen', ar: 'أكسجين منزلي', high_risk: true,
