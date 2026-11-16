@@ -1218,6 +1218,7 @@ export function evaluateCtasRules({ patient = {}, answers = {}, transcript = '' 
     // One heart-rate reading for the level, the alert and the HR tile; plus the questions it needs.
     heart_rate: hemo.heart_rate || null,
     hr_questions: [
+      ...(missing.some((g) => g.field === 'baseline_spo2') ? [BASELINE_SPO2_QUESTION] : []),
       ...(hemo.heart_rate?.needs_reason ? [HR_REASON_QUESTION] : []),
       ...(hemo.heart_rate?.needs_recount ? [HR_RECOUNT_QUESTION] : []),
       ...(resp.respiratory_rate?.needs_recount ? [RR_RECOUNT_QUESTION] : []),
